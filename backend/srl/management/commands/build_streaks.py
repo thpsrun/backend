@@ -10,6 +10,7 @@ from django.db.models import Q
 
 from srl.models import Games, Runs
 from srl.utils import calculate_bonus, get_anniversary, get_streak_start_date
+from api.v1.routers.utils.query_utils import compute_run_subcategory
 
 
 class Command(BaseCommand):
@@ -125,7 +126,7 @@ class Command(BaseCommand):
                 bonus__lt=settings.STREAK_MAX_MONTHS,
             )
             .select_related("game", "category", "level")
-            .prefetch_related("players")
+            .prefetch_related("players", "runvariablevalues_set__value")
         )
 
         if game_filter:
@@ -168,18 +169,19 @@ class Command(BaseCommand):
 
             anniversaries_found += 1
 
+            run_subcat = compute_run_subcategory(run)
             if check_all:
                 if months_held == run.bonus:
                     if verbose:
                         self.stdout.write(
-                            f"  [{game.slug.upper()}] {run.subcategory}: {run.id} - "
+                            f"  [{game.slug.upper()}] {run_subcat}: {run.id} - "
                             f"already at {run.bonus} months (no change)"
                         )
                     continue
             elif months_held <= run.bonus:
                 if verbose:
                     self.stdout.write(
-                        f"  [{game.slug.upper()}] {run.subcategory}: {run.id} - "
+                        f"  [{game.slug.upper()}] {run_subcat}: {run.id} - "
                         f"already at {run.bonus} months (no change)"
                     )
                 continue
@@ -193,7 +195,7 @@ class Command(BaseCommand):
 
             if verbose or True:
                 self.stdout.write(
-                    f"[{game.slug.upper()}] {run.subcategory}: {run.id} ({player_names}) -> "
+                    f"[{game.slug.upper()}] {run_subcat}: {run.id} ({player_names}) -> "
                     f"streak started {streak_start}, {new_bonus} month(s) "
                     f"({max_points} + {streak_bonus} bonus = {new_points} points)"
                 )

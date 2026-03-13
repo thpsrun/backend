@@ -10,13 +10,11 @@ from srl.models import Categories, Levels, Players, Runs, Variables, VariableVal
 def leaderboard_cache_key(
     game_id: str,
     category_id: str,
-    subcategory: str,
     level_id: str | None = None,
 ) -> str:
-    filters = {
+    filters: dict[str, str] = {
         "game_id": game_id,
-        "cat_id": category_id,
-        "subcategory": subcategory,
+        "category_id": category_id,
     }
 
     if level_id is not None:
@@ -34,7 +32,6 @@ def leaderboard_cache_key(
         f"game:{game_id}",
         f"category:{category_id}",
         f"level:{level_id}" if level_id else "FG",
-        f"subcategory:{subcategory}",
         f"timestamp:{timestamp}",
     ]
 
@@ -45,10 +42,35 @@ def leaderboard_cache_key(
     return f"lb:{key}:{timestamp[:10]}"
 
 
+def overall_leaderboard_cache_key() -> str:
+    latest = Runs.objects.filter(
+        obsolete=False,
+        vid_status="verified",
+    ).aggregate(latest=Max("updated_at"),)["latest"]
+
+    timestamp = latest.isoformat() if latest else "None"
+
+    return f"leaderboard:overall:{timestamp}"
+
+
+def game_leaderboard_cache_key(
+    game_id: str,
+) -> str:
+    latest = Runs.objects.filter(
+        game_id=game_id,
+        obsolete=False,
+        vid_status="verified",
+    ).aggregate(latest=Max("updated_at"),)["latest"]
+
+    timestamp = latest.isoformat() if latest else "None"
+
+    return f"leaderboard:game:{game_id}:{timestamp}"
+
+
 def player_cache_key(
     user_id: str,
 ) -> str:
-    latest = Runs.objects.filter(run_players__id=user_id).aggregate(
+    latest = Runs.objects.filter(run_players__player__id=user_id).aggregate(
         latest=Max("updated_at")
     )["latest"]
 

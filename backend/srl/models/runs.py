@@ -26,8 +26,8 @@ class Runs(models.Model):
                 name="idx_runs_place_obs_status",
             ),
             models.Index(
-                fields=["game", "category", "subcategory", "level"],
-                name="idx_runs_game_cat_sub_level",
+                fields=["game", "category", "level"],
+                name="idx_runs_game_cat_level",
             ),
             models.Index(
                 fields=["-v_date"],
@@ -78,12 +78,6 @@ class Runs(models.Model):
         blank=True,
         null=True,
         on_delete=models.SET_NULL,
-    )
-    subcategory = models.CharField(
-        max_length=100,
-        verbose_name="Subcategory Name",
-        blank=True,
-        null=True,
     )
     variables = models.ManyToManyField(
         Variables,

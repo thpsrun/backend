@@ -17,7 +17,7 @@ class RunSyncContext(BaseModel):
     wr_time_secs: float
     max_points: int
     default_time_type: str
-    subcategory_name: str
+    variable_value_map: dict[str, str]
     download_pfp: bool = False
     lrt_fix: bool = False
     players_data: List[SrcPlayersModel]

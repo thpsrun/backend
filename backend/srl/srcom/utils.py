@@ -2,9 +2,9 @@ from itertools import product
 from typing import List
 
 from celery import shared_task
-from django.db.models import Count
+from django.db.models import Count, QuerySet
 
-from srl.models import Platforms, Players, Runs, VariableValues
+from srl.models import Platforms, Players, Runs
 from srl.srcom.schema.src import SrcRunsPlayers, SrcVariablesModel
 from srl.utils import convert_time, points_formula, src_api, time_conversion
 
@@ -96,6 +96,38 @@ def create_leaderboard_link(
     return src_api(url)
 
 
+def filter_by_variable_map(
+    qs: QuerySet,
+    variable_value_map: dict[str, str],
+) -> QuerySet:
+    """Filter a Runs queryset to a specific variable/value combination.
+
+    For non-empty maps, chains filter() calls so each (variable_id, value_id)
+    pair must be present in the run's RunVariableValues.
+    For an empty map, restricts to runs that have zero RunVariableValues rows.
+
+    Arguments:
+        qs (QuerySet): Base queryset of Runs to filter.
+        variable_value_map (dict[str, str]): {variable_id: value_id} from the leaderboard combo.
+
+    Returns:
+        QuerySet: Filtered queryset scoped to the given variant.
+    """
+    if variable_value_map:
+        for var_id, val_id in variable_value_map.items():
+            qs = qs.filter(
+                runvariablevalues__variable_id=var_id,
+                runvariablevalues__value_id=val_id,
+            )
+    else:
+        qs = (
+            qs
+            .annotate(rv_count=Count("runvariablevalues", distinct=True))
+            .filter(rv_count=0)
+        )
+    return qs
+
+
 def build_var_name(
     base_name: str,
     run_variables: dict,
@@ -146,7 +178,7 @@ def lrt_fix(
 def update_standings(
     is_wr: bool,
     game_id: str,
-    subcategory: str,
+    variable_value_map: dict[str, str],
     max_points: int,
     run_type: str,
     default_time_type: str,
@@ -160,7 +192,7 @@ def update_standings(
         is_wr (bool): When `True`, it will re-evaluate all points within the category. If `False`,
             then the point re-evaluation is ignored.
         game_id (str): Unique SRC ID of the game.
-        subcategory (str): Subcategory string (e.g. "Any% No Warp Normal").
+        variable_value_map (dict[str, str]): {variable_id: value_id} for the leaderboard variant.
         max_points (int): Maximum number of points within the speedrun.
         run_type (str): Type of run that needs to be queried (e.g. "main" or "il").
         default_time_type (str): Default time type of the record.
@@ -177,7 +209,7 @@ def update_standings(
         "ingame": "timeigt_secs",
     }
 
-    base_category_runs = Runs.objects.only(
+    base_qs = Runs.objects.only(
         "place",
         "points",
         "time_secs",
@@ -185,11 +217,11 @@ def update_standings(
         "timeigt_secs",
     ).filter(
         game=game_id,
-        subcategory=subcategory,
         obsolete=False,
     )
+    base_qs = filter_by_variable_map(base_qs, variable_value_map)
 
-    all_category_runs = base_category_runs.filter(runtype=run_type)
+    all_category_runs = base_qs.filter(runtype=run_type)
     runs = all_category_runs.order_by(time_columns[default_time_type])
     wr_time = getattr(runs[0], (time_columns[default_time_type]))
 
@@ -226,7 +258,7 @@ def update_standings(
 @shared_task(pydantic=True)
 def update_obsolete(
     game_id: str,
-    subcategory: str,
+    variable_value_map: dict[str, str],
     players: List[SrcRunsPlayers],
     run_type: str,
     default_time_type: str,
@@ -235,11 +267,11 @@ def update_obsolete(
 
     When a speedrun is added to the leaderboard, this function will find all of their old runs
     that have NOT been marked and perform logic to determine which is faster. The fastest time
-    is removed, with all remaining runs (which should be one) to be markedas obsolete.
+    is removed, with all remaining runs (which should be one) to be marked as obsolete.
 
     Arguments:
         game_id (str): Unique SRC ID of the game.
-        subcategory (str): Subcategory string (e.g. "Any% No Warp Normal").
+        variable_value_map (dict[str, str]): {variable_id: value_id} for the leaderboard variant.
         players (List[SrcRunsPlayers]): Pydantic list of players passed onto the function.
         run_type (str): Type of run that needs to be queried (e.g. "main" or "il").
         default_time_type (str): Default time type of the record.
@@ -253,44 +285,32 @@ def update_obsolete(
         "ingame": "timeigt_secs",
     }
 
-    base_runs_query = (
+    base_qs = (
         Runs.objects.select_related("game")
         .prefetch_related("run_players__player")
         .only(
             "id",
             "game__id",
-            "subcategory",
             "obsolete",
             "time_secs",
             "timenl_secs",
             "timeigt_secs",
         )
-        .filter(
-            runtype=run_type, game_id=game_id, subcategory=subcategory, obsolete=False
-        )
+        .filter(runtype=run_type, game_id=game_id, obsolete=False)
     )
+    base_qs = filter_by_variable_map(base_qs, variable_value_map)
 
     for player in players:
         if player is not None and player.rel != "guest":
-            player_runs = base_runs_query.filter(run_players__player__id=player.id)
+            player_runs = base_qs.filter(run_players__player__id=player.id)
+            count = player_runs.count()
 
-            duplicate_subcats = (
-                player_runs.values("subcategory")
-                .annotate(count=Count("subcategory"))
-                .filter(count__gt=1)
-            )
-
-            slowest_runs = player_runs.filter(
-                subcategory__in=duplicate_subcats
-            ).order_by(f"-{time_columns[default_time_type]}")
-
-            if len(slowest_runs) > 0:
-                best_time = slowest_runs.last()
-                slowest_runs = slowest_runs.exclude(id=best_time)
-
-                for new_obsolete in slowest_runs:
-                    new_obsolete.obsolete = True
-                    obsolete_runs.append(new_obsolete.id)
+            if count > 1:
+                best_run = player_runs.order_by(time_columns[default_time_type]).first()
+                if best_run:
+                    slowest = player_runs.exclude(id=best_run.id)
+                    for run in slowest:
+                        obsolete_runs.append(run.id)
 
     if obsolete_runs:
         Runs.objects.filter(id__in=obsolete_runs).update(obsolete=True)
@@ -298,7 +318,6 @@ def update_obsolete(
 
 def create_run_default(
     run_data: dict,
-    subcategory_name: str,
     place: int,
     lrtfix: bool,
 ) -> dict:
@@ -318,7 +337,6 @@ def create_run_default(
         "runtype": "main" if run_data["level"] is None else "il",
         "game_id": run_data["game"],
         "category_id": run_data["category"],
-        "subcategory": subcategory_name,
         "place": place,
         "url": run_data["weblink"],
         "video": run_data["video_uri"],

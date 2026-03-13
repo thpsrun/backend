@@ -152,7 +152,6 @@ class ModelTestCase(TestCase):
             game=cls.games,
             category=cls.categories,
             level=cls.levels,
-            subcategory="aeiou aeiou",
             place=666,
             url="https://speedrun.com/",
             video="https://speedrun.com/",

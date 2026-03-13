@@ -179,7 +179,7 @@ def apply_run_embeds(
     - `runtype` (str | None): Filter by run type (`main` or `il`)
     - `place` (int | None): Filter by leaderboard position
     - `status` (str | None): Filter by verification status (`verified`, `new`, or `rejected`)
-    - `search`: Search in subcategory text
+    - `search`: Search in category name, level name, or variable value names
     - `embed`: Comma-separated list of resources to embed
     - `limit`: Results per page (default 50, max 100)
     - `offset`: Results to skip (default 0)
@@ -188,7 +188,7 @@ def apply_run_embeds(
     - `/runs/all?game_id=thps4` - All runs for THPS4
     - `/runs/all?game_id=thps4&category_id=any&place=1` - THPS4 Any% world records
     - `/runs/all?player_id=v8lponvj&runtype=main` - Player's full-game runs
-    - `/runs/all?search=normal&place=1&status=verified` - Verified WRs with "normal" in subcategory
+    - `/runs/all?search=normal&place=1&status=verified` - Verified WRs with "normal" in category/level/value
     - `/runs/all?game_id=thps4&level_id=alcatraz&embed=player,game` - Alcatraz ILs with embeds
     """
     ),
@@ -215,7 +215,7 @@ def get_all_runs(
         RunStatusType | None, Query, Field(description="Filter by status")
     ] = None,
     search: Annotated[
-        str | None, Query, Field(description="Search subcategory text")
+        str | None, Query, Field(description="Search category/level/variable value names")
     ] = None,
     embed: Annotated[
         str | None, Query, Field(description="Comma-separated embeds")
@@ -245,9 +245,15 @@ def get_all_runs(
             )
 
     try:
-        queryset = Runs.objects.all().order_by("-v_date", "place")
-
-        queryset = queryset.prefetch_related("run_players__player__countrycode")
+        queryset = (
+            Runs.objects.all()
+            .select_related("category", "level")
+            .prefetch_related(
+                "run_players__player__countrycode",
+                "runvariablevalues_set__value",
+            )
+            .order_by("-v_date", "place")
+        )
 
         # If parameters are fulfilled by the client, this will further
         # drill down what the client is looking for.
@@ -266,7 +272,11 @@ def get_all_runs(
         if status:
             queryset = queryset.filter(vid_status=status)
         if search:
-            queryset = queryset.filter(subcategory__icontains=search)
+            queryset = queryset.filter(
+                Q(category__name__icontains=search)
+                | Q(level__name__icontains=search)
+                | Q(runvariablevalues__value__name__icontains=search)
+            ).distinct()
 
         runs = queryset[offset : offset + limit]
 
@@ -414,7 +424,6 @@ def get_run(
     - `player_ids` (list[str] | None): List of player IDs in order of participation.
     - `runtype` (str): Run type (`main` or `il`).
     - `place` (int): Leaderboard position.
-    - `subcategory` (str | None): Human-readable subcategory description.
     - `time` (str | None): Formatted time string (e.g., "1:23.456").
     - `time_secs` (float | None): Time in seconds (for sorting/calculations).
     - `video` (str | None): Video URL.
@@ -548,7 +557,11 @@ def create_run(
 
         refetched_run = (
             Runs.objects.filter(id=run.id)
-            .prefetch_related("run_players__player__countrycode")
+            .select_related("category", "level")
+            .prefetch_related(
+                "run_players__player__countrycode",
+                "runvariablevalues_set__value",
+            )
             .first()
         )
         if refetched_run is None:
@@ -587,7 +600,6 @@ def create_run(
     - `player_ids` (list[str] | None): Updated list of player IDs in order of participation.
     - `runtype` (str | None): Updated run type (`main` or `il`).
     - `place` (int | None): Updated leaderboard position.
-    - `subcategory` (str | None): Updated human-readable subcategory description.
     - `time` (str | None): Updated formatted time string (e.g., "1:23.456").
     - `time_secs` (float | None): Updated time in seconds (for sorting/calculations).
     - `video` (str | None): Updated video URL.
@@ -710,7 +722,11 @@ def update_run(
 
         refetched_run = (
             Runs.objects.filter(id=run.id)
-            .prefetch_related("run_players__player__countrycode")
+            .select_related("category", "level")
+            .prefetch_related(
+                "run_players__player__countrycode",
+                "runvariablevalues_set__value",
+            )
             .first()
         )
         if refetched_run is None:

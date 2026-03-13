@@ -4,11 +4,12 @@ from typing import Any, Iterator
 from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db import transaction
-from django.db.models import F, QuerySet
+from django.db.models import Count, F, QuerySet
 from django.db.models.functions import Coalesce
 
 from srl.models import Games, RunHistory, Runs
 from srl.models.run_history import RunHistoryEndReason
+from srl.srcom.utils import filter_by_variable_map
 from srl.utils import calculate_bonus, points_formula, runs_share_player
 
 
@@ -39,6 +40,11 @@ class Command(BaseCommand):
         self,
         game_filter: str | None,
     ) -> Iterator[dict]:
+        """Enumerate all distinct leaderboard variants.
+
+        Groups runs by (game_id, category_id, level_id, runtype), then within each
+        group finds all distinct variable-value combinations via RunVariableValues.
+        """
         base_query = Runs.objects.filter(
             vid_status="verified",
         ).exclude(
@@ -49,39 +55,69 @@ class Command(BaseCommand):
         if game_filter:
             base_query = base_query.filter(game_id=game_filter)
 
-        leaderboards = base_query.values(
+        groups = base_query.values(
             "game_id",
             "category_id",
             "level_id",
-            "subcategory",
             "runtype",
         ).distinct()
 
-        yield from leaderboards
+        for group in groups:
+            group_qs = base_query.filter(**group)
+            group_run_ids = group_qs.values_list("id", flat=True)
+
+            # Find all distinct variable-value signatures for this group's runs
+            from srl.models import RunVariableValues  # noqa: PLC0415
+            rvv_qs = (
+                RunVariableValues.objects
+                .filter(run_id__in=group_run_ids)
+                .values("run_id", "variable_id", "value_id")
+            )
+
+            # Build a map of run_id -> frozenset of (var_id, val_id) pairs
+            run_signatures: dict[str, frozenset] = {}
+            for rvv in rvv_qs:
+                run_id = rvv["run_id"]
+                if run_id not in run_signatures:
+                    run_signatures[run_id] = frozenset()
+                run_signatures[run_id] = run_signatures[run_id] | frozenset(
+                    [(rvv["variable_id"], rvv["value_id"])]
+                )
+
+            # Add runs with no variable values (empty signature)
+            for run_id in group_run_ids:
+                if run_id not in run_signatures:
+                    run_signatures[run_id] = frozenset()
+
+            # Yield one leaderboard dict per distinct signature
+            seen_sigs: set[frozenset] = set()
+            for signature in run_signatures.values():
+                if signature not in seen_sigs:
+                    seen_sigs.add(signature)
+                    yield {
+                        **group,
+                        "variable_value_map": dict(signature),
+                    }
 
     def get_runs_for_leaderboard(
         self,
         leaderboard: dict,
     ) -> QuerySet[Runs]:
         """Get all verified runs for a speedrun leaderboard, sorted by effective date."""
-        return (
-            Runs.objects.filter(
-                game_id=leaderboard["game_id"],
-                category_id=leaderboard["category_id"],
-                level_id=leaderboard["level_id"],
-                subcategory=leaderboard["subcategory"],
-                runtype=leaderboard["runtype"],
-                vid_status="verified",
-            )
-            .exclude(
-                v_date__isnull=True,
-                date__isnull=True,
-            )
-            .annotate(
-                effective_date=Coalesce(F("v_date"), F("date")),
-            )
-            .order_by("effective_date")
+        base_qs = Runs.objects.filter(
+            game_id=leaderboard["game_id"],
+            category_id=leaderboard["category_id"],
+            level_id=leaderboard["level_id"],
+            runtype=leaderboard["runtype"],
+            vid_status="verified",
+        ).exclude(
+            v_date__isnull=True,
+            date__isnull=True,
         )
+        base_qs = filter_by_variable_map(base_qs, leaderboard["variable_value_map"])
+        return base_qs.annotate(
+            effective_date=Coalesce(F("v_date"), F("date")),
+        ).order_by("effective_date")
 
     def get_time_column(
         self,
@@ -370,8 +406,10 @@ class Command(BaseCommand):
                 if runs_processed > 0:
                     total_entries += entries_created
                     total_runs += runs_processed
+                    vmap = leaderboard["variable_value_map"]
+                    variant_label = ",".join(f"{k}={v}" for k, v in sorted(vmap.items())) or "(no variants)"
                     msg = (
-                        f"{progress} [{game_slug}] {leaderboard['subcategory']}: "
+                        f"{progress} [{game_slug}/{leaderboard['runtype']}] {variant_label}: "
                         f"{runs_processed} runs, {entries_created} entries"
                     )
                     if points_fixed > 0:
@@ -380,9 +418,11 @@ class Command(BaseCommand):
 
             except Exception as e:
                 error_count += 1
+                vmap = leaderboard.get("variable_value_map", {})
+                variant_label = ",".join(f"{k}={v}" for k, v in sorted(vmap.items())) or "(no variants)"
                 self.stdout.write(
                     self.style.ERROR(
-                        f"{progress} [{game_slug}] ERROR in {leaderboard['subcategory']}: {str(e)}"
+                        f"{progress} [{game_slug}/{leaderboard['runtype']}] ERROR in {variant_label}: {str(e)}"
                     )
                 )
 

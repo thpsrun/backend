@@ -1,22 +1,51 @@
-from typing import TYPE_CHECKING, Any
+from datetime import date as date_type
+from typing import Any
 
 from django.core.cache import caches
-from django.db.models import QuerySet
+from django.db.models import Q, QuerySet, Sum
 from django.db.models.functions import TruncDate
-from srl.models import Runs
+from srl.models import RunPlayers, Runs
 
 from api.v1.routers.utils import (
     main_pbs_cache_key,
-    main_players_runs_cache_key,
     main_records_cache_key,
     main_wrs_cache_key,
 )
 from api.v1.schemas.runs import PlayerRunEmbedSchema
 
-TIMEOUT = 604800
 
-if TYPE_CHECKING:
-    from srl.models import RunPlayers
+def compute_run_subcategory(
+    run: Runs,
+) -> str | None:
+    """Compute the subcategory display string from a run's prefetched RunVariableValues.
+
+    Requires the queryset to have:
+        .select_related("category", "level")
+        .prefetch_related("runvariablevalues_set__value")
+    """
+    level = getattr(run, "level", None)
+    category = getattr(run, "category", None)
+    if level:
+        base = getattr(level, "name", "") or ""
+    elif category:
+        base = getattr(category, "name", "") or ""
+    else:
+        base = ""
+
+    try:
+        rvvs = list(run.runvariablevalues_set.all())
+        rvvs_sorted = sorted(rvvs, key=lambda x: x.variable_id)
+        values = [rvv.value.name for rvv in rvvs_sorted]
+    except Exception:
+        values = []
+
+    if values:
+        return f"{base} ({', '.join(values)})"
+    return base or None
+
+TIMEOUT = 604800
+ZOO_LEVEL_SLUG = "zoo-feed-the-hippos"
+THPS4_SLUG = "thps4"
 
 
 def player_data_export(
@@ -79,8 +108,11 @@ def query_latest_runs(
         filters["place__gt"] = 1
 
     runs: QuerySet[Runs] = (
-        Runs.objects.select_related("game", "category")
-        .prefetch_related("run_players__player__countrycode")
+        Runs.objects.select_related("game", "category", "level")
+        .prefetch_related(
+            "run_players__player__countrycode",
+            "runvariablevalues_set__value",
+        )
         .filter(**filters)
         .order_by("-v_date")[:5]
     )
@@ -92,7 +124,7 @@ def query_latest_runs(
             {
                 "id": run.id,
                 "game": {"name": run.game.name},
-                "subcategory": run.subcategory,
+                "subcategory": compute_run_subcategory(run),
                 "players": players_data,
                 "time": run.p_time,
                 "date": run.v_date.isoformat() if run.v_date else None,
@@ -106,8 +138,11 @@ def query_latest_runs(
 
 def query_records() -> list[dict[str, Any]]:
     runs: list[Runs] = list(
-        Runs.objects.select_related("game", "category")
-        .prefetch_related("run_players__player__countrycode")
+        Runs.objects.select_related("game", "category", "level")
+        .prefetch_related(
+            "run_players__player__countrycode",
+            "runvariablevalues_set__value",
+        )
         .filter(
             runtype="main",
             place=1,
@@ -118,21 +153,22 @@ def query_records() -> list[dict[str, Any]]:
         .exclude(
             runvariablevalues__value__appear_on_main=False,
         )
-        .order_by("-subcategory")
+        .order_by("category__name")
         .annotate(o_date=TruncDate("date"))
     )
 
     grouped_runs: list[dict[str, Any]] = []
-    seen_records: set[tuple[str, str | None, float | None]] = set()
+    seen_records: set[tuple[str, str | None, str | None]] = set()
 
     for run in runs:
-        key = (run.game.slug, run.subcategory, run.time)
+        subcat = compute_run_subcategory(run)
+        key = (run.game.slug, subcat, run.time)
         if key not in seen_records:
             grouped_runs.append(
                 {
                     "game": {"name": run.game.name, "slug": run.game.slug},
                     "game_release": run.game.release,
-                    "subcategory": run.subcategory,
+                    "subcategory": subcat,
                     "time": run.time,
                     "players": [],
                 }
@@ -142,7 +178,7 @@ def query_records() -> list[dict[str, Any]]:
         for record in grouped_runs:
             if (
                 record["game"]["slug"] == run.game.slug
-                and record["subcategory"] == run.subcategory
+                and record["subcategory"] == subcat
                 and record["time"] == run.time
             ):
                 record["players"].extend(
@@ -166,25 +202,160 @@ def query_records() -> list[dict[str, Any]]:
 
 
 def query_player_runs(
-    obsolete: bool = False,
+    player_id: str,
+    include_obsoletes: bool = False,
 ) -> list[dict[str, Any]]:
-    filters = {
-        "obsolete": obsolete,
-        "vid_status": "verified",
-    }
+    qs: QuerySet[Runs] = (
+        Runs.objects.select_related("game", "category", "level")
+        .prefetch_related(
+            "run_players__player__countrycode",
+            "runvariablevalues_set__value",
+        )
+        .filter(
+            run_players__player__id=player_id,
+            vid_status="verified",
+        )
+    )
 
+    if not include_obsoletes:
+        qs = qs.filter(obsolete=False)
+
+    qs = qs.order_by("game__release", "date")
+
+    result = []
+    for run in qs:
+        data = PlayerRunEmbedSchema.model_validate(run).model_dump()
+        data["players"] = player_data_export(run.run_players.all())  # type: ignore
+        result.append(data)
+
+    return result
+
+
+def query_overall_leaderboard() -> list[dict[str, Any]]:
+    rows = (
+        RunPlayers.objects.filter(
+            run__obsolete=False,
+            run__vid_status="verified",
+        )
+        .values("player_id", "player__name", "player__nickname", "player__url", "player__pfp")
+        .annotate(
+            total_points=Sum("run__points"),
+            fg_points=Sum("run__points", filter=Q(run__runtype="main")),
+            il_points=Sum("run__points", filter=Q(run__runtype="il")),
+        )
+        .filter(total_points__gt=0)
+        .order_by("-total_points")
+    )
+
+    result = []
+    for i, row in enumerate(rows):
+        nickname = row["player__nickname"]
+        name = row["player__name"]
+        result.append(
+            {
+                "rank": i + 1,
+                "player_id": row["player_id"],
+                "player_name": nickname if nickname else name,
+                "player_url": row["player__url"],
+                "player_pfp": row["player__pfp"],
+                "total_points": row["total_points"] or 0,
+                "fg_points": row["fg_points"] or 0,
+                "il_points": row["il_points"] or 0,
+            }
+        )
+
+    return result
+
+
+def query_game_leaderboard(
+    game_id: str,
+    game_slug: str,
+) -> list[dict[str, Any]]:
+    qs = RunPlayers.objects.filter(
+        run__obsolete=False,
+        run__vid_status="verified",
+        run__game_id=game_id,
+    )
+
+    if game_slug == THPS4_SLUG:
+        qs = qs.exclude(run__level__slug=ZOO_LEVEL_SLUG)
+
+    rows = (
+        qs
+        .values("player_id", "player__name", "player__nickname", "player__url", "player__pfp")
+        .annotate(
+            total_points=Sum("run__points"),
+            fg_points=Sum("run__points", filter=Q(run__runtype="main")),
+            il_points=Sum("run__points", filter=Q(run__runtype="il")),
+        )
+        .filter(total_points__gt=0)
+        .order_by("-total_points")
+    )
+
+    result = []
+    for i, row in enumerate(rows):
+        nickname = row["player__nickname"]
+        name = row["player__name"]
+        result.append(
+            {
+                "rank": i + 1,
+                "player_id": row["player_id"],
+                "player_name": nickname if nickname else name,
+                "player_url": row["player__url"],
+                "player_pfp": row["player__pfp"],
+                "total_points": row["total_points"] or 0,
+                "fg_points": row["fg_points"] or 0,
+                "il_points": row["il_points"] or 0,
+            }
+        )
+
+    return result
+
+
+def query_thps4_oldest_runs(
+    game_id: str,
+) -> list[dict[str, Any]]:
     runs: QuerySet[Runs] = (
         Runs.objects.select_related("game", "category", "level")
-        .prefetch_related("run_players__player__countrycode")
-        .filter(**filters)
-        .order_by("-game__release", "v_date")
+        .prefetch_related("run_players__player")
+        .filter(
+            game_id=game_id,
+            obsolete=False,
+            vid_status="verified",
+        )
+        .exclude(level__slug=ZOO_LEVEL_SLUG)
+        .order_by("date")
     )
 
     result = []
     for run in runs:
-        data = PlayerRunEmbedSchema.model_validate(run).model_dump()
-        data["players"] = player_data_export(run.run_players.all())  # type: ignore
-        result.append(data)
+        # Use list() to consume the prefetch cache; .first() bypasses it and causes N+1
+        all_rp = list(run.run_players.all())  # type: ignore
+        rp = all_rp[0] if all_rp else None
+        player = rp.player if rp else None
+        if player and player.nickname:
+            player_name = player.nickname
+        elif player:
+            player_name = player.name
+        else:
+            player_name = "Anonymous"
+
+        days_held = (date_type.today() - run.date.date()).days if run.date else -1
+
+        result.append(
+            {
+                "player_id": player.id if player else "",
+                "player_name": player_name,
+                "game_name": run.game.name,
+                "game_slug": run.game.slug,
+                "category_name": run.category.name if run.category else None,
+                "level_name": run.level.name if run.level else None,
+                "place": run.place,
+                "time": run.p_time,
+                "date": run.date,
+                "days_held": days_held,
+            }
+        )
 
     return result
 
@@ -201,16 +372,12 @@ def get_cached_embed(
         "latest-wrs": main_wrs_cache_key,
         "latest-pbs": main_pbs_cache_key,
         "records": main_records_cache_key,
-        "pbs": main_players_runs_cache_key,
-        "obsoletes": main_players_runs_cache_key,  # yes this is intentional
     }
 
     query_functions: dict[str, Any] = {
         "latest-wrs": lambda: query_latest_runs(wr=True),
         "latest-pbs": lambda: query_latest_runs(wr=False),
         "records": query_records,
-        "pbs": lambda: query_player_runs(obsolete=False),
-        "obsoletes": lambda: query_player_runs(obsolete=True),
     }
 
     cache = caches[cache_name]

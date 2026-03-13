@@ -7,8 +7,9 @@ from typing import TYPE_CHECKING, TypedDict
 import requests
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
+from django.db.models import Count
 
-from srl.models import RunHistory
+from srl.models import RunHistory, RunVariableValues
 from srl.srcom.schema.src import SrcRunsTimes
 
 if TYPE_CHECKING:
@@ -222,14 +223,6 @@ def get_streak_start_date(
     if not current_player_ids:
         return None
 
-    leaderboard_filter = {
-        "run__game_id": run.game_id,
-        "run__category_id": run.category_id,
-        "run__level_id": run.level_id,
-        "run__subcategory": run.subcategory,
-        "run__runtype": run.runtype,
-    }
-
     game = run.game
     if game.is_ce:
         max_points = settings.POINTS_MAX_CE
@@ -238,11 +231,28 @@ def get_streak_start_date(
     else:
         max_points = game.ipointsmax
 
+    wr_history_qs = RunHistory.objects.filter(
+        run__game=run.game,
+        run__category=run.category,
+        run__level=run.level,
+        run__runtype=run.runtype,
+        points=max_points,
+    )
+
+    rvvs = list(RunVariableValues.objects.filter(run=run))
+    if rvvs:
+        for rvv in rvvs:
+            wr_history_qs = wr_history_qs.filter(
+                run__runvariablevalues__variable=rvv.variable,
+                run__runvariablevalues__value=rvv.value,
+            )
+    else:
+        wr_history_qs = wr_history_qs.annotate(
+            rv_count=Count("run__runvariablevalues", distinct=True)
+        ).filter(rv_count=0)
+
     wr_history = (
-        RunHistory.objects.filter(
-            **leaderboard_filter,
-            points=max_points,
-        )
+        wr_history_qs
         .select_related("run")
         .prefetch_related("run__players")
         .order_by("-start_date")
@@ -261,7 +271,7 @@ def get_streak_start_date(
         entry_start_date = entry.start_date.date()
 
         if entry_start_date < cutoff_date:
-            if streak_start is None:
+            if streak_start is None or runs_share_player(entry_player_ids, tracking_player_ids):
                 streak_start = entry_start_date
             break
 

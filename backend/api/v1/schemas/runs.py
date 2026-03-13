@@ -5,6 +5,35 @@ from pydantic import Field, field_validator, model_validator
 
 from api.v1.schemas.base import BaseEmbedSchema, BaseModel
 
+
+def _compute_subcategory(data: Any) -> str | None:
+    """Compute subcategory string from a Django Runs model instance.
+
+    Requires the queryset to have:
+        .select_related("category", "level")
+        .prefetch_related("runvariablevalues_set__value")
+    """
+    level = getattr(data, "level", None)
+    category = getattr(data, "category", None)
+    if level:
+        base = getattr(level, "name", "") or ""
+    elif category:
+        base = getattr(category, "name", "") or ""
+    else:
+        base = ""
+
+    try:
+        rvvs = list(data.runvariablevalues_set.all())
+        rvvs_sorted = sorted(rvvs, key=lambda x: x.variable_id)
+        values = [rvv.value.name for rvv in rvvs_sorted]
+    except Exception:
+        values = []
+
+    if values:
+        return f"{base} ({', '.join(values)})"
+    return base or None
+
+
 _TIME_FIELDS = (
     "time",
     "time_secs",
@@ -112,7 +141,7 @@ class RunBaseSchema(BaseEmbedSchema):
         cls,
         data: Any,
     ) -> Any:
-        """Restructures the flat timing fields from the `Runs` object into a nested object."""
+        """Restructures timing fields and computes subcategory from variable values."""
         if isinstance(data, dict):
             if "times" not in data:
                 data["times"] = {f: data.pop(f, None) for f in _TIME_FIELDS}
@@ -121,6 +150,8 @@ class RunBaseSchema(BaseEmbedSchema):
             data.times = RunTimesSchema(
                 **{f: getattr(data, f, None) for f in _TIME_FIELDS},
             )
+        if hasattr(data, "runvariablevalues_set"):
+            data.subcategory = _compute_subcategory(data)
         return data
 
 
@@ -268,7 +299,6 @@ class RunCreateSchema(BaseEmbedSchema):
         player_ids (list[str] | None): List of player IDs in order of participation.
         runtype (str): Run type (main or il).
         place (int): Leaderboard position.
-        subcategory (str | None): Human-readable subcategory description.
         time (str | None): Formatted time string.
         time_secs (float | None): Time in seconds.
         video (str | None): Video URL.
@@ -287,7 +317,6 @@ class RunCreateSchema(BaseEmbedSchema):
     player_ids: list[str] | None = Field(None, description="In order of participation")
     runtype: str = Field(..., pattern="^(main|il)$")
     place: int = Field(..., ge=1)
-    subcategory: str | None = Field(default=None, max_length=100)
     time: str | None = Field(default=None, max_length=25)
     time_secs: float | None = Field(default=None, ge=0)
     timenl: str | None = Field(default=None, max_length=25)
@@ -311,7 +340,6 @@ class RunUpdateSchema(BaseEmbedSchema):
         player_ids (list[str] | None): Updated list of player IDs.
         runtype (str | None): Updated run type.
         place (int | None): Updated leaderboard position.
-        subcategory (str | None): Updated subcategory description.
         time (str | None): Updated formatted time string.
         time_secs (float | None): Updated time in seconds.
         video (str | None): Updated video URL.
@@ -327,7 +355,6 @@ class RunUpdateSchema(BaseEmbedSchema):
     player_ids: list[str] | None = Field(None, description="In order of participation")
     runtype: str | None = Field(default=None, pattern="^(main|il)$")
     place: int | None = Field(default=None, ge=1)
-    subcategory: str | None = Field(default=None, max_length=100)
     timenl: str | None = Field(default=None, max_length=25)
     timenl_secs: float | None = Field(default=None, ge=0)
     timeigt: str | None = Field(default=None, max_length=25)

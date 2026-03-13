@@ -19,17 +19,15 @@ from srl.srcom.players import sync_players
 from srl.srcom.variables import sync_variables
 from srl.srcom.schema.internal import RunSyncContext, RunSyncTimesContext
 from srl.srcom.schema.src import (
-    SrcCategoriesModel,
     SrcGamesModel,
     SrcLeaderboardModel,
-    SrcLevelsModel,
     SrcRunsModel,
 )
 from srl.srcom.utils import (
     build_leaderboard_combos,
-    build_var_name,
     create_leaderboard_link,
     create_run_default,
+    filter_by_variable_map,
     src_api,
     update_obsolete,
     update_standings,
@@ -144,24 +142,14 @@ def sync_leaderboards(
         ).get(id=src_lb.level)
 
         max_points = game_info.ipointsmax
-        base_name = level_info.name
         if game_info.idefaulttime == "realtime_noloads":
             lrt_fix_check = True
     else:
         max_points = game_info.pointsmax
-        base_name = category_info.name
         if game_info.defaulttime == "realtime_noloads":
             lrt_fix_check = True
 
     run_variables = src_lb.runs[0].run.values
-
-    if run_variables:
-        subcat_name = build_var_name(
-            base_name=base_name,
-            run_variables=run_variables,
-        )
-    else:
-        subcat_name = ""
 
     base_context = RunSyncContext(
         game_id=game_info.id,
@@ -173,7 +161,7 @@ def sync_leaderboards(
         wr_time_secs=0.0,
         max_points=max_points,
         default_time_type=src_lb.timing,
-        subcategory_name=subcat_name,
+        variable_value_map=dict(run_variables) if run_variables else {},
         download_pfp=False,
         lrt_fix=lrt_fix_check,
         players_data=src_lb.players.data if src_lb.players else [],
@@ -229,30 +217,14 @@ def sync_obsolete_runs(
 
                 if game_info:
                     if not Runs.objects.only("id").filter(id=run.id).exists():
-                        if run.level and isinstance(run.level, SrcLevelsModel):
-                            base_name = run.level.name
-                        elif isinstance(run.category, SrcCategoriesModel):
-                            base_name = run.category.name
-                        else:
-                            base_name = ""
-
                         if game_info.defaulttime == "realtime_noloads":
                             lrt_fix_check = True
                         else:
                             if game_info.idefaulttime == "realtime_noloads":
                                 lrt_fix_check = True
 
-                        if run.values:
-                            subcat_name = build_var_name(
-                                base_name=base_name,
-                                run_variables=run.values,
-                            )
-                        else:
-                            subcat_name = ""
-
                         default: dict = create_run_default(
                             run.model_dump(),
-                            subcategory_name=subcat_name,
                             place=0,
                             lrtfix=lrt_fix_check,
                         )
@@ -292,16 +264,17 @@ def sync_run(
     if run_data.players is not None:
         default: dict = create_run_default(
             run_data=run_data.model_dump(),
-            subcategory_name=context_data.subcategory_name,
             place=place,
             lrtfix=context_data.lrt_fix,
         )
 
-        base_wr_query = Runs.objects.filter(
-            game=context_data.game_id,
-            subcategory=context_data.subcategory_name,
-            obsolete=False,
-            place=1,
+        base_wr_query = filter_by_variable_map(
+            Runs.objects.filter(
+                game=context_data.game_id,
+                obsolete=False,
+                place=1,
+            ),
+            context_data.variable_value_map,
         )
         if context_data.category_type == "per-game":
             wr_pull = base_wr_query.filter(runtype="main").first()
@@ -375,7 +348,7 @@ def sync_run(
             update_standings(
                 is_wr=(place == 1),
                 game_id=context_data.game_id,
-                subcategory=context_data.subcategory_name,
+                variable_value_map=context_data.variable_value_map,
                 max_points=context_data.max_points,
                 run_type=default["runtype"],
                 default_time_type=context_data.default_time_type,
@@ -383,7 +356,7 @@ def sync_run(
 
         update_obsolete(
             game_id=context_data.game_id,
-            subcategory=context_data.subcategory_name,
+            variable_value_map=context_data.variable_value_map,
             players=run_data.players,
             run_type=default["runtype"],
             default_time_type=context_data.default_time_type,

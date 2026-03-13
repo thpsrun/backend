@@ -56,7 +56,7 @@ class Players(models.Model):
         null=True,
     )
     pronouns = models.CharField(
-        max_length=20,
+        max_length=50,
         verbose_name="Pronouns",
         blank=True,
         null=True,

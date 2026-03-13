@@ -11,6 +11,8 @@ from ninja.errors import ValidationError
 from api.v1.routers.guides.guides import router as guides_router
 from api.v1.routers.guides.tags import router as tags_router
 from api.v1.routers.pages.home import router as website_router
+from api.v1.routers.pages.leaderboard import router as leaderboard_page_router
+from api.v1.routers.pages.players import router as players_page_router
 from api.v1.routers.resources.categories import router as categories_router
 from api.v1.routers.resources.games import router as games_router
 from api.v1.routers.resources.levels import router as levels_router
@@ -249,3 +251,5 @@ ninja_api.add_router("/guides", guides_router, tags=["Guides"])
 ninja_api.add_router("/tags", tags_router, tags=["Tags"])
 
 ninja_api.add_router("/website", website_router, tags=["Website"])
+ninja_api.add_router("/website", players_page_router, tags=["Website"])
+ninja_api.add_router("/website", leaderboard_page_router, tags=["Website"])

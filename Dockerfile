@@ -1,6 +1,5 @@
 # syntax=docker/dockerfile:1
 
-# ── Stage 1: build ────────────────────────────────────────────────────────────
 FROM python:3.14.3-alpine AS builder
 
 RUN apk add --no-cache build-base libpq-dev
@@ -9,7 +8,6 @@ COPY requirements.txt /tmp/requirements.txt
 RUN python -m venv /venv \
     && /venv/bin/pip install --no-cache-dir -r /tmp/requirements.txt
 
-# ── Stage 2: runtime ──────────────────────────────────────────────────────────
 FROM python:3.14.3-alpine
 
 ARG UID=1002
