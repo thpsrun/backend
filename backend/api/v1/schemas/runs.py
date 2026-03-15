@@ -124,6 +124,7 @@ class RunBaseSchema(BaseEmbedSchema):
         description="main=full-game, il=individual level",
     )
     place: int = Field(..., ge=0)
+    points: int = Field(..., ge=0)
     subcategory: str | None = Field(
         default=None,
         max_length=100,
@@ -166,6 +167,7 @@ class RunSchema(RunBaseSchema):
         players (List[dict]): All players who participated in this run (always included).
         variables (dict[str, str] | list[dict]): Variable ID:Value ID mapping (default) or
             full variable info with ?embed=variables.
+        bonus (int): Field that holds the monthly streak bonus, if the run is the world record.
     """
 
     game: str | dict | None = Field(None, description="ID or embedded with ?embed=game")
@@ -180,7 +182,7 @@ class RunSchema(RunBaseSchema):
         default_factory=dict,
         description="ID mapping or embedded with ?embed=variables",
     )
-    bonus: int = Field(default=0, le=4, description="Streak month bonus")
+    bonus: int = Field(default=0, le=4, description="Streak month bonus", exclude=True)
 
     @field_validator("game", "category", "level", mode="before")
     @classmethod

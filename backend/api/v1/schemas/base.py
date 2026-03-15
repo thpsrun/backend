@@ -95,7 +95,7 @@ VALID_EMBEDS: dict[str, set[str]] = {
     "categories": {"game", "variables", "values"},
     "levels": {"game", "variables", "values"},
     "variables": {"game", "category", "level", "values"},
-    "players": {"country", "awards", "runs"},
+    "players": {"country", "awards", "runs", "profile", "profile-obsolete"},
     "runs": {"game", "category", "level", "variables"},
     "guides": {"game", "tags"},
     "tags": set(),

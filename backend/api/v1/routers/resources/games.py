@@ -1,12 +1,12 @@
 from textwrap import dedent
 from typing import Annotated
 
-from django.db.models import Q
+from django.db.models import Case, F, IntegerField, Prefetch, Q, Value, When
 from django.http import HttpRequest
 from ninja import Query, Router
 from ninja.responses import codes_4xx
 from pydantic import Field
-from srl.models import Games
+from srl.models import Categories, Games, Levels, Variables, VariableValues
 
 from api.permissions import admin_auth, moderator_auth, public_auth
 from api.v1.docs.games import GAMES_ALL, GAMES_DELETE, GAMES_GET, GAMES_POST, GAMES_PUT
@@ -15,6 +15,26 @@ from api.v1.schemas.games import GameCreateSchema, GameSchema, GameUpdateSchema
 from api.v1.utils import get_or_generate_id
 
 router = Router()
+
+
+def _variable_values_prefetch() -> Prefetch:
+    return Prefetch(
+        "variablevalues_set",
+        queryset=VariableValues.objects.annotate(
+            vv_sort_key=Case(
+                When(order=0, then=Value(999999)),
+                default=F("order"),
+                output_field=IntegerField(),
+            )
+        ).order_by("vv_sort_key", "name"),
+    )
+
+
+def _variables_prefetch() -> Prefetch:
+    return Prefetch(
+        "variables_set",
+        queryset=Variables.objects.prefetch_related(_variable_values_prefetch()),
+    )
 
 
 def game_embeds(
@@ -28,13 +48,128 @@ def game_embeds(
     embed_list = [e.strip() for e in embeds.split(",")]
 
     if "categories" in embed_list:
-        queryset = queryset.prefetch_related("categories_set")
+        queryset = queryset.prefetch_related(
+            Prefetch(
+                "categories_set",
+                queryset=Categories.objects.annotate(
+                    sort_key=Case(
+                        When(order=0, then=Value(999999)),
+                        default=F("order"),
+                        output_field=IntegerField(),
+                    )
+                )
+                .order_by("sort_key", "name")
+                .prefetch_related(_variables_prefetch()),
+            )
+        )
+
     if "levels" in embed_list:
-        queryset = queryset.prefetch_related("levels_set")
+        queryset = queryset.prefetch_related(
+            Prefetch(
+                "levels_set",
+                queryset=Levels.objects.annotate(
+                    sort_key=Case(
+                        When(order=0, then=Value(999999)),
+                        default=F("order"),
+                        output_field=IntegerField(),
+                    )
+                )
+                .order_by("sort_key", "name")
+                .prefetch_related(_variables_prefetch()),
+            )
+        )
+
     if "platforms" in embed_list:
         queryset = queryset.prefetch_related("platforms")
 
     return queryset
+
+
+def _build_categories_embed(
+    game: Games,
+) -> list[dict]:
+    result = []
+    for cat in game.categories_set.all():  # type: ignore
+        variables = []
+        for var in cat.variables_set.all():  # type: ignore
+            values = [
+                {
+                    "value": val.value,
+                    "name": val.name,
+                    "slug": val.slug,
+                    "appear_on_main": val.appear_on_main,
+                    "order": val.order,
+                    "archive": val.archive,
+                    "rules": val.rules,
+                }
+                for val in var.variablevalues_set.all()  # type: ignore
+            ]
+            variables.append(
+                {
+                    "id": var.id,
+                    "name": var.name,
+                    "slug": var.slug,
+                    "scope": var.scope,
+                    "archive": var.archive,
+                    "values": values,
+                }
+            )
+        result.append(
+            {
+                "id": cat.id,
+                "name": cat.name,
+                "slug": cat.slug,
+                "type": cat.type,
+                "url": cat.url,
+                "rules": cat.rules,
+                "appear_on_main": cat.appear_on_main,
+                "archive": cat.archive,
+                "variables": variables,
+            }
+        )
+    return result
+
+
+def _build_levels_embed(
+    game: Games,
+) -> list[dict]:
+    result = []
+    for level in game.levels_set.all():  # type: ignore
+        variables = []
+        for var in level.variables_set.all():  # type: ignore
+            values = [
+                {
+                    "value": val.value,
+                    "name": val.name,
+                    "slug": val.slug,
+                    "appear_on_main": val.appear_on_main,
+                    "order": val.order,
+                    "archive": val.archive,
+                    "rules": val.rules,
+                }
+                for val in var.variablevalues_set.all()  # type: ignore
+            ]
+            variables.append(
+                {
+                    "id": var.id,
+                    "name": var.name,
+                    "slug": var.slug,
+                    "scope": var.scope,
+                    "archive": var.archive,
+                    "values": values,
+                }
+            )
+        result.append(
+            {
+                "id": level.id,
+                "name": level.name,
+                "slug": level.slug,
+                "url": level.url,
+                "rules": level.rules,
+                "variables": variables,
+            }
+        )
+    return result
 
 
 @router.get(
@@ -103,6 +238,10 @@ def get_all_games(
         game_schemas = []
         for game in games:
             game_data = GameSchema.model_validate(game)
+            if "categories" in embed_fields:
+                game_data.categories = _build_categories_embed(game)
+            if "levels" in embed_fields:
+                game_data.levels = _build_levels_embed(game)
             game_schemas.append(game_data)
 
         return 200, game_schemas
@@ -171,7 +310,12 @@ def get_game(
                 details=None,
             )
 
-        return 200, GameSchema.model_validate(game)
+        game_data = GameSchema.model_validate(game)
+        if "categories" in embed_fields:
+            game_data.categories = _build_categories_embed(game)
+        if "levels" in embed_fields:
+            game_data.levels = _build_levels_embed(game)
+        return 200, game_data
     except Exception as e:
         return 500, ErrorResponse(
             error="Failed to retrieve game",

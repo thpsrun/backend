@@ -33,7 +33,7 @@ def compute_run_subcategory(
         base = ""
 
     try:
-        rvvs = list(run.runvariablevalues_set.all())
+        rvvs = list(run.runvariablevalues_set.all())  # type: ignore
         rvvs_sorted = sorted(rvvs, key=lambda x: x.variable_id)
         values = [rvv.value.name for rvv in rvvs_sorted]
     except Exception:
@@ -42,10 +42,6 @@ def compute_run_subcategory(
     if values:
         return f"{base} ({', '.join(values)})"
     return base or None
-
-TIMEOUT = 604800
-ZOO_LEVEL_SLUG = "zoo-feed-the-hippos"
-THPS4_SLUG = "thps4"
 
 
 def player_data_export(
@@ -237,7 +233,13 @@ def query_overall_leaderboard() -> list[dict[str, Any]]:
             run__obsolete=False,
             run__vid_status="verified",
         )
-        .values("player_id", "player__name", "player__nickname", "player__url", "player__pfp")
+        .values(
+            "player_id",
+            "player__name",
+            "player__nickname",
+            "player__url",
+            "player__pfp",
+        )
         .annotate(
             total_points=Sum("run__points"),
             fg_points=Sum("run__points", filter=Q(run__runtype="main")),
@@ -277,12 +279,17 @@ def query_game_leaderboard(
         run__game_id=game_id,
     )
 
-    if game_slug == THPS4_SLUG:
-        qs = qs.exclude(run__level__slug=ZOO_LEVEL_SLUG)
+    if game_slug == "thps4":
+        qs = qs.exclude(run__level__slug="zoo-feed-the-hippos")
 
     rows = (
-        qs
-        .values("player_id", "player__name", "player__nickname", "player__url", "player__pfp")
+        qs.values(
+            "player_id",
+            "player__name",
+            "player__nickname",
+            "player__url",
+            "player__pfp",
+        )
         .annotate(
             total_points=Sum("run__points"),
             fg_points=Sum("run__points", filter=Q(run__runtype="main")),
@@ -323,13 +330,12 @@ def query_thps4_oldest_runs(
             obsolete=False,
             vid_status="verified",
         )
-        .exclude(level__slug=ZOO_LEVEL_SLUG)
+        .exclude(level__slug="zoo-feed-the-hippos")
         .order_by("date")
     )
 
     result = []
     for run in runs:
-        # Use list() to consume the prefetch cache; .first() bypasses it and causes N+1
         all_rp = list(run.run_players.all())  # type: ignore
         rp = all_rp[0] if all_rp else None
         player = rp.player if rp else None
@@ -388,6 +394,6 @@ def get_cached_embed(
         return cached
 
     result = query_functions[embed_type]()
-    cache.set(cache_key, result, timeout=TIMEOUT)  # 7 days in seconds
+    cache.set(cache_key, result, timeout=604800)  # 7 days in seconds
 
     return result

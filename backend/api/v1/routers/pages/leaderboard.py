@@ -15,7 +15,6 @@ from api.v1.routers.utils import (
     overall_leaderboard_cache_key,
 )
 from api.v1.routers.utils.query_utils import (
-    THPS4_SLUG,
     query_game_leaderboard,
     query_overall_leaderboard,
     query_thps4_oldest_runs,
@@ -23,29 +22,24 @@ from api.v1.routers.utils.query_utils import (
 from api.v1.schemas.base import ErrorResponse
 from api.v1.schemas.leaderboard import (
     GameLeaderboardEntrySchema,
-    LeaderboardEntrySchema,
     OldestRunEntrySchema,
+    PointLeaderboardEntrySchema,
 )
 
 router = Router()
 
 
 @router.get(
-    "/leaderboard",
+    "/pointslb",
     response={
-        200: list[LeaderboardEntrySchema],
+        200: list[PointLeaderboardEntrySchema],
         codes_4xx: ErrorResponse,
         500: ErrorResponse,
     },
-    summary="Get Overall Series Leaderboard",
+    summary="Get Overall Series Point Leaderboard",
     description=dedent(
         """
     Get the series-wide points leaderboard, ranking all runners across every game.
-
-    Points are calculated per runner and include:
-    - **total_points**: Combined full-game (FG) + individual level (IL) points
-    - **fg_points**: Full-game category points only
-    - **il_points**: Individual level points only
 
     Only non-obsolete, verified runs are counted toward point totals.
 
@@ -56,14 +50,14 @@ router = Router()
 )
 def get_overall_leaderboard(
     request: HttpRequest,
-) -> tuple[int, list[LeaderboardEntrySchema] | ErrorResponse]:
+) -> tuple[int, list[PointLeaderboardEntrySchema] | ErrorResponse]:
     """Get series-wide points leaderboard across all games."""
     try:
         data = check_cache_query(
             overall_leaderboard_cache_key(),
             query_overall_leaderboard,
         )
-        return 200, [LeaderboardEntrySchema(**entry) for entry in data]
+        return 200, [PointLeaderboardEntrySchema(**entry) for entry in data]
     except Exception as e:
         return 500, ErrorResponse(
             error="Failed to retrieve overall leaderboard",
@@ -72,7 +66,7 @@ def get_overall_leaderboard(
 
 
 @router.get(
-    "/game/{game_id}/leaderboard",
+    "/pointslb/{game_id}",
     response={200: dict[str, Any], codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Get Per-Game Leaderboard",
     description=dedent(
@@ -80,25 +74,20 @@ def get_overall_leaderboard(
     Get the points leaderboard for a specific game, ranking all runners by their
     combined full-game and individual level points for that game only.
 
-    Points include:
-    - **total_points**: Combined FG + IL points for this game
-    - **fg_points**: Full-game category points for this game only
-    - **il_points**: Individual level points for this game only
-
     Only non-obsolete, verified runs are counted toward point totals.
 
     **THPS4 note:** The level "Zoo - Feed the Hippos" is automatically excluded
     from point calculations.
 
-    **Supported Embeds (via `?embed=`):**
+    **Supported Embeds:**
     - `oldest-runs` (THPS4 only): Adds an `oldest_runs` key to the response containing
       each runner's personal best sorted by longest-held time (days since the run was set).
       Returns -1 for days_held when the submission date is unknown.
 
     **Examples:**
-    - `/website/game/thps4/leaderboard` - THPS4 leaderboard
-    - `/website/game/thps4/leaderboard?embed=oldest-runs` - THPS4 leaderboard with oldest PBs
-    - `/website/game/n2680o1p/leaderboard` - Leaderboard by game ID
+    - `/website/game/thps4/pointslb` - THPS4 leaderboard
+    - `/website/game/thps4/pointslb?embed=oldest-runs` - THPS4 leaderboard with oldest PBs
+    - `/website/game/n2680o1p/pointslb` - Leaderboard by game ID
     """
     ),
     auth=public_auth,
@@ -151,7 +140,7 @@ def get_game_leaderboard(
             ],
         }
 
-        if game.slug == THPS4_SLUG and "oldest-runs" in embed_fields:
+        if game.slug == "thps4" and "oldest-runs" in embed_fields:
             oldest_data = check_cache_query(
                 game_leaderboard_cache_key(game.id) + ":oldest",
                 lambda: query_thps4_oldest_runs(game.id),

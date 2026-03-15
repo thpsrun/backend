@@ -89,6 +89,7 @@
 *   Added "smart" caches that are generated and stored for 7 days unless data is modified.
     *   This was mostly meant for the React endpoints, but has been extended to all endppoints to keep them consistent.
 *   Added new tests and vulnerability checks to the project's CI/CD pipeline to catch problems before they are pushed to production.
+*   Added a new Dockerfile build process to reduce the size of the overall images and harden it for regulatory compliance.
 
 ### Fixed
 *   Fixed all sorts of type checking issues throughout the project.
@@ -96,6 +97,8 @@
 *   Fixed an issue where the PostgreSQL database would revert database changes upon a restart.
 *   Fixed an issue where the returned API request from POST or PUT would (most times) fail to provide a proper response due to a race condition.
 *   Fixed an issue where development servers would fail to serve CSS and Static files on refresh.
+*   Fixed an issue where the Django image would be caught in an infinite loop if Celery tasks weren't properly ended.
+    *   Celery tasks are a separate image now, still integrated with Django.
 
 ### Changed
 *   Changed the Guides system so it can be accessible via the Django Admin interface (for super admins of the project), the API via GET request, and the new portal.
@@ -113,6 +116,8 @@
 
 ### Removed
 *   Removed `all_cats` as a field, since new logic helps consolidate field options.
+*   Removed `subcategory` from all `Runs` objects.
+    *   There is now a dynamic process to show the full subcategory instead of it needing to be updated everytime a category and/or variable is to be updated.
 
 ### Misc.
 *   

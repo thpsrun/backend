@@ -1,7 +1,7 @@
 from textwrap import dedent
 from typing import Annotated
 
-from django.db.models import Q
+from django.db.models import Q, QuerySet
 from django.http import HttpRequest
 from ninja import Query, Router
 from ninja.responses import codes_4xx
@@ -22,6 +22,36 @@ def apply_player_embeds(
     embed_fields: list[str],
 ) -> dict:
     """Apply requested embeds to a player instance."""
+
+    def _serialize_run(
+        run: Runs,
+    ) -> dict:
+        return {
+            "id": run.id,
+            "game": run.game.name if run.game else None,
+            "category": run.category.name if run.category else None,
+            "level": run.level.name if run.level else None,
+            "place": run.place,
+            "time": run.time,
+            "date": run.v_date.isoformat() if run.v_date else None,
+            "video": run.video,
+        }
+
+    def _fetch_player_runs(
+        player: Players,
+        *,
+        include_obsolete: bool,
+        limit: int | None = None,
+    ) -> QuerySet[Runs]:
+        qs = (
+            Runs.objects.filter(run_players__player=player, vid_status="verified")
+            .select_related("game", "category", "level")
+            .order_by("-v_date")
+        )
+        if not include_obsolete:
+            qs = qs.filter(obsolete=False)
+        return qs[:limit] if limit else qs
+
     embeds = {}
 
     if "country" in embed_fields:
@@ -42,27 +72,19 @@ def apply_player_embeds(
             for award in awards
         ]
 
-    # Embeds the 25 most recent runs to the player query, if runs is an embed.
     if "runs" in embed_fields:
-        recent_runs = (
-            Runs.objects.filter(run_players__player=player)
-            .select_related("game", "category", "level")
-            .order_by("-v_date")[:25]
-        )
+        runs = _fetch_player_runs(player, include_obsolete=False, limit=25)
+        embeds["runs"] = [_serialize_run(run) for run in runs]
 
-        embeds["runs"] = [
-            {
-                "id": run.id,
-                "game": run.game.name if run.game else None,
-                "category": run.category.name if run.category else None,
-                "level": run.level.name if run.level else None,
-                "place": run.place,
-                "time": run.time,
-                "date": run.v_date.isoformat() if run.v_date else None,
-                "video": run.video,
-            }
-            for run in recent_runs
-        ]
+    if "profile" in embed_fields:
+        runs = _fetch_player_runs(player, include_obsolete=False)
+        embeds["fg"] = [_serialize_run(run) for run in runs if run.runtype == "main"]
+        embeds["il"] = [_serialize_run(run) for run in runs if run.runtype == "il"]
+
+    if "profile-obsolete" in embed_fields:
+        runs = _fetch_player_runs(player, include_obsolete=True)
+        embeds["fg"] = [_serialize_run(run) for run in runs if run.runtype == "main"]
+        embeds["il"] = [_serialize_run(run) for run in runs if run.runtype == "il"]
 
     return embeds
 
@@ -83,12 +105,14 @@ def apply_player_embeds(
     **Supported Embeds:**
     - `country`: Includes the metadata of the country associated with the player, if any.
     - `awards`: Include the metadata of the awards the player has collected, if any.
-    - `runs`: Includes the metadata for all runs associated with the player.
+    - `runs`: Last 25 verified non-obsolete runs as a flat list.
+    - `profile`: All verified non-obsolete runs split into `fg` and `il` keys.
+    - `profile-obsolete`: All verified runs (including obsolete) split into `fg` and `il` keys.
 
     **Examples:**
     - `/players/v8lponvj` - Get player by ID.
     - `/players/v8lponvj?embed=country` - Get player with country info.
-    - `/players/v8lponvj?embed=country,awards,runs` - Get player with all embeds.
+    - `/players/v8lponvj?embed=country,awards,profile` - Get player with profile runs.
     """
     ),
     auth=public_auth,
@@ -107,9 +131,6 @@ def get_player(
             details=None,
         )
 
-    # Checks to see what embeds are being used versus what is allowed
-    # via this endpoint. It will return an error to the client if they
-    # have an embed type not supported.
     embed_fields = []
     if embed:
         embed_fields = [field.strip() for field in embed.split(",") if field.strip()]
@@ -117,7 +138,15 @@ def get_player(
         if invalid_embeds:
             return 400, ErrorResponse(
                 error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
-                details={"valid_embeds": ["country", "awards", "runs"]},
+                details={
+                    "valid_embeds": [
+                        "country",
+                        "awards",
+                        "runs",
+                        "profile",
+                        "profile-obsolete",
+                    ]
+                },
             )
 
     try:

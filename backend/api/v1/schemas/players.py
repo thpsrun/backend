@@ -33,7 +33,7 @@ class PlayerBaseSchema(BaseEmbedSchema):
     pfp: str | None = Field(
         default=None, max_length=100, description="Profile picture URL"
     )
-    pronouns: str | None = Field(default=None, max_length=20)
+    pronouns: str | None = Field(default=None, max_length=50)
     twitch: str | None = None
     youtube: str | None = None
     twitter: str | None = None
@@ -102,14 +102,20 @@ class PlayerSchema(PlayerBaseSchema):
     """
 
     country: CountrySchema | None = Field(
-        None, description="Included with ?embed=country"
+        None, description="Shows full information on the player's country."
     )
     awards: list[AwardSchema] | None = Field(
-        None, description="Included with ?embed=awards"
+        None, description="Shows full information on the player's awards."
     )
     runs: list[PlayerRunSchema] | None = Field(
         None,
-        description="Limited to 20; included with ?embed=runs",
+        description="Limited to showing the last 25 approved, non-obsolete runs.",
+    )
+    fg: list[PlayerRunSchema] | None = Field(
+        None, description="Shows all of the full-game runs from the player."
+    )
+    il: list[PlayerRunSchema] | None = Field(
+        None, description="Shows all of the individual level runs from the player."
     )
 
     @field_validator("country", mode="before")

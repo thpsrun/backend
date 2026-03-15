@@ -5,7 +5,7 @@ from pydantic import Field
 from api.v1.schemas.base import BaseEmbedSchema
 
 
-class LeaderboardEntrySchema(BaseEmbedSchema):
+class PointLeaderboardEntrySchema(BaseEmbedSchema):
     """Schema for a single entry in the series-wide points leaderboard.
 
     Attributes:
