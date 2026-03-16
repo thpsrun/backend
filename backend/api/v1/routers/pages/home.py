@@ -2,7 +2,7 @@ from textwrap import dedent
 from typing import Annotated, Any
 
 from django.http import HttpRequest
-from ninja import Query, Router
+from ninja import Query, Router, Status
 from ninja.responses import codes_4xx
 from pydantic import Field
 
@@ -47,22 +47,22 @@ def get_main_page_data(
         Query,
         Field(description="Comma-separated embed types"),
     ] = None,
-) -> tuple[int, dict[str, Any] | ErrorResponse]:
+) -> Status:
     if not embed:
-        return 400, ErrorResponse(
+        return Status(400, ErrorResponse(
             error="Must specify embed types to retrieve",
             details={"valid_embed_types": ["latest-wrs", "latest-pbs", "records"]},
-        )
+        ))
 
     embed_fields = [field.strip() for field in embed.split(",") if field.strip()]
     valid_embed_types = {"latest-wrs", "latest-pbs", "records"}
     invalid_embeds = [field for field in embed_fields if field not in valid_embed_types]
 
     if invalid_embeds:
-        return 400, ErrorResponse(
+        return Status(400, ErrorResponse(
             error=f"Invalid embed type(s): {', '.join(invalid_embeds)}",
             details={"valid_embed_types": list(valid_embed_types)},
-        )
+        ))
 
     try:
         response_data = {}
@@ -76,9 +76,9 @@ def get_main_page_data(
         if "records" in embed_fields:
             response_data["records"] = get_cached_embed("records")
 
-        return 200, response_data
+        return Status(200, response_data)
     except Exception as e:
-        return 500, ErrorResponse(
+        return Status(500, ErrorResponse(
             error="Server error!",
             details={"exception": str(e)},
-        )
+        ))

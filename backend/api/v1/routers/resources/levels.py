@@ -2,7 +2,7 @@ from textwrap import dedent
 from typing import Annotated
 
 from django.http import HttpRequest
-from ninja import Query, Router
+from ninja import Query, Router, Status
 from ninja.responses import codes_4xx
 from pydantic import Field
 from srl.models import Games, Levels, Variables, VariableValues
@@ -137,7 +137,7 @@ def get_all_levels(
         ),
     ] = 50,
     offset: Annotated[int, Query, Field(ge=0, description="Offset from 0")] = 0,
-) -> tuple[int, list[LevelSchema] | ErrorResponse]:
+) -> Status:
     # Checks to see what embeds are being used versus what is allowed
     # via this endpoint. It will return an error to the client if they
     # have an embed type not supported.
@@ -146,10 +146,10 @@ def get_all_levels(
         embed_fields = [field.strip() for field in embed.split(",") if field.strip()]
         invalid_embeds = validate_embeds("levels", embed_fields)
         if invalid_embeds:
-            return 400, ErrorResponse(
+            return Status(400, ErrorResponse(
                 error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
                 details=None,
-            )
+            ))
 
     try:
         queryset = Levels.objects.all().order_by("name")
@@ -173,12 +173,12 @@ def get_all_levels(
 
             level_schemas.append(level_data)
 
-        return 200, level_schemas
+        return Status(200, level_schemas)
     except Exception as e:
-        return 500, ErrorResponse(
+        return Status(500, ErrorResponse(
             error="Level Retrieval Failure",
             details={"exception": str(e)},
-        )
+        ))
 
 
 @router.get(
@@ -212,12 +212,12 @@ def get_level(
     embed: Annotated[
         str | None, Query, Field(description="Comma-separated embeds")
     ] = None,
-) -> tuple[int, LevelSchema | ErrorResponse]:
+) -> Status:
     if len(id) > 15:
-        return 400, ErrorResponse(
+        return Status(400, ErrorResponse(
             error="ID must be 15 characters or less",
             details=None,
-        )
+        ))
 
     # Checks to see what embeds are being used versus what is allowed
     # via this endpoint. It will return an error to the client if they
@@ -227,18 +227,18 @@ def get_level(
         embed_fields = [field.strip() for field in embed.split(",") if field.strip()]
         invalid_embeds = validate_embeds("levels", embed_fields)
         if invalid_embeds:
-            return 400, ErrorResponse(
+            return Status(400, ErrorResponse(
                 error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
                 details={"valid_embeds": ["game", "variables", "values"]},
-            )
+            ))
 
     try:
         level = Levels.objects.filter(id__iexact=id).first()
         if not level:
-            return 404, ErrorResponse(
+            return Status(404, ErrorResponse(
                 error="Level ID does not exist",
                 details=None,
-            )
+            ))
 
         level_data = LevelSchema.model_validate(level)
 
@@ -247,13 +247,13 @@ def get_level(
             for field, data in embed_data.items():
                 setattr(level_data, field, data)
 
-        return 200, level_data
+        return Status(200, level_data)
 
     except Exception as e:
-        return 500, ErrorResponse(
+        return Status(500, ErrorResponse(
             error="Failed to retrieve level",
             details={"exception": str(e)},
-        )
+        ))
 
 
 @router.post(
@@ -285,14 +285,14 @@ def get_level(
 def create_level(
     request: HttpRequest,
     level_data: LevelCreateSchema,
-) -> tuple[int, LevelSchema | ErrorResponse]:
+) -> Status:
     try:
         game = Games.objects.filter(id=level_data.game_id).first()
         if not game:
-            return 404, ErrorResponse(
+            return Status(404, ErrorResponse(
                 error="Game does not exist",
                 details=None,
-            )
+            ))
 
         try:
             level_id = get_or_generate_id(
@@ -300,22 +300,22 @@ def create_level(
                 lambda id: Levels.objects.filter(id=id).exists(),
             )
         except ValueError as e:
-            return 400, ErrorResponse(
+            return Status(400, ErrorResponse(
                 error="ID Already Exists",
                 details={"exception": str(e)},
-            )
+            ))
 
         create_data = level_data.model_dump(exclude={"game_id"})
         create_data["id"] = level_id
         level = Levels.objects.create(game=game, **create_data)
 
-        return 200, LevelSchema.model_validate(level)
+        return Status(200, LevelSchema.model_validate(level))
 
     except Exception as e:
-        return 500, ErrorResponse(
+        return Status(500, ErrorResponse(
             error="Failed to create level",
             details={"exception": str(e)},
-        )
+        ))
 
 
 @router.put(
@@ -349,23 +349,23 @@ def update_level(
     request: HttpRequest,
     id: str,
     level_data: LevelUpdateSchema,
-) -> tuple[int, LevelSchema | ErrorResponse]:
+) -> Status:
     try:
         level = Levels.objects.filter(id__iexact=id).first()
         if not level:
-            return 404, ErrorResponse(
+            return Status(404, ErrorResponse(
                 error="Level does not exist",
                 details=None,
-            )
+            ))
 
         update_data = level_data.model_dump(exclude_unset=True)
         if "game_id" in update_data:
             game = Games.objects.filter(id=update_data["game_id"]).first()
             if not game:
-                return 404, ErrorResponse(
+                return Status(404, ErrorResponse(
                     error="Game does not exist",
                     details=None,
-                )
+                ))
             level.game = game
             del update_data["game_id"]
 
@@ -373,13 +373,13 @@ def update_level(
             setattr(level, field, value)
 
         level.save()
-        return 200, LevelSchema.model_validate(level)
+        return Status(200, LevelSchema.model_validate(level))
 
     except Exception as e:
-        return 500, ErrorResponse(
+        return Status(500, ErrorResponse(
             error="Failed to update level",
             details={"exception": str(e)},
-        )
+        ))
 
 
 @router.delete(
@@ -401,20 +401,20 @@ def update_level(
 def delete_level(
     request: HttpRequest,
     id: str,
-) -> tuple[int, dict[str, str] | ErrorResponse]:
+) -> Status:
     try:
         level = Levels.objects.filter(id__iexact=id).first()
         if not level:
-            return 404, ErrorResponse(
+            return Status(404, ErrorResponse(
                 error="Level does not exist",
                 details=None,
-            )
+            ))
 
         name = level.name
         level.delete()
-        return 200, {"message": f"Level '{name}' deleted successfully"}
+        return Status(200, {"message": f"Level '{name}' deleted successfully"})
     except Exception as e:
-        return 500, ErrorResponse(
+        return Status(500, ErrorResponse(
             error="Failed to delete level",
             details={"exception": str(e)},
-        )
+        ))

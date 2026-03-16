@@ -3,7 +3,7 @@ from typing import Annotated
 
 from django.db.models import Q
 from django.http import HttpRequest
-from ninja import Query, Router
+from ninja import Query, Router, Status
 from ninja.responses import codes_4xx
 from pydantic import Field
 from srl.models import Categories, Games, Variables, VariableValues
@@ -142,7 +142,7 @@ def get_all_categories(
         ),
     ] = 50,
     offset: Annotated[int, Query, Field(ge=0, description="Offset from 0")] = 0,
-) -> tuple[int, list[CategorySchema] | ErrorResponse]:
+) -> Status:
     # Checks to see what embeds are being used versus what is allowed
     # via this endpoint. It will return an error to the client if they
     # have an embed type not supported.
@@ -151,10 +151,10 @@ def get_all_categories(
         embed_fields = [field.strip() for field in embed.split(",") if field.strip()]
         invalid_embeds = validate_embeds("categories", embed_fields)
         if invalid_embeds:
-            return 400, ErrorResponse(
+            return Status(400, ErrorResponse(
                 error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
                 details=None,
-            )
+            ))
 
     try:
         if game:
@@ -162,10 +162,10 @@ def get_all_categories(
                 Q(game__id__iexact=game) | Q(game__slug__iexact=game)
             ).order_by("name")
         else:
-            return 400, ErrorResponse(
+            return Status(400, ErrorResponse(
                 error="Please provide the game's unique ID or slug.",
                 details=None,
-            )
+            ))
 
         if type:
             queryset = queryset.filter(type=type)
@@ -186,12 +186,12 @@ def get_all_categories(
 
             category_schemas.append(category_data)
 
-        return 200, category_schemas
+        return Status(200, category_schemas)
     except Exception as e:
-        return 500, ErrorResponse(
+        return Status(500, ErrorResponse(
             error="Category Retrieval Failed",
             details={"exception": str(e)},
-        )
+        ))
 
 
 @router.get(
@@ -225,12 +225,12 @@ def get_category(
     embed: Annotated[
         str | None, Query, Field(description="Comma-separated embeds")
     ] = None,
-) -> tuple[int, CategorySchema | ErrorResponse]:
+) -> Status:
     if len(id) > 15:
-        return 400, ErrorResponse(
+        return Status(400, ErrorResponse(
             error="ID must be 15 characters or less",
             details=None,
-        )
+        ))
 
     # Checks to see what embeds are being used versus what is allowed
     # via this endpoint. It will return an error to the client if they
@@ -240,18 +240,18 @@ def get_category(
         embed_fields = [field.strip() for field in embed.split(",") if field.strip()]
         invalid_embeds = validate_embeds("categories", embed_fields)
         if invalid_embeds:
-            return 400, ErrorResponse(
+            return Status(400, ErrorResponse(
                 error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
                 details={"valid_embeds": ["game", "variables", "values"]},
-            )
+            ))
 
     try:
         category = Categories.objects.filter(id__iexact=id).first()
         if not category:
-            return 404, ErrorResponse(
+            return Status(404, ErrorResponse(
                 error="Category ID Doesn't Exist",
                 details=None,
-            )
+            ))
 
         category_data = CategorySchema.model_validate(category)
 
@@ -260,12 +260,12 @@ def get_category(
             for field, data in embed_data.items():
                 setattr(category_data, field, data)
 
-        return 200, category_data
+        return Status(200, category_data)
     except Exception as e:
-        return 500, ErrorResponse(
+        return Status(500, ErrorResponse(
             error="Category Retrieval Failure",
             details={"exception": str(e)},
-        )
+        ))
 
 
 @router.post(
@@ -297,14 +297,14 @@ def get_category(
 def create_category(
     request: HttpRequest,
     category_data: CategoryCreateSchema,
-) -> tuple[int, CategorySchema | ErrorResponse]:
+) -> Status:
     try:
         game = Games.objects.filter(id=category_data.game_id).first()
         if not game:
-            return 404, ErrorResponse(
+            return Status(404, ErrorResponse(
                 error="Game Doesn't Exist",
                 details=None,
-            )
+            ))
 
         try:
             category_id = get_or_generate_id(
@@ -312,21 +312,21 @@ def create_category(
                 lambda id: Categories.objects.filter(id=id).exists(),
             )
         except ValueError as e:
-            return 400, ErrorResponse(
+            return Status(400, ErrorResponse(
                 error="ID Already Exists",
                 details={"exception": str(e)},
-            )
+            ))
 
         create_data = category_data.model_dump(exclude={"game_id"})
         create_data["id"] = category_id
         category = Categories.objects.create(game=game, **create_data)
 
-        return 200, CategorySchema.model_validate(category)
+        return Status(200, CategorySchema.model_validate(category))
     except Exception as e:
-        return 500, ErrorResponse(
+        return Status(500, ErrorResponse(
             error="Failed to create category",
             details={"exception": str(e)},
-        )
+        ))
 
 
 @router.put(
@@ -361,23 +361,23 @@ def update_category(
     request: HttpRequest,
     id: str,
     category_data: CategoryUpdateSchema,
-) -> tuple[int, CategorySchema | ErrorResponse]:
+) -> Status:
     try:
         category = Categories.objects.filter(id__iexact=id).first()
         if not category:
-            return 404, ErrorResponse(
+            return Status(404, ErrorResponse(
                 error="Category does not exist",
                 details=None,
-            )
+            ))
 
         update_data = category_data.model_dump(exclude_unset=True)
         if "game_id" in update_data:
             game = Games.objects.filter(id=update_data["game_id"]).first()
             if not game:
-                return 400, ErrorResponse(
+                return Status(400, ErrorResponse(
                     error="Game does not exist",
                     details=None,
-                )
+                ))
             category.game = game
             del update_data["game_id"]
 
@@ -385,12 +385,12 @@ def update_category(
             setattr(category, field, value)
 
         category.save()
-        return 200, CategorySchema.model_validate(category)
+        return Status(200, CategorySchema.model_validate(category))
     except Exception as e:
-        return 500, ErrorResponse(
+        return Status(500, ErrorResponse(
             error="Failed to update category",
             details={"exception": str(e)},
-        )
+        ))
 
 
 @router.delete(
@@ -412,20 +412,20 @@ def update_category(
 def delete_category(
     request: HttpRequest,
     id: str,
-) -> tuple[int, dict[str, str] | ErrorResponse]:
+) -> Status:
     try:
         category = Categories.objects.filter(id__iexact=id).first()
         if not category:
-            return 404, ErrorResponse(
+            return Status(404, ErrorResponse(
                 error="Category does not exist",
                 details=None,
-            )
+            ))
 
         name = category.name
         category.delete()
-        return 200, {"message": f"Category '{name}' deleted successfully"}
+        return Status(200, {"message": f"Category '{name}' deleted successfully"})
     except Exception as e:
-        return 500, ErrorResponse(
+        return Status(500, ErrorResponse(
             error="Failed to delete category",
             details={"exception": str(e)},
-        )
+        ))

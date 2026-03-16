@@ -3,7 +3,7 @@ from typing import Annotated, Any
 
 from django.db.models import Q
 from django.http import HttpRequest
-from ninja import Query, Router
+from ninja import Query, Router, Status
 from ninja.responses import codes_4xx
 from pydantic import Field
 from srl.models import Games
@@ -50,19 +50,19 @@ router = Router()
 )
 def get_overall_leaderboard(
     request: HttpRequest,
-) -> tuple[int, list[PointLeaderboardEntrySchema] | ErrorResponse]:
+) -> Status:
     """Get series-wide points leaderboard across all games."""
     try:
         data = check_cache_query(
             overall_leaderboard_cache_key(),
             query_overall_leaderboard,
         )
-        return 200, [PointLeaderboardEntrySchema(**entry) for entry in data]
+        return Status(200, [PointLeaderboardEntrySchema(**entry) for entry in data])
     except Exception as e:
-        return 500, ErrorResponse(
+        return Status(500, ErrorResponse(
             error="Failed to retrieve overall leaderboard",
             details={"exception": str(e)},
-        )
+        ))
 
 
 @router.get(
@@ -100,33 +100,33 @@ def get_game_leaderboard(
         Query,
         Field(description="Optional: 'oldest-runs' for THPS4 oldest PBs embed"),
     ] = None,
-) -> tuple[int, dict[str, Any] | ErrorResponse]:
+) -> Status:
     """Get per-game points leaderboard with optional oldest-runs embed for THPS4."""
     if len(game_id) > 15:
-        return 400, ErrorResponse(
+        return Status(400, ErrorResponse(
             error="ID must be 15 characters or less",
             details=None,
-        )
+        ))
 
     try:
         game = Games.objects.filter(
             Q(id__iexact=game_id) | Q(slug__iexact=game_id)
         ).first()
         if not game:
-            return 404, ErrorResponse(
+            return Status(404, ErrorResponse(
                 error="Game not found",
                 details=None,
-            )
+            ))
 
         embed_fields = [e.strip() for e in embed.split(",")] if embed else []
 
         valid_embed_types = {"oldest-runs"}
         invalid_embeds = [e for e in embed_fields if e not in valid_embed_types]
         if invalid_embeds:
-            return 400, ErrorResponse(
+            return Status(400, ErrorResponse(
                 error=f"Invalid embed type(s): {', '.join(invalid_embeds)}",
                 details={"valid_embed_types": list(valid_embed_types)},
-            )
+            ))
 
         leaderboard_data = check_cache_query(
             game_leaderboard_cache_key(game.id),
@@ -149,10 +149,10 @@ def get_game_leaderboard(
                 OldestRunEntrySchema(**entry).model_dump() for entry in oldest_data
             ]
 
-        return 200, response
+        return Status(200, response)
 
     except Exception as e:
-        return 500, ErrorResponse(
+        return Status(500, ErrorResponse(
             error="Failed to retrieve game leaderboard",
             details={"exception": str(e)},
-        )
+        ))

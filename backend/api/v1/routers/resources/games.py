@@ -3,7 +3,7 @@ from typing import Annotated
 
 from django.db.models import Case, F, IntegerField, Prefetch, Q, Value, When
 from django.http import HttpRequest
-from ninja import Query, Router
+from ninja import Query, Router, Status
 from ninja.responses import codes_4xx
 from pydantic import Field
 from srl.models import Categories, Games, Levels, Variables, VariableValues
@@ -214,7 +214,7 @@ def get_all_games(
         ),
     ] = 50,
     offset: Annotated[int, Query, Field(ge=0, description="Offset from 0")] = 0,
-) -> tuple[int, list[GameSchema] | ErrorResponse]:
+) -> Status:
     # Checks to see what embeds are being used versus what is allowed
     # via this endpoint. It will return an error to the client if they
     # have an embed type not supported.
@@ -223,10 +223,10 @@ def get_all_games(
         embed_fields = [field.strip() for field in embed.split(",") if field.strip()]
         invalid_embeds = validate_embeds("games", embed_fields)
         if invalid_embeds:
-            return 400, ErrorResponse(
+            return Status(400, ErrorResponse(
                 error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
                 details={"valid_embeds": ["categories", "levels", "platforms"]},
-            )
+            ))
 
     try:
         queryset = Games.objects.all().order_by("release")
@@ -244,12 +244,12 @@ def get_all_games(
                 game_data.levels = _build_levels_embed(game)
             game_schemas.append(game_data)
 
-        return 200, game_schemas
+        return Status(200, game_schemas)
     except Exception as e:
-        return 500, ErrorResponse(
+        return Status(500, ErrorResponse(
             error="Failed to retrieve games",
             details={"exception": str(e)},
-        )
+        ))
 
 
 @router.get(
@@ -279,12 +279,12 @@ def get_game(
     embed: Annotated[
         str | None, Query, Field(description="Comma-separated embeds")
     ] = None,
-) -> tuple[int, GameSchema | ErrorResponse]:
+) -> Status:
     if len(id) > 15:
-        return 400, ErrorResponse(
+        return Status(400, ErrorResponse(
             error="ID must be 15 characters or less",
             details=None,
-        )
+        ))
 
     # Checks to see what embeds are being used versus what is allowed
     # via this endpoint. It will return an error to the client if they
@@ -294,10 +294,10 @@ def get_game(
         embed_fields = [field.strip() for field in embed.split(",") if field.strip()]
         invalid_embeds = validate_embeds("games", embed_fields)
         if invalid_embeds:
-            return 400, ErrorResponse(
+            return Status(400, ErrorResponse(
                 error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
                 details={"valid_embeds": ["categories", "levels", "platforms"]},
-            )
+            ))
 
     try:
         queryset = Games.objects.all()
@@ -305,22 +305,22 @@ def get_game(
 
         game = queryset.filter(Q(id__iexact=id) | Q(slug__iexact=id)).first()
         if not game:
-            return 404, ErrorResponse(
+            return Status(404, ErrorResponse(
                 error="Game does not exist",
                 details=None,
-            )
+            ))
 
         game_data = GameSchema.model_validate(game)
         if "categories" in embed_fields:
             game_data.categories = _build_categories_embed(game)
         if "levels" in embed_fields:
             game_data.levels = _build_levels_embed(game)
-        return 200, game_data
+        return Status(200, game_data)
     except Exception as e:
-        return 500, ErrorResponse(
+        return Status(500, ErrorResponse(
             error="Failed to retrieve game",
             details={"exception": str(e)},
-        )
+        ))
 
 
 @router.post(
@@ -351,18 +351,18 @@ def get_game(
 def create_game(
     request: HttpRequest,
     game_data: GameCreateSchema,
-) -> tuple[int, GameSchema | ErrorResponse]:
+) -> Status:
     try:
         game_check = Games.objects.filter(
             Q(name__iexact=game_data.name) | Q(slug__iexact=game_data.slug)
         ).first()
         if game_check:
-            return 400, ErrorResponse(
+            return Status(400, ErrorResponse(
                 error="Game Already Exists",
                 details={
                     "exception": "Either the name of the game or its slug already exists."
                 },
-            )
+            ))
 
         try:
             game_id = get_or_generate_id(
@@ -370,21 +370,21 @@ def create_game(
                 lambda id: Games.objects.filter(id=id).exists(),
             )
         except ValueError as e:
-            return 400, ErrorResponse(
+            return Status(400, ErrorResponse(
                 error="ID Already Exists",
                 details={"exception": str(e)},
-            )
+            ))
 
         create_data = game_data.model_dump()
         create_data["id"] = game_id
         game = Games.objects.create(**create_data)
 
-        return 200, GameSchema.model_validate(game)
+        return Status(200, GameSchema.model_validate(game))
     except Exception as e:
-        return 500, ErrorResponse(
+        return Status(500, ErrorResponse(
             error="Game Creation Failed",
             details={"exception": str(e)},
-        )
+        ))
 
 
 @router.put(
@@ -415,25 +415,25 @@ def update_game(
     request: HttpRequest,
     id: str,
     game_data: GameUpdateSchema,
-) -> tuple[int, GameSchema | ErrorResponse]:
+) -> Status:
     try:
         game = Games.objects.filter(Q(id__iexact=id) | Q(slug__iexact=id)).first()
         if not game:
-            return 404, ErrorResponse(
+            return Status(404, ErrorResponse(
                 error="Game does not exist",
                 details=None,
-            )
+            ))
 
         for attr, value in game_data.model_dump(exclude_unset=True).items():
             setattr(game, attr, value)
 
         game.save()
-        return 200, GameSchema.model_validate(game)
+        return Status(200, GameSchema.model_validate(game))
     except Exception as e:
-        return 500, ErrorResponse(
+        return Status(500, ErrorResponse(
             error="Failed to update game",
             details={"exception": str(e)},
-        )
+        ))
 
 
 @router.delete(
@@ -455,20 +455,20 @@ def update_game(
 def delete_game(
     request: HttpRequest,
     id: str,
-) -> tuple[int, dict[str, str] | ErrorResponse]:
+) -> Status:
     try:
         game = Games.objects.filter(Q(id__iexact=id) | Q(slug__iexact=id)).first()
         if not game:
-            return 404, ErrorResponse(
+            return Status(404, ErrorResponse(
                 error="Game does not exist",
                 details=None,
-            )
+            ))
 
         name = game.name
         game.delete()
-        return 200, {"message": f"Game '{name}' deleted successfully"}
+        return Status(200, {"message": f"Game '{name}' deleted successfully"})
     except Exception as e:
-        return 500, ErrorResponse(
+        return Status(500, ErrorResponse(
             error="Failed to delete game",
             details={"exception": str(e)},
-        )
+        ))

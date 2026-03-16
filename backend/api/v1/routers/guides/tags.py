@@ -4,7 +4,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.http import HttpRequest
 from guides.models import Tags
-from ninja import Router
+from ninja import Router, Status
 from ninja.responses import codes_4xx
 
 from api.permissions import contributor_auth, public_auth
@@ -36,9 +36,9 @@ router = Router()
 )
 def list_tags(
     request: HttpRequest,
-) -> tuple[int, list[TagListSchema]]:
+) -> Status:
     tags = Tags.objects.all().order_by("name")
-    return 200, [TagListSchema.model_validate(tag) for tag in tags]
+    return Status(200, [TagListSchema.model_validate(tag) for tag in tags])
 
 
 @router.get(
@@ -62,15 +62,15 @@ def list_tags(
 def get_tag(
     request: HttpRequest,
     slug: str,
-) -> tuple[int, TagSchema | ErrorResponse]:
+) -> Status:
     tag = Tags.objects.filter(slug__iexact=slug).first()
     if not tag:
-        return 404, ErrorResponse(
+        return Status(404, ErrorResponse(
             error=f"Tag with slug '{slug}' not found",
             details=None,
-        )
+        ))
 
-    return 200, TagSchema.model_validate(tag)
+    return Status(200, TagSchema.model_validate(tag))
 
 
 @router.post(
@@ -93,25 +93,25 @@ def get_tag(
 def create_tag(
     request: HttpRequest,
     data: TagCreateSchema,
-) -> tuple[int, TagSchema | ErrorResponse]:
+) -> Status:
     existing_tag = Tags.objects.filter(name__iexact=data.name).first()
     if existing_tag:
-        return 400, ErrorResponse(
+        return Status(400, ErrorResponse(
             error="Tag With Slug Already Exists",
             details={"slug": existing_tag.slug},
-        )
+        ))
 
     try:
         tag = Tags.objects.create(
             name=data.name,
             description=data.description,
         )
-        return 200, TagSchema.model_validate(tag)
+        return Status(200, TagSchema.model_validate(tag))
     except Exception as e:
-        return 500, ErrorResponse(
+        return Status(500, ErrorResponse(
             error="Tag Creation Failed",
             details={"exception": {str(e)}},
-        )
+        ))
 
 
 @router.put(
@@ -139,13 +139,13 @@ def update_tag(
     request: HttpRequest,
     slug: str,
     data: TagUpdateSchema,
-) -> tuple[int, TagSchema | ErrorResponse]:
+) -> Status:
     tag = Tags.objects.filter(slug__iexact=slug).first()
     if not tag:
-        return 404, ErrorResponse(
+        return Status(404, ErrorResponse(
             error=f"Tag with slug '{slug}' not found",
             details=None,
-        )
+        ))
 
     # After all validations, it will begin to update the tag in the database
     # to then return to the client. Major check here is to ensure that, if the slug
@@ -162,23 +162,23 @@ def update_tag(
                     .first()
                 )
                 if existing_tag:
-                    return 400, ErrorResponse(
+                    return Status(400, ErrorResponse(
                         error=f"A tag with slug '{data.slug}' already exists",
                         details={"slug": data.slug},
-                    )
+                    ))
                 tag.slug = data.slug
 
             if data.description is not None:
                 tag.description = data.description
 
             tag.save()
-            return 200, TagSchema.model_validate(tag)
+            return Status(200, TagSchema.model_validate(tag))
 
     except Exception as e:
-        return 500, ErrorResponse(
+        return Status(500, ErrorResponse(
             error=f"Failed to update tag: {str(e)}",
             details=None,
-        )
+        ))
 
 
 @router.delete(
@@ -200,20 +200,20 @@ def update_tag(
 def delete_tag(
     request: HttpRequest,
     slug: str,
-) -> tuple[int, dict[str, str] | ErrorResponse]:
+) -> Status:
     tag = Tags.objects.filter(Q(slug__iexact=slug) | Q(pk__iexact=slug)).first()
     if not tag:
-        return 404, ErrorResponse(
+        return Status(404, ErrorResponse(
             error=f"Tag with ID/slug '{slug}' not found",
             details=None,
-        )
+        ))
 
     try:
         name = tag.name
         tag.delete()
-        return 200, {"message": f"Tag '{name}' deleted successfully"}
+        return Status(200, {"message": f"Tag '{name}' deleted successfully"})
     except Exception as e:
-        return 500, ErrorResponse(
+        return Status(500, ErrorResponse(
             error=f"Failed to delete tag: {str(e)}",
             details=None,
-        )
+        ))

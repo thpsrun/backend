@@ -3,7 +3,7 @@ from typing import Annotated
 
 from django.db.models import Q, QuerySet
 from django.http import HttpRequest
-from ninja import Query, Router
+from ninja import Query, Router, Status
 from ninja.responses import codes_4xx
 from pydantic import Field
 from srl.models import CountryCodes, Players, Runs
@@ -124,19 +124,19 @@ def get_player(
     embed: Annotated[
         str | None, Query, Field(description="Comma-separated embeds")
     ] = None,
-) -> tuple[int, PlayerSchema | ErrorResponse]:
+) -> Status:
     if len(id) > 15:
-        return 400, ErrorResponse(
+        return Status(400, ErrorResponse(
             error="ID must be 15 characters or less",
             details=None,
-        )
+        ))
 
     embed_fields = []
     if embed:
         embed_fields = [field.strip() for field in embed.split(",") if field.strip()]
         invalid_embeds = validate_embeds("players", embed_fields)
         if invalid_embeds:
-            return 400, ErrorResponse(
+            return Status(400, ErrorResponse(
                 error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
                 details={
                     "valid_embeds": [
@@ -147,17 +147,17 @@ def get_player(
                         "profile-obsolete",
                     ]
                 },
-            )
+            ))
 
     try:
         player = Players.objects.filter(
             Q(id__iexact=id) | Q(name__iexact=id) | Q(nickname__iexact=id)
         ).first()
         if not player:
-            return 404, ErrorResponse(
+            return Status(404, ErrorResponse(
                 error="Player ID does not exist",
                 details=None,
-            )
+            ))
 
         player_data = PlayerSchema.model_validate(player)
 
@@ -166,13 +166,13 @@ def get_player(
             for field, data in embed_data.items():
                 setattr(player_data, field, data)
 
-        return 200, player_data
+        return Status(200, player_data)
 
     except Exception as e:
-        return 500, ErrorResponse(
+        return Status(500, ErrorResponse(
             error="Failed to retrieve player",
             details={"exception": str(e)},
-        )
+        ))
 
 
 @router.post(
@@ -204,16 +204,16 @@ def get_player(
 def create_player(
     request: HttpRequest,
     player_data: PlayerCreateSchema,
-) -> tuple[int, PlayerSchema | ErrorResponse]:
+) -> Status:
     try:
         country = None
         if player_data.country_id:
             country = CountryCodes.objects.filter(id=player_data.country_id).first()
             if not country:
-                return 400, ErrorResponse(
+                return Status(400, ErrorResponse(
                     error="Country code does not exist",
                     details=None,
-                )
+                ))
 
         try:
             player_id = get_or_generate_id(
@@ -221,22 +221,22 @@ def create_player(
                 lambda id: Players.objects.filter(id=id).exists(),
             )
         except ValueError as e:
-            return 400, ErrorResponse(
+            return Status(400, ErrorResponse(
                 error="ID Already Exists",
                 details={"exception": str(e)},
-            )
+            ))
 
         create_data = player_data.model_dump(exclude={"country_id"})
         create_data["id"] = player_id
         player = Players.objects.create(countrycode=country, **create_data)
 
-        return 200, PlayerSchema.model_validate(player)
+        return Status(200, PlayerSchema.model_validate(player))
 
     except Exception as e:
-        return 500, ErrorResponse(
+        return Status(500, ErrorResponse(
             error="Failed to create player",
             details={"exception": str(e)},
-        )
+        ))
 
 
 @router.put(
@@ -271,14 +271,14 @@ def update_player(
     request: HttpRequest,
     id: str,
     player_data: PlayerUpdateSchema,
-) -> tuple[int, PlayerSchema | ErrorResponse]:
+) -> Status:
     try:
         player = Players.objects.filter(id__iexact=id).first()
         if not player:
-            return 404, ErrorResponse(
+            return Status(404, ErrorResponse(
                 error="Player does not exist",
                 details=None,
-            )
+            ))
 
         update_data = player_data.model_dump(exclude_unset=True)
 
@@ -288,10 +288,10 @@ def update_player(
                     id=update_data["country_id"]
                 ).first()
                 if not country:
-                    return 400, ErrorResponse(
+                    return Status(400, ErrorResponse(
                         error="Country code does not exist",
                         details=None,
-                    )
+                    ))
                 player.countrycode = country
             else:
                 player.countrycode = None
@@ -301,13 +301,13 @@ def update_player(
             setattr(player, field, value)
 
         player.save()
-        return 200, PlayerSchema.model_validate(player)
+        return Status(200, PlayerSchema.model_validate(player))
 
     except Exception as e:
-        return 500, ErrorResponse(
+        return Status(500, ErrorResponse(
             error="Failed to update player",
             details={"exception": str(e)},
-        )
+        ))
 
 
 @router.delete(
@@ -329,21 +329,21 @@ def update_player(
 def delete_player(
     request: HttpRequest,
     id: str,
-) -> tuple[int, dict[str, str] | ErrorResponse]:
+) -> Status:
     try:
         player = Players.objects.filter(id__iexact=id).first()
         if not player:
-            return 404, ErrorResponse(
+            return Status(404, ErrorResponse(
                 error="Player does not exist",
                 details=None,
-            )
+            ))
 
         name = player.nickname if player.nickname else player.name
         player.delete()
-        return 200, {"message": f"Player '{name}' deleted successfully"}
+        return Status(200, {"message": f"Player '{name}' deleted successfully"})
 
     except Exception as e:
-        return 500, ErrorResponse(
+        return Status(500, ErrorResponse(
             error="Failed to delete player",
             details={"exception": str(e)},
-        )
+        ))

@@ -124,7 +124,7 @@ class RunBaseSchema(BaseEmbedSchema):
         description="main=full-game, il=individual level",
     )
     place: int = Field(..., ge=0)
-    points: int = Field(..., ge=0)
+    points: int = Field(default=0, ge=0)
     subcategory: str | None = Field(
         default=None,
         max_length=100,

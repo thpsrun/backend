@@ -3,7 +3,7 @@ from typing import Annotated
 
 from django.db.models import Q
 from django.http import HttpRequest
-from ninja import Query, Router
+from ninja import Query, Router, Status
 from ninja.responses import codes_4xx
 from pydantic import Field
 from srl.models import Platforms
@@ -59,15 +59,15 @@ def get_all_platforms(
         ),
     ] = 50,
     offset: Annotated[int, Query, Field(ge=0, description="Offset from 0")] = 0,
-) -> tuple[int, list[PlatformSchema] | ErrorResponse]:
+) -> Status:
     try:
         platforms = Platforms.objects.all().order_by("name")[offset : offset + limit]
-        return 200, [PlatformSchema.model_validate(platform) for platform in platforms]
+        return Status(200, [PlatformSchema.model_validate(platform) for platform in platforms])
     except Exception as e:
-        return 500, ErrorResponse(
+        return Status(500, ErrorResponse(
             error="Failed to retrieve platforms",
             details={"exception": str(e)},
-        )
+        ))
 
 
 @router.get(
@@ -91,30 +91,30 @@ def get_all_platforms(
 def get_platform(
     request: HttpRequest,
     id: str,
-) -> tuple[int, PlatformSchema | ErrorResponse]:
+) -> Status:
     if len(id) > 15:
-        return 400, ErrorResponse(
+        return Status(400, ErrorResponse(
             error="ID must be 15 characters or less",
             details=None,
-        )
+        ))
 
     try:
         platform = Platforms.objects.filter(
             Q(id__iexact=id) | Q(slug__iexact=id)
         ).first()
         if not platform:
-            return 404, ErrorResponse(
+            return Status(404, ErrorResponse(
                 error="Platform ID does not exist",
                 details=None,
-            )
+            ))
 
-        return 200, PlatformSchema.model_validate(platform)
+        return Status(200, PlatformSchema.model_validate(platform))
 
     except Exception as e:
-        return 500, ErrorResponse(
+        return Status(500, ErrorResponse(
             error="Failed to retrieve platform",
             details={"exception": str(e)},
-        )
+        ))
 
 
 @router.post(
@@ -138,7 +138,7 @@ def get_platform(
 def create_platform(
     request: HttpRequest,
     platform_data: PlatformCreateSchema,
-) -> tuple[int, PlatformSchema | ErrorResponse]:
+) -> Status:
     try:
         try:
             platform_id = get_or_generate_id(
@@ -146,21 +146,21 @@ def create_platform(
                 lambda id: Platforms.objects.filter(id=id).exists(),
             )
         except ValueError as e:
-            return 400, ErrorResponse(
+            return Status(400, ErrorResponse(
                 error="ID Already Exists",
                 details={"exception": str(e)},
-            )
+            ))
 
         create_data = platform_data.model_dump()
         create_data["id"] = platform_id
         platform = Platforms.objects.create(**create_data)
-        return 200, PlatformSchema.model_validate(platform)
+        return Status(200, PlatformSchema.model_validate(platform))
 
     except Exception as e:
-        return 500, ErrorResponse(
+        return Status(500, ErrorResponse(
             error="Failed to create platform",
             details={"exception": str(e)},
-        )
+        ))
 
 
 @router.put(
@@ -187,27 +187,27 @@ def update_platform(
     request: HttpRequest,
     id: str,
     platform_data: PlatformUpdateSchema,
-) -> tuple[int, PlatformSchema | ErrorResponse]:
+) -> Status:
     try:
         platform = Platforms.objects.filter(id__iexact=id).first()
         if not platform:
-            return 404, ErrorResponse(
+            return Status(404, ErrorResponse(
                 error="Platform does not exist",
                 details=None,
-            )
+            ))
 
         update_data = platform_data.model_dump(exclude_unset=True)
         for field, value in update_data.items():
             setattr(platform, field, value)
 
         platform.save()
-        return 200, PlatformSchema.model_validate(platform)
+        return Status(200, PlatformSchema.model_validate(platform))
 
     except Exception as e:
-        return 500, ErrorResponse(
+        return Status(500, ErrorResponse(
             error="Failed to update platform",
             details={"exception": str(e)},
-        )
+        ))
 
 
 @router.delete(
@@ -229,21 +229,21 @@ def update_platform(
 def delete_platform(
     request: HttpRequest,
     id: str,
-) -> tuple[int, dict[str, str] | ErrorResponse]:
+) -> Status:
     try:
         platform = Platforms.objects.filter(id__iexact=id).first()
         if not platform:
-            return 404, ErrorResponse(
+            return Status(404, ErrorResponse(
                 error="Platform does not exist",
                 details=None,
-            )
+            ))
 
         name = platform.name
         platform.delete()
-        return 200, {"message": f"Platform '{name}' deleted successfully"}
+        return Status(200, {"message": f"Platform '{name}' deleted successfully"})
 
     except Exception as e:
-        return 500, ErrorResponse(
+        return Status(500, ErrorResponse(
             error="Failed to delete platform",
             details={"exception": str(e)},
-        )
+        ))
