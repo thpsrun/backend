@@ -1,7 +1,7 @@
 from textwrap import dedent
 from typing import Annotated
 
-from django.db.models import Q, QuerySet
+from django.db.models import Count, Q, QuerySet, Sum
 from django.http import HttpRequest
 from ninja import Query, Router, Status
 from ninja.responses import codes_4xx
@@ -10,8 +10,14 @@ from srl.models import CountryCodes, Players, Runs
 
 from api.permissions import admin_auth, moderator_auth, public_auth
 from api.v1.docs.players import PLAYERS_DELETE, PLAYERS_GET, PLAYERS_POST, PLAYERS_PUT
+from api.v1.routers.utils.query_utils import compute_run_subcategory
 from api.v1.schemas.base import ErrorResponse, validate_embeds
-from api.v1.schemas.players import PlayerCreateSchema, PlayerSchema, PlayerUpdateSchema
+from api.v1.schemas.players import (
+    ModeratedGameEmbedSchema,
+    PlayerCreateSchema,
+    PlayerSchema,
+    PlayerUpdateSchema,
+)
 from api.v1.utils import get_or_generate_id
 
 router = Router()
@@ -29,12 +35,14 @@ def apply_player_embeds(
         return {
             "id": run.id,
             "game": run.game.name if run.game else None,
-            "category": run.category.name if run.category else None,
+            "category": compute_run_subcategory(run),
             "level": run.level.name if run.level else None,
             "place": run.place,
-            "time": run.time,
+            "time": run.p_time,
             "date": run.v_date.isoformat() if run.v_date else None,
+            "url": run.url,
             "video": run.video,
+            "arch_video": run.arch_video,
         }
 
     def _fetch_player_runs(
@@ -46,6 +54,7 @@ def apply_player_embeds(
         qs = (
             Runs.objects.filter(run_players__player=player, vid_status="verified")
             .select_related("game", "category", "level")
+            .prefetch_related("runvariablevalues_set__value")
             .order_by("-v_date")
         )
         if not include_obsolete:
@@ -86,6 +95,21 @@ def apply_player_embeds(
         embeds["fg"] = [_serialize_run(run) for run in runs if run.runtype == "main"]
         embeds["il"] = [_serialize_run(run) for run in runs if run.runtype == "il"]
 
+    if "stats" in embed_fields:
+        agg = Runs.objects.filter(
+            run_players__player=player,
+            vid_status="verified",
+        ).aggregate(
+            total_runs=Count("id"),
+            fg_points=Sum("points", filter=Q(runtype="main", obsolete=False)),
+            il_points=Sum("points", filter=Q(runtype="il", obsolete=False)),
+        )
+        embeds["stats"] = {
+            "total_runs": agg["total_runs"],
+            "fg_points": agg["fg_points"] or 0,
+            "il_points": agg["il_points"] or 0,
+        }
+
     return embeds
 
 
@@ -104,6 +128,7 @@ def apply_player_embeds(
 
     **Supported Embeds:**
     - `country`: Includes the metadata of the country associated with the player, if any.
+    - `stats`: Includes total verified runs, full-game points, and IL points.
     - `awards`: Include the metadata of the awards the player has collected, if any.
     - `runs`: Last 25 verified non-obsolete runs as a flat list.
     - `profile`: All verified non-obsolete runs split into `fg` and `il` keys.
@@ -112,7 +137,7 @@ def apply_player_embeds(
     **Examples:**
     - `/players/v8lponvj` - Get player by ID.
     - `/players/v8lponvj?embed=country` - Get player with country info.
-    - `/players/v8lponvj?embed=country,awards,profile` - Get player with profile runs.
+    - `/players/v8lponvj?embed=country,stats,awards,profile` - Get player with stats and profile.
     """
     ),
     auth=public_auth,
@@ -126,40 +151,65 @@ def get_player(
     ] = None,
 ) -> Status:
     if len(id) > 15:
-        return Status(400, ErrorResponse(
-            error="ID must be 15 characters or less",
-            details=None,
-        ))
+        return Status(
+            400,
+            ErrorResponse(
+                error="ID must be 15 characters or less",
+                details=None,
+            ),
+        )
 
     embed_fields = []
     if embed:
         embed_fields = [field.strip() for field in embed.split(",") if field.strip()]
         invalid_embeds = validate_embeds("players", embed_fields)
         if invalid_embeds:
-            return Status(400, ErrorResponse(
-                error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
-                details={
-                    "valid_embeds": [
-                        "country",
-                        "awards",
-                        "runs",
-                        "profile",
-                        "profile-obsolete",
-                    ]
-                },
-            ))
+            return Status(
+                400,
+                ErrorResponse(
+                    error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
+                    details={
+                        "valid_embeds": [
+                            "country",
+                            "stats",
+                            "awards",
+                            "runs",
+                            "profile",
+                            "profile-obsolete",
+                        ]
+                    },
+                ),
+            )
 
     try:
-        player = Players.objects.filter(
-            Q(id__iexact=id) | Q(name__iexact=id) | Q(nickname__iexact=id)
-        ).first()
+        player = (
+            Players.objects.filter(
+                Q(id__iexact=id) | Q(name__iexact=id) | Q(nickname__iexact=id)
+            )
+            .prefetch_related("moderated_games")
+            .first()
+        )
         if not player:
-            return Status(404, ErrorResponse(
-                error="Player ID does not exist",
-                details=None,
-            ))
+            return Status(
+                404,
+                ErrorResponse(
+                    error="Player ID does not exist",
+                    details=None,
+                ),
+            )
 
         player_data = PlayerSchema.model_validate(player)
+
+        # Always populate moderated_games (null if not a moderator)
+        mod_games = list(player.moderated_games.all())  # type: ignore[attr-defined]
+        player_data.moderated_games = (
+            [
+                ModeratedGameEmbedSchema(id=g.id, name=g.name, slug=g.slug)
+                for g in mod_games
+            ]
+            if mod_games
+            else None
+        )
 
         if embed_fields:
             embed_data = apply_player_embeds(player, embed_fields)
@@ -169,10 +219,13 @@ def get_player(
         return Status(200, player_data)
 
     except Exception as e:
-        return Status(500, ErrorResponse(
-            error="Failed to retrieve player",
-            details={"exception": str(e)},
-        ))
+        return Status(
+            500,
+            ErrorResponse(
+                error="Failed to retrieve player",
+                details={"exception": str(e)},
+            ),
+        )
 
 
 @router.post(
@@ -210,10 +263,13 @@ def create_player(
         if player_data.country_id:
             country = CountryCodes.objects.filter(id=player_data.country_id).first()
             if not country:
-                return Status(400, ErrorResponse(
-                    error="Country code does not exist",
-                    details=None,
-                ))
+                return Status(
+                    400,
+                    ErrorResponse(
+                        error="Country code does not exist",
+                        details=None,
+                    ),
+                )
 
         try:
             player_id = get_or_generate_id(
@@ -221,10 +277,13 @@ def create_player(
                 lambda id: Players.objects.filter(id=id).exists(),
             )
         except ValueError as e:
-            return Status(400, ErrorResponse(
-                error="ID Already Exists",
-                details={"exception": str(e)},
-            ))
+            return Status(
+                400,
+                ErrorResponse(
+                    error="ID Already Exists",
+                    details={"exception": str(e)},
+                ),
+            )
 
         create_data = player_data.model_dump(exclude={"country_id"})
         create_data["id"] = player_id
@@ -233,10 +292,13 @@ def create_player(
         return Status(200, PlayerSchema.model_validate(player))
 
     except Exception as e:
-        return Status(500, ErrorResponse(
-            error="Failed to create player",
-            details={"exception": str(e)},
-        ))
+        return Status(
+            500,
+            ErrorResponse(
+                error="Failed to create player",
+                details={"exception": str(e)},
+            ),
+        )
 
 
 @router.put(
@@ -275,10 +337,13 @@ def update_player(
     try:
         player = Players.objects.filter(id__iexact=id).first()
         if not player:
-            return Status(404, ErrorResponse(
-                error="Player does not exist",
-                details=None,
-            ))
+            return Status(
+                404,
+                ErrorResponse(
+                    error="Player does not exist",
+                    details=None,
+                ),
+            )
 
         update_data = player_data.model_dump(exclude_unset=True)
 
@@ -288,10 +353,13 @@ def update_player(
                     id=update_data["country_id"]
                 ).first()
                 if not country:
-                    return Status(400, ErrorResponse(
-                        error="Country code does not exist",
-                        details=None,
-                    ))
+                    return Status(
+                        400,
+                        ErrorResponse(
+                            error="Country code does not exist",
+                            details=None,
+                        ),
+                    )
                 player.countrycode = country
             else:
                 player.countrycode = None
@@ -304,10 +372,13 @@ def update_player(
         return Status(200, PlayerSchema.model_validate(player))
 
     except Exception as e:
-        return Status(500, ErrorResponse(
-            error="Failed to update player",
-            details={"exception": str(e)},
-        ))
+        return Status(
+            500,
+            ErrorResponse(
+                error="Failed to update player",
+                details={"exception": str(e)},
+            ),
+        )
 
 
 @router.delete(
@@ -333,17 +404,23 @@ def delete_player(
     try:
         player = Players.objects.filter(id__iexact=id).first()
         if not player:
-            return Status(404, ErrorResponse(
-                error="Player does not exist",
-                details=None,
-            ))
+            return Status(
+                404,
+                ErrorResponse(
+                    error="Player does not exist",
+                    details=None,
+                ),
+            )
 
         name = player.nickname if player.nickname else player.name
         player.delete()
         return Status(200, {"message": f"Player '{name}' deleted successfully"})
 
     except Exception as e:
-        return Status(500, ErrorResponse(
-            error="Failed to delete player",
-            details={"exception": str(e)},
-        ))
+        return Status(
+            500,
+            ErrorResponse(
+                error="Failed to delete player",
+                details={"exception": str(e)},
+            ),
+        )

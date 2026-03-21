@@ -3,6 +3,7 @@ import time
 
 import requests
 from celery import shared_task
+from django.conf import settings
 from django.db import transaction
 from langcodes import standardize_tag
 
@@ -31,6 +32,10 @@ def sync_players(
     else:
         src_player = SrcPlayersModel.model_validate(players_data)
 
+    # Early-return guard: skip sync for players with sync_paused=True
+    if Players.objects.filter(id=src_player.id, sync_paused=True).exists():
+        return  # Player has claimed their account; skip SRC sync
+
     if src_player.pfp is not None and download_pfp:
         response = requests.get(src_player.pfp)
 
@@ -38,7 +43,7 @@ def sync_players(
             time.sleep(60)
             response = requests.get(src_player.pfp)
 
-        folder_path = "srl/static/pfp"
+        folder_path = os.path.join(settings.STATIC_ROOT, "pfp")
         os.makedirs(folder_path, exist_ok=True)
 
         file_name = f"{src_player.id}.jpg"
@@ -76,7 +81,7 @@ def sync_players(
                 "name": src_player.names.international,
                 "url": src_player.weblink,
                 "countrycode": cc_get,
-                "pfp": file_path if download_pfp else None,
+                "pfp": f"{settings.STATIC_URL}pfp/{src_player.id}.jpg" if download_pfp else None,
                 "pronouns": src_player.pronouns,
                 "twitch": src_player.twitch_url,
                 "youtube": src_player.youtube_url,

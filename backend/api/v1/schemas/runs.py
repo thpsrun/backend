@@ -111,7 +111,8 @@ class RunBaseSchema(BaseEmbedSchema):
         place (int): Leaderboard position.
         subcategory (str | None): Human-readable subcategory description.
         times (RunTimesSchema): Nested timing data (RTA, LRT, IGT, primary).
-        video (str | None): Video URL.
+        video (str | None): YouTube/Twitch URL.
+        arch_video (str | None): Archived video URL.
         date (datetime | None): Submission date.
         v_date (datetime | None): Verification date.
         url (str): Speedrun.com URL.

@@ -8,6 +8,9 @@ from django.http import HttpRequest, HttpResponse
 from ninja import NinjaAPI, Redoc
 from ninja.errors import ValidationError
 
+from api.v1.routers.auth.me import router as me_router
+from api.v1.routers.auth.register import router as register_router
+from api.v1.routers.auth.verify_src import router as verify_src_router
 from api.v1.routers.guides.guides import router as guides_router
 from api.v1.routers.guides.tags import router as tags_router
 from api.v1.routers.pages.home import router as website_router
@@ -116,6 +119,10 @@ ninja_api: NinjaAPI = NinjaAPI(
             {
                 "name": "Website",
                 "description": "Specific endpoints related to how the frontend operates.",
+            },
+            {
+                "name": "Auth",
+                "description": "Endpoints related to player authentication and account verification.",
             },
         ],
     },
@@ -251,3 +258,7 @@ ninja_api.add_router("/tags", tags_router, tags=["Tags"])
 
 ninja_api.add_router("/website", website_router, tags=["Website"])
 ninja_api.add_router("/website", leaderboard_page_router, tags=["Website"])
+
+ninja_api.add_router("/auth", verify_src_router, tags=["Auth"])
+ninja_api.add_router("/auth", register_router, tags=["Auth"])
+ninja_api.add_router("/auth", me_router, tags=["Auth"])

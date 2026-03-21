@@ -264,9 +264,9 @@ class PlayersAdmin(admin.ModelAdmin):
                     rate limiting.
     """
 
-    list_display = ["name"]
+    list_display = ["name", "user", "claim_status"]
     actions = ["update_player", "import_obsolete"]
-    search_fields = ["name"]
+    search_fields = ["name", "user__username"]
 
     @admin.action(description="Update Player Metadata")
     def update_player(

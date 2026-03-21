@@ -126,6 +126,7 @@ class ModelTestCase(TestCase):
             youtube="Youtube",
             twitter="Twitter",
             bluesky="Bluesky",
+            discord="Discord",
             ex_stream=True,
         )
         cls.player1.awards.add(cls.awards)
@@ -142,6 +143,7 @@ class ModelTestCase(TestCase):
             youtube="Youtube",
             twitter="Twitter",
             bluesky="Bluesky",
+            discord="Discord",
             ex_stream=True,
         )
         cls.player2.awards.add(cls.awards)

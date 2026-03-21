@@ -10,6 +10,7 @@ from srl.models.run_history import RunHistory, RunHistoryEndReason
 from srl.models.run_players import RunPlayers
 from srl.models.runs import Runs, RunVariableValues
 from srl.models.series import Series
+from srl.models.src_credential import SRCCredential
 from srl.models.streaming import NowStreaming
 from srl.models.variable_values import VariableValues
 from srl.models.variables import Variables
@@ -30,6 +31,7 @@ __all__ = [
     "RunHistoryEndReason",
     "RunPlayers",
     "RunVariableValues",
+    "SRCCredential",
     "NowStreaming",
     "validate_image",
 ]

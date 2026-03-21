@@ -46,7 +46,9 @@ def overall_leaderboard_cache_key() -> str:
     latest = Runs.objects.filter(
         obsolete=False,
         vid_status="verified",
-    ).aggregate(latest=Max("updated_at"),)["latest"]
+    ).aggregate(
+        latest=Max("updated_at"),
+    )["latest"]
 
     timestamp = latest.isoformat() if latest else "None"
 
@@ -150,7 +152,21 @@ def main_records_cache_key() -> str:
     latest = max(timestamps) if timestamps else None
     timestamp = latest.isoformat() if latest else "None"
 
-    return f"main:records:{timestamp}"
+    return f"main:record:{timestamp}"
+
+
+def main_stats() -> str:
+    run_base = Runs.objects.filter(
+        vid_status="verified",
+    )
+
+    run_latest = run_base.aggregate(latest=Max("updated_at"))["latest"]
+
+    timestamps = [t for t in [run_latest] if t is not None]
+    latest = max(timestamps) if timestamps else None
+    timestamp = latest.isoformat() if latest else "None"
+
+    return f"main:stats:{timestamp}"
 
 
 def main_players_runs_cache_key(

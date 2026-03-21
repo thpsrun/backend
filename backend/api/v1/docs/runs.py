@@ -11,6 +11,7 @@ RUNS_GET = {
                         "runtype": "main",
                         "subcategory": "Normal, PC",
                         "video": "https://youtube.com/watch?v=example",
+                        "arch_video": "https://archive.thps.run/videos/sdfffsdf.mp4",
                         "url": "https://speedrun.com/thps4/run/fsdfsdfsdfs",
                         "date": "2025-08-15",
                         "v_date": "2025-08-15T10:30:00Z",

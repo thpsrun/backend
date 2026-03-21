@@ -9,6 +9,7 @@ from api.v1.routers.utils.cache_utils import (
     main_pbs_cache_key,
     main_players_runs_cache_key,
     main_records_cache_key,
+    main_stats,
     main_wrs_cache_key,
     overall_leaderboard_cache_key,
     player_cache_key,
@@ -47,4 +48,5 @@ __all__ = [
     "query_latest_runs",
     "query_records",
     "main_players_runs_cache_key",
+    "main_stats",
 ]

@@ -4,11 +4,12 @@ from typing import Any
 from django.core.cache import caches
 from django.db.models import Q, QuerySet, Sum
 from django.db.models.functions import TruncDate
-from srl.models import RunPlayers, Runs
+from srl.models import Players, RunPlayers, Runs
 
 from api.v1.routers.utils import (
     main_pbs_cache_key,
     main_records_cache_key,
+    main_stats,
     main_wrs_cache_key,
 )
 from api.v1.schemas.runs import PlayerRunEmbedSchema
@@ -61,6 +62,8 @@ def player_data_export(
 def record_player_data_export(
     run_players: "QuerySet[RunPlayers]",
     run_url: str,
+    run_video: str | None,
+    run_arch_video: str | None,
     run_date: str | None,
 ) -> list[dict[str, Any]]:
     players = [
@@ -71,7 +74,9 @@ def record_player_data_export(
                     rp.player.countrycode.name if rp.player.countrycode else None
                 ),
             },
-            "url": run_url,
+            "video": run_video,
+            "arch_video": run_arch_video,
+            "src_url": run_url,
             "date": run_date,
         }
         for rp in run_players
@@ -181,6 +186,8 @@ def query_records() -> list[dict[str, Any]]:
                     record_player_data_export(
                         run.run_players.all(),  # type: ignore
                         run.url,
+                        run.video,
+                        run.arch_video,
                         run.o_date.isoformat() if run.o_date else None,  # type: ignore
                     )
                 )
@@ -195,6 +202,26 @@ def query_records() -> list[dict[str, Any]]:
         del record["game_release"]
 
     return run_list
+
+
+def query_stats() -> dict[str, Any]:
+    run_count = Runs.objects.only("id").all().count()
+    player_count = Players.objects.only("id").all().count()
+
+    runs_with_vars = Runs.objects.prefetch_related(
+        "runvariablevalues_set__value",
+    ).filter(
+        runvariablevalues__isnull=False,
+    )
+    subcat_count = len({compute_run_subcategory(r) for r in runs_with_vars} - {None})
+
+    counts = {
+        "runs": run_count,
+        "subcategories": subcat_count,
+        "players": player_count,
+    }
+
+    return counts
 
 
 def query_player_runs(
@@ -378,12 +405,14 @@ def get_cached_embed(
         "latest-wrs": main_wrs_cache_key,
         "latest-pbs": main_pbs_cache_key,
         "records": main_records_cache_key,
+        "stats": main_stats,
     }
 
     query_functions: dict[str, Any] = {
         "latest-wrs": lambda: query_latest_runs(wr=True),
         "latest-pbs": lambda: query_latest_runs(wr=False),
         "records": query_records,
+        "stats": query_stats,
     }
 
     cache = caches[cache_name]
@@ -394,6 +423,6 @@ def get_cached_embed(
         return cached
 
     result = query_functions[embed_type]()
-    cache.set(cache_key, result, timeout=604800)  # 7 days in seconds
+    cache.set(cache_key, result, timeout=30)  # 7 days in seconds
 
     return result

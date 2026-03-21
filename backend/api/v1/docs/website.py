@@ -57,7 +57,9 @@ MAIN_PAGE_GET = {
                                             "name": "ThePackle",
                                             "country": "United States",
                                         },
-                                        "url": "https://speedrun.com/thps4/run/y8dwozoj",
+                                        "video": "youtube.com/3w4erfwfwef",
+                                        "arch_video": None,
+                                        "src_url": "https://speedrun.com/thps4/run/y8dwozoj",
                                         "date": "2025-08-15",
                                     }
                                 ],

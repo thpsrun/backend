@@ -34,7 +34,7 @@ router = Router()
     **Examples:**
     - `/website/main?embed=latest-wrs,latest-pbs` - Recent activity
     - `/website/main?embed=records` - Current world records
-    - `/website/main?embed=latest-wrs,latest-pbs,records` - All data
+    - `/website/main?embed=latest-wrs,latest-pbs,records,stats` - All data
     """
     ),
     auth=public_auth,
@@ -49,20 +49,26 @@ def get_main_page_data(
     ] = None,
 ) -> Status:
     if not embed:
-        return Status(400, ErrorResponse(
-            error="Must specify embed types to retrieve",
-            details={"valid_embed_types": ["latest-wrs", "latest-pbs", "records"]},
-        ))
+        return Status(
+            400,
+            ErrorResponse(
+                error="Must specify embed types to retrieve",
+                details={"valid_embed_types": ["latest-wrs", "latest-pbs", "records"]},
+            ),
+        )
 
     embed_fields = [field.strip() for field in embed.split(",") if field.strip()]
-    valid_embed_types = {"latest-wrs", "latest-pbs", "records"}
+    valid_embed_types = {"latest-wrs", "latest-pbs", "records", "stats"}
     invalid_embeds = [field for field in embed_fields if field not in valid_embed_types]
 
     if invalid_embeds:
-        return Status(400, ErrorResponse(
-            error=f"Invalid embed type(s): {', '.join(invalid_embeds)}",
-            details={"valid_embed_types": list(valid_embed_types)},
-        ))
+        return Status(
+            400,
+            ErrorResponse(
+                error=f"Invalid embed type(s): {', '.join(invalid_embeds)}",
+                details={"valid_embed_types": list(valid_embed_types)},
+            ),
+        )
 
     try:
         response_data = {}
@@ -76,9 +82,15 @@ def get_main_page_data(
         if "records" in embed_fields:
             response_data["records"] = get_cached_embed("records")
 
+        if "stats" in embed_fields:
+            response_data["stats"] = get_cached_embed("stats")
+
         return Status(200, response_data)
     except Exception as e:
-        return Status(500, ErrorResponse(
-            error="Server error!",
-            details={"exception": str(e)},
-        ))
+        return Status(
+            500,
+            ErrorResponse(
+                error="Server error!",
+                details={"exception": str(e)},
+            ),
+        )

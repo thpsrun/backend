@@ -1,7 +1,8 @@
 from typing import Any
 
 from django.http import HttpRequest
-from ninja.security import APIKeyHeader
+from ninja.security import APIKeyHeader, SessionAuth
+from srl.models import Players
 
 from api.models import RoleAPIKey
 
@@ -98,6 +99,34 @@ class PublicOrRoleAuth:
         return self.role_auth.authenticate(request, api_key_header)
 
 
+class PlayerSessionAuth(SessionAuth):
+    def authenticate(
+        self,
+        request: HttpRequest,
+        token: str,
+    ) -> Players | None:
+        """
+        Validate the session and return the associated Players instance.
+
+        Arguments:
+            request: HTTP request with session data.
+            token: Unused for session auth (Django Ninja passes a dummy value).
+
+        Returns:
+            Players instance if authenticated and claimed, else None.
+        """
+        user = super().authenticate(request, token)
+        if user is None:
+            return None
+        try:
+            player: Players = user.player  # type: ignore
+        except Players.DoesNotExist:
+            return None
+        if player.claim_status != Players.ClaimStatus.CLAIMED:
+            return None
+        return player
+
+
 public_auth: PublicOrRoleAuth = PublicOrRoleAuth("read_only")
 read_only_auth: RoleBasedAPIKeyAuth = RoleBasedAPIKeyAuth("read_only")
 contributor_auth: RoleBasedAPIKeyAuth = RoleBasedAPIKeyAuth("contributor")
@@ -105,3 +134,5 @@ moderator_auth: RoleBasedAPIKeyAuth = RoleBasedAPIKeyAuth("moderator")
 admin_auth: RoleBasedAPIKeyAuth = RoleBasedAPIKeyAuth("admin")
 
 api_key_required: RoleBasedAPIKeyAuth = read_only_auth
+
+player_session_auth: PlayerSessionAuth = PlayerSessionAuth()

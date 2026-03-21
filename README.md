@@ -2,7 +2,7 @@
 ## Version 4.0
 
 ![Django](https://img.shields.io/badge/Django-5.2-green.svg?logo=django&logoColor=white)
-![DjangoREST](https://img.shields.io/badge/django--rest--framework-3.16-blue?labelColor=333333&logo=django&logoColor=white&color=green)
+![Django Ninja](https://img.shields.io/badge/1.6-blue?color=black&label=django-ninja&logo=fastapi&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17.4-green?logo=postgresql&logoColor=white)
 
 ### What the heck is this??
