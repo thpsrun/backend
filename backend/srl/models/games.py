@@ -96,6 +96,12 @@ class Games(models.Model):
             "from the admin panel."
         ),
     )
+    rules = models.TextField(
+        max_length=5000,
+        verbose_name="Rules",
+        blank=True,
+        null=True,
+    )
     created_at = models.DateTimeField(
         auto_now_add=True,
     )

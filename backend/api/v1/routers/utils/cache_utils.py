@@ -4,6 +4,7 @@ from typing import Any, Callable
 from django.core.cache import caches
 from django.db.models import Max, Q
 from guides.models import Guides
+from nav.models import NavItem, SocialLink
 from srl.models import Categories, Levels, Players, Runs, Variables, VariableValues
 
 
@@ -88,7 +89,7 @@ def wr_cache_key(
 ) -> str:
     filters = {
         "game_id": game_id,
-        "cat_id": category_id,
+        "category_id": category_id,
         "place": 1,
         "obsolete": False,
     }
@@ -172,9 +173,10 @@ def main_stats() -> str:
 def main_players_runs_cache_key(
     player: str,
 ) -> str:
-    player_data = Players.objects.get(
+    player_obj = Players.objects.filter(
         Q(id__iexact=player) | Q(name__iexact=player) | Q(nickname__iexact=player)
-    ).id
+    ).first()
+    player_data = player_obj.id if player_obj else player
 
     latest_runs = Runs.objects.filter(
         run_players__player=player_data,
@@ -252,6 +254,93 @@ def guide_cache_key(
     return f"guide:{guide_id}:{timestamp}"
 
 
+def lbs_runs_cache_key(
+    game_id: str,
+    category_id: str,
+    value_slugs: list[str] | None = None,
+) -> str:
+    latest = Runs.objects.filter(
+        game_id=game_id,
+        category_id=category_id,
+        obsolete=False,
+        vid_status="verified",
+    ).aggregate(latest=Max("updated_at"))["latest"]
+
+    timestamp = latest.isoformat() if latest else "None"
+    values_str = ",".join(sorted(value_slugs)) if value_slugs else "all"
+    raw = f"lbs:{game_id}:{category_id}:{values_str}:{timestamp}"
+    key = hashlib.md5(raw.encode()).hexdigest()
+
+    return f"lbs:runs:{key}:{timestamp[:10]}"
+
+
+def lbs_game_stats_cache_key(
+    game_id: str,
+) -> str:
+    latest = Runs.objects.filter(
+        game_id=game_id,
+        obsolete=False,
+        vid_status="verified",
+    ).aggregate(latest=Max("updated_at"))["latest"]
+
+    timestamp = latest.isoformat() if latest else "None"
+
+    return f"lbs:stats:{game_id}:{timestamp}"
+
+
+def lbs_game_recent_cache_key(
+    game_id: str,
+) -> str:
+    latest = Runs.objects.filter(
+        game_id=game_id,
+        obsolete=False,
+        vid_status="verified",
+    ).aggregate(latest=Max("updated_at"))["latest"]
+
+    timestamp = latest.isoformat() if latest else "None"
+
+    return f"lbs:recent:{game_id}:{timestamp}"
+
+
+def lbs_il_summary_cache_key(
+    game_id: str,
+    value_slugs: list[str] | None = None,
+) -> str:
+    latest = Runs.objects.filter(
+        game_id=game_id,
+        runtype="il",
+        obsolete=False,
+        vid_status="verified",
+    ).aggregate(latest=Max("updated_at"))["latest"]
+
+    timestamp = latest.isoformat() if latest else "None"
+    values_str = ",".join(sorted(value_slugs)) if value_slugs else ""
+
+    return f"lbs:il_summary:{game_id}:{values_str}:{timestamp}"
+
+
+def lbs_il_runs_cache_key(
+    game_id: str,
+    level_id: str,
+    category_id: str,
+    value_slugs: list[str] | None = None,
+) -> str:
+    latest = Runs.objects.filter(
+        game_id=game_id,
+        level_id=level_id,
+        category_id=category_id,
+        obsolete=False,
+        vid_status="verified",
+    ).aggregate(latest=Max("updated_at"))["latest"]
+
+    timestamp = latest.isoformat() if latest else "None"
+    values_str = ",".join(sorted(value_slugs)) if value_slugs else "all"
+    raw = f"lbs:il:{game_id}:{level_id}:{category_id}:{values_str}:{timestamp}"
+    key = hashlib.md5(raw.encode()).hexdigest()
+
+    return f"lbs:il_runs:{key}:{timestamp[:10]}"
+
+
 def check_cache_query(
     cache_key: str,
     query: Callable,
@@ -270,3 +359,48 @@ def check_cache_query(
     cache.set(cache_key, result, timeout=timeout)
 
     return result
+
+
+def navbar_cache_key() -> str:
+    """Cache key for the navbar endpoint, based on latest update across both models."""
+    nav_latest = NavItem.objects.aggregate(
+        latest=Max("updated_at"),
+    )["latest"]
+    social_latest = SocialLink.objects.aggregate(
+        latest=Max("updated_at"),
+    )["latest"]
+
+    timestamps = [t for t in (nav_latest, social_latest) if t is not None]
+    if timestamps:
+        latest = max(timestamps)
+        timestamp = latest.isoformat()
+    else:
+        timestamp = "empty"
+
+    return f"navbar:{timestamp}"
+
+
+def history_cache_key(
+    game_id: str,
+    category_id: str,
+    level_id: str | None = None,
+    value_slugs: list[str] | None = None,
+) -> str:
+    filters: dict[str, Any] = {
+        "game_id": game_id,
+        "category_id": category_id,
+        "vid_status": "verified",
+    }
+    if level_id is not None:
+        filters["level_id"] = level_id
+
+    latest = Runs.objects.filter(**filters).aggregate(
+        latest=Max("updated_at"),
+    )["latest"]
+
+    timestamp = latest.isoformat() if latest else "None"
+    values_str = ",".join(sorted(value_slugs)) if value_slugs else "all"
+    raw = f"history:{game_id}:{category_id}:{level_id}:{values_str}:{timestamp}"
+    key = hashlib.md5(raw.encode()).hexdigest()
+
+    return f"history:{key}:{timestamp[:10]}"

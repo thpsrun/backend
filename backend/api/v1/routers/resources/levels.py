@@ -22,11 +22,31 @@ from api.v1.utils import get_or_generate_id
 router = Router()
 
 
+def _filter_level_variables(
+    variables: list[Variables],
+    level: Levels,
+) -> list[Variables]:
+    """Filter variables relevant to a specific level (single-level + all-levels)."""
+    filtered = []
+    for var in variables:
+        if var.scope == "single-level" and var.level_id == level.id:
+            filtered.append(var)
+        elif var.scope == "all-levels":
+            filtered.append(var)
+    return filtered
+
+
 def apply_level_embeds(
     level: Levels,
     embed_fields: list[str],
+    all_variables: list[Variables] | None = None,
+    values_by_var: dict[str, list[VariableValues]] | None = None,
 ) -> dict:
-    """When requested in the `embed_fields` of a level instance, this will apply the embeds."""
+    """Apply embeds to a level instance.
+
+    When all_variables and values_by_var are provided (batch mode),
+    filters in Python to avoid per-level DB queries.
+    """
     embeds = {}
 
     if "game" in embed_fields:
@@ -44,21 +64,24 @@ def apply_level_embeds(
                 "ipointsmax": level.game.ipointsmax,
             }
 
-    # If variables or values are declared, and depending on which is,
-    # additional context and metadata is added to the query.
     if "variables" in embed_fields or "values" in embed_fields:
-        variables = Variables.objects.filter(
-            game=level.game, level=level, scope="single-level"
-        ).order_by("name")
-
-        all_level_vars = Variables.objects.filter(
-            game=level.game, scope="all-levels"
-        ).order_by("name")
-
-        all_variables = list(variables) + list(all_level_vars)
+        if all_variables is not None:
+            level_vars = _filter_level_variables(all_variables, level)
+        else:
+            single_level = list(
+                Variables.objects.filter(
+                    game=level.game, level=level, scope="single-level",
+                ).order_by("name")
+            )
+            all_levels = list(
+                Variables.objects.filter(
+                    game=level.game, scope="all-levels",
+                ).order_by("name")
+            )
+            level_vars = single_level + all_levels
 
         variables_data = []
-        for var in all_variables:
+        for var in level_vars:
             var_data = {
                 "id": var.id,
                 "name": var.name,
@@ -68,7 +91,12 @@ def apply_level_embeds(
             }
 
             if "values" in embed_fields:
-                values = VariableValues.objects.filter(var=var).order_by("name")
+                if values_by_var is not None:
+                    values = values_by_var.get(var.id, [])
+                else:
+                    values = list(
+                        VariableValues.objects.filter(var=var).order_by("name")
+                    )
                 var_data["values"] = [
                     {
                         "value": val.value,
@@ -82,9 +110,6 @@ def apply_level_embeds(
 
             variables_data.append(var_data)
 
-        # If values are specified in the embed field, then it will embed
-        # the values' metadata to the request. Otherwise, it will return
-        # only basic IDs.
         embed_key = "values" if "values" in embed_fields else "variables"
         embeds[embed_key] = variables_data
 
@@ -152,22 +177,40 @@ def get_all_levels(
             ))
 
     try:
-        queryset = Levels.objects.all().order_by("name")
+        queryset = Levels.objects.select_related("game").order_by("name")
 
         if game_id:
             queryset = queryset.filter(game__id=game_id)
 
-        levels = queryset[offset : offset + limit]
+        levels = list(queryset[offset : offset + limit])
 
-        # For each of the levels, it will go through and add additional context
-        # if the embed option is provided. If not, it will provide basic information
-        # (e.g. the ID of the level), with additional information provided if declared.
+        all_variables = None
+        values_by_var = None
+        if levels and ("variables" in embed_fields or "values" in embed_fields):
+            game_obj = levels[0].game
+            all_variables = list(
+                Variables.objects.filter(
+                    game=game_obj,
+                    scope__in=["single-level", "all-levels"],
+                ).order_by("name")
+            )
+            if "values" in embed_fields:
+                var_ids = [v.id for v in all_variables]
+                all_values = VariableValues.objects.filter(
+                    var_id__in=var_ids,
+                ).order_by("name")
+                values_by_var: dict[str, list[VariableValues]] = {}
+                for val in all_values:
+                    values_by_var.setdefault(val.var_id, []).append(val)
+
         level_schemas = []
         for level in levels:
             level_data = LevelSchema.model_validate(level)
 
             if embed_fields:
-                embed_data = apply_level_embeds(level, embed_fields)
+                embed_data = apply_level_embeds(
+                    level, embed_fields, all_variables, values_by_var,
+                )
                 for field, data in embed_data.items():
                     setattr(level_data, field, data)
 

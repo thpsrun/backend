@@ -1,7 +1,10 @@
+from functools import lru_cache
+
 from cryptography.fernet import Fernet, InvalidToken  # noqa: F401
 from django.conf import settings
 
 
+@lru_cache(maxsize=1)
 def _get_fernet() -> Fernet:
     """Returns a Fernet instance using the configured encryption key."""
     key = settings.SRC_ENCRYPTION_KEY

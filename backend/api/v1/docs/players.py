@@ -15,6 +15,8 @@ PLAYERS_GET = {
                         "twitter": "https://twitter.com/thepackle",
                         "bluesky": "https://bsky.app/profile/@thepackle.bsky.social",
                         "discord": "discordusername",
+                        "ex_stream": False,
+                        "joined": "2025-08-15",
                         "country": {"id": "us", "name": "United States"},
                         "awards": [
                             {
@@ -87,6 +89,8 @@ PLAYERS_POST = {
                         "twitter": "https://twitter.com/thepackle",
                         "bluesky": "https://bsky.app/profile/thepackle",
                         "discord": "discordusername",
+                        "ex_stream": False,
+                        "joined": "2025-08-15",
                     }
                 }
             },
@@ -184,6 +188,8 @@ PLAYERS_PUT = {
                         "youtube": "https://youtube.com/thepackle",
                         "twitter": "https://twitter.com/thepackle",
                         "bluesky": "https://bsky.app/profile/@thepackle.bsky.social",
+                        "ex_stream": False,
+                        "joined": "2025-08-15",
                     }
                 }
             },
@@ -315,6 +321,7 @@ PLAYERS_ALL = {
                             "twitter": "https://twitter.com/thepackle",
                             "bluesky": "https://bsky.app/profile/@thepackle.bsky.social",
                             "discord": "discordusername",
+                            "joined": "2023-03-12",
                         },
                         {
                             "id": "x81m29qk",
@@ -327,6 +334,7 @@ PLAYERS_ALL = {
                             "twitter": None,
                             "bluesky": None,
                             "discord": None,
+                            "joined": "2023-03-11",
                         },
                     ]
                 }

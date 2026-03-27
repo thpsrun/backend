@@ -21,11 +21,15 @@ class GameBaseSchema(SlugMixin, BaseEmbedSchema):
         idefaulttime (str): Default timing method for individual level runs.
         pointsmax (int): Maximum points for world record full-game runs.
         ipointsmax (int): Maximum points for world record IL runs.
+        rules (str | None): Game-level rules text.
     """
 
     id: str = Field(..., max_length=15)
     twitch: str | None = Field(
         default=None, max_length=55, description="Game name on Twitch"
+    )
+    rules: str | None = Field(
+        default=None, max_length=5000, description="Game-level rules"
     )
     release: date
     boxart: str
@@ -102,6 +106,7 @@ class GameCreateSchema(SlugMixin, BaseEmbedSchema):
         idefaulttime (str): Default timing method for individual level runs.
         pointsmax (int): Maximum points for world record full-game runs.
         ipointsmax (int): Maximum points for world record individual level runs.
+        rules (str | None): Game-level rules text.
     """
 
     id: str | None = Field(
@@ -109,6 +114,9 @@ class GameCreateSchema(SlugMixin, BaseEmbedSchema):
     )
     twitch: str | None = Field(
         default=None, max_length=55, description="Game name on Twitch"
+    )
+    rules: str | None = Field(
+        default=None, max_length=5000, description="Game-level rules"
     )
     release: date
     boxart: str
@@ -133,9 +141,13 @@ class GameUpdateSchema(SlugMixin, BaseEmbedSchema):
         idefaulttime (str | None): Updated default timing method for IL runs.
         pointsmax (int | None): Updated max points for full-game runs.
         ipointsmax (int | None): Updated max points for IL runs.
+        rules (str | None): Updated game-level rules text.
     """
 
     twitch: str | None = Field(default=None, max_length=55)
+    rules: str | None = Field(
+        default=None, max_length=5000, description="Game-level rules"
+    )
     release: date | None = None
     boxart: str | None = None
     defaulttime: str | None = Field(

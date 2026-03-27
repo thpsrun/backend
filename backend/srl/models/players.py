@@ -129,6 +129,12 @@ class Players(models.Model):
         default=False,
         help_text="When checked, SRC sync will skip this player.",
     )
+    joined = models.DateField(
+        verbose_name="Joined",
+        blank=True,
+        null=True,
+        help_text="Date of the player's earliest verified speedrun.",
+    )
     created_at = models.DateTimeField(
         auto_now_add=True,
     )

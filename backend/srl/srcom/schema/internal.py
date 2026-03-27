@@ -1,5 +1,3 @@
-from typing import List
-
 from pydantic import BaseModel, Field
 
 from srl.srcom.schema.src import SrcLeaderboardRun, SrcPlayersModel
@@ -20,7 +18,7 @@ class RunSyncContext(BaseModel):
     variable_value_map: dict[str, str]
     download_pfp: bool = False
     lrt_fix: bool = False
-    players_data: List[SrcPlayersModel]
+    players_data: list[SrcPlayersModel]
     runs_data: SrcLeaderboardRun
 
 

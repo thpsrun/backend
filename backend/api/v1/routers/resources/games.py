@@ -30,10 +30,13 @@ def _variable_values_prefetch() -> Prefetch:
     )
 
 
-def _variables_prefetch() -> Prefetch:
+def _game_variables_prefetch() -> Prefetch:
+    """Prefetch all variables for a game (both category-linked and global)."""
     return Prefetch(
         "variables_set",
-        queryset=Variables.objects.prefetch_related(_variable_values_prefetch()),
+        queryset=Variables.objects.prefetch_related(
+            _variable_values_prefetch(),
+        ),
     )
 
 
@@ -46,6 +49,7 @@ def game_embeds(
         return queryset
 
     embed_list = [e.strip() for e in embeds.split(",")]
+    needs_variables = False
 
     if "categories" in embed_list:
         queryset = queryset.prefetch_related(
@@ -58,10 +62,10 @@ def game_embeds(
                         output_field=IntegerField(),
                     )
                 )
-                .order_by("sort_key", "name")
-                .prefetch_related(_variables_prefetch()),
-            )
+                .order_by("sort_key", "name"),
+            ),
         )
+        needs_variables = True
 
     if "levels" in embed_list:
         queryset = queryset.prefetch_related(
@@ -74,10 +78,13 @@ def game_embeds(
                         output_field=IntegerField(),
                     )
                 )
-                .order_by("sort_key", "name")
-                .prefetch_related(_variables_prefetch()),
-            )
+                .order_by("sort_key", "name"),
+            ),
         )
+        needs_variables = True
+
+    if needs_variables:
+        queryset = queryset.prefetch_related(_game_variables_prefetch())
 
     if "platforms" in embed_list:
         queryset = queryset.prefetch_related("platforms")
@@ -85,35 +92,69 @@ def game_embeds(
     return queryset
 
 
+_SCOPE_TO_CAT_TYPE: dict[str, str] = {
+    "full-game": "per-game",
+    "all-levels": "per-level",
+}
+
+
+def _build_variables_for_entity(
+    game: Games,
+    entity_id: str | None = None,
+    entity_type: str = "cat",
+    entity_cat_type: str | None = None,
+) -> list[dict]:
+    """Build variable dicts for an entity, including global variables (cat/level=NULL).
+
+    Uses game.variables_set (prefetched) to avoid N+1 queries. Filters to variables
+    that are either linked to the specific entity or are global (entity FK is NULL).
+    Also filters by scope: full-game vars only appear on per-game categories, and
+    all-levels vars only appear on per-level categories.
+    """
+    variables = []
+    for var in game.variables_set.all():  # type: ignore
+        var_entity_id = getattr(var, f"{entity_type}_id", None)
+        if var_entity_id != entity_id and var_entity_id is not None:
+            continue
+
+        # Filter by scope when building for categories
+        if entity_type == "cat" and entity_cat_type:
+            allowed_cat_type = _SCOPE_TO_CAT_TYPE.get(var.scope)
+            if allowed_cat_type and allowed_cat_type != entity_cat_type:
+                continue
+            # single-level scoped vars don't belong on categories
+            if var.scope == "single-level":
+                continue
+        values = [
+            {
+                "value": val.value,
+                "name": val.name,
+                "slug": val.slug,
+                "appear_on_main": val.appear_on_main,
+                "order": val.order,
+                "archive": val.archive,
+                "rules": val.rules,
+            }
+            for val in var.variablevalues_set.all()  # type: ignore
+        ]
+        variables.append(
+            {
+                "id": var.id,
+                "name": var.name,
+                "slug": var.slug,
+                "scope": var.scope,
+                "archive": var.archive,
+                "values": values,
+            }
+        )
+    return variables
+
+
 def _build_categories_embed(
     game: Games,
 ) -> list[dict]:
     result = []
     for cat in game.categories_set.all():  # type: ignore
-        variables = []
-        for var in cat.variables_set.all():  # type: ignore
-            values = [
-                {
-                    "value": val.value,
-                    "name": val.name,
-                    "slug": val.slug,
-                    "appear_on_main": val.appear_on_main,
-                    "order": val.order,
-                    "archive": val.archive,
-                    "rules": val.rules,
-                }
-                for val in var.variablevalues_set.all()  # type: ignore
-            ]
-            variables.append(
-                {
-                    "id": var.id,
-                    "name": var.name,
-                    "slug": var.slug,
-                    "scope": var.scope,
-                    "archive": var.archive,
-                    "values": values,
-                }
-            )
         result.append(
             {
                 "id": cat.id,
@@ -124,7 +165,9 @@ def _build_categories_embed(
                 "rules": cat.rules,
                 "appear_on_main": cat.appear_on_main,
                 "archive": cat.archive,
-                "variables": variables,
+                "variables": _build_variables_for_entity(
+                    game, cat.id, "cat", cat.type,
+                ),
             }
         )
     return result
@@ -135,30 +178,6 @@ def _build_levels_embed(
 ) -> list[dict]:
     result = []
     for level in game.levels_set.all():  # type: ignore
-        variables = []
-        for var in level.variables_set.all():  # type: ignore
-            values = [
-                {
-                    "value": val.value,
-                    "name": val.name,
-                    "slug": val.slug,
-                    "appear_on_main": val.appear_on_main,
-                    "order": val.order,
-                    "archive": val.archive,
-                    "rules": val.rules,
-                }
-                for val in var.variablevalues_set.all()  # type: ignore
-            ]
-            variables.append(
-                {
-                    "id": var.id,
-                    "name": var.name,
-                    "slug": var.slug,
-                    "scope": var.scope,
-                    "archive": var.archive,
-                    "values": values,
-                }
-            )
         result.append(
             {
                 "id": level.id,
@@ -166,10 +185,23 @@ def _build_levels_embed(
                 "slug": level.slug,
                 "url": level.url,
                 "rules": level.rules,
-                "variables": variables,
+                "variables": _build_variables_for_entity(game, level.id, "level"),
             }
         )
     return result
+
+
+def _build_platforms_embed(
+    game: Games,
+) -> list[dict]:
+    return [
+        {
+            "id": platform.id,
+            "name": platform.name,
+            "slug": platform.slug,
+        }
+        for platform in game.platforms.all()  # type: ignore
+    ]
 
 
 @router.get(
@@ -242,6 +274,8 @@ def get_all_games(
                 game_data.categories = _build_categories_embed(game)
             if "levels" in embed_fields:
                 game_data.levels = _build_levels_embed(game)
+            if "platforms" in embed_fields:
+                game_data.platforms = _build_platforms_embed(game)
             game_schemas.append(game_data)
 
         return Status(200, game_schemas)
@@ -315,6 +349,8 @@ def get_game(
             game_data.categories = _build_categories_embed(game)
         if "levels" in embed_fields:
             game_data.levels = _build_levels_embed(game)
+        if "platforms" in embed_fields:
+            game_data.platforms = _build_platforms_embed(game)
         return Status(200, game_data)
     except Exception as e:
         return Status(500, ErrorResponse(

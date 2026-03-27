@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Any
 
 from pydantic import Field, field_validator
@@ -21,6 +22,7 @@ class PlayerBaseSchema(BaseEmbedSchema):
         bluesky (str | None): Bluesky profile URL.
         discord (str | None): Discord username.
         ex_stream (bool): Whether player is excluded from streaming features.
+        joined (date | None): Date of the player's first verified speedrun.
     """
 
     id: str = Field(..., max_length=15)
@@ -41,6 +43,9 @@ class PlayerBaseSchema(BaseEmbedSchema):
     bluesky: str | None = None
     discord: str | None = None
     ex_stream: bool = Field(default=False, description="Exclude from streaming bots")
+    joined: date | None = Field(
+        default=None, description="Date of first verified speedrun"
+    )
 
 
 class CountrySchema(BaseEmbedSchema):

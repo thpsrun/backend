@@ -1,3 +1,5 @@
+from datetime import date
+
 from ninja import Schema
 from pydantic import EmailStr, Field, field_validator, model_validator
 
@@ -94,6 +96,7 @@ class PlayerProfileResponse(Schema):
     username: str
     is_moderator: bool = False
     has_src_key: bool = False
+    joined: date | None = None
     moderated_games: list[ModeratedGameSchema] = []
 
 

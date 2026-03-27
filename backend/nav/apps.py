@@ -1,9 +1,9 @@
 from django.apps import AppConfig
 
 
-class ApiConfig(AppConfig):
+class NavConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
-    name = "srl"
+    name = "nav"
 
     def ready(self) -> None:
-        import srl.signals  # noqa: F401
+        import nav.signals  # noqa: F401

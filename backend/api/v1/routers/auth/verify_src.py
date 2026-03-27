@@ -1,3 +1,4 @@
+import time
 from textwrap import dedent
 
 import requests as http_requests
@@ -102,6 +103,7 @@ def verify_src(
         )
 
     request.session["src_verified_player_id"] = player.id
+    request.session["src_verified_at"] = int(time.time())
 
     return Status(
         200,

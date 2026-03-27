@@ -39,9 +39,7 @@ def get_run_players(
 
     This is always included in run responses (not an embed).
     """
-    run_players = run.run_players.select_related("player__countrycode").order_by(
-        "order"
-    )
+    run_players = sorted(run.run_players.all(), key=lambda rp: rp.order)
 
     players_list = []
     for rp in run_players:
@@ -74,10 +72,7 @@ def get_run_variables(
     """
     variable_mapping: dict[str, str] = {}
 
-    # Query the through table directly
-    run_variable_values = RunVariableValues.objects.filter(
-        run=run,
-    ).select_related("variable", "value")
+    run_variable_values = run.runvariablevalues_set.all()
 
     for rvv in run_variable_values:
         if rvv.variable and rvv.value:
@@ -250,6 +245,7 @@ def get_all_runs(
             .select_related("category", "level")
             .prefetch_related(
                 "run_players__player__countrycode",
+                "runvariablevalues_set__variable",
                 "runvariablevalues_set__value",
             )
             .order_by("-v_date", "place")
@@ -770,12 +766,8 @@ def delete_run(
     try:
         run = (
             Runs.objects.filter(id__iexact=id)
-            .select_related("game", "category", "level", "platform", "approver")
-            .prefetch_related(
-                "run_players__player",
-                "runvariablevalues_set__variable",
-                "runvariablevalues_set__value",
-            )
+            .select_related("game")
+            .prefetch_related("run_players__player")
             .first()
         )
         if not run:
@@ -785,10 +777,10 @@ def delete_run(
             ))
 
         game_name = run.game.name if run.game else "Unknown"
-        run_player_entries = run.run_players.select_related("player").all()
+        run_player_entries = run.run_players.all()
         player_names = (
             ", ".join([rp.player.name for rp in run_player_entries])
-            if run_player_entries.exists()
+            if run_player_entries
             else "Anonymous"
         )
 

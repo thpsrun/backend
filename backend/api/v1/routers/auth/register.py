@@ -1,3 +1,4 @@
+import time
 from textwrap import dedent
 
 from django.contrib.auth import login
@@ -45,6 +46,18 @@ def register(
             ),
         )
 
+    verified_at: int = request.session.get("src_verified_at", 0)
+    if int(time.time()) - verified_at > 900:
+        request.session.pop("src_verified_player_id", None)
+        request.session.pop("src_verified_at", None)
+        return Status(
+            403,
+            ErrorResponse(
+                error="SRC verification expired, please verify again",
+                details=None,
+            ),
+        )
+
     try:
         player = Players.objects.get(id=player_id)
     except Players.DoesNotExist:
@@ -61,15 +74,6 @@ def register(
             409,
             ErrorResponse(
                 error="This player account has already been claimed",
-                details=None,
-            ),
-        )
-
-    if body.password1 != body.password2:
-        return Status(
-            400,
-            ErrorResponse(
-                error="Passwords do not match",
                 details=None,
             ),
         )
@@ -107,6 +111,7 @@ def register(
 
     login(request, user, backend="django.contrib.auth.backends.ModelBackend")
     request.session.pop("src_verified_player_id", None)
+    request.session.pop("src_verified_at", None)
 
     return Status(
         201,

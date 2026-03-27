@@ -8,61 +8,76 @@ MAIN_PAGE_GET = {
                         "latest_wrs": [
                             {
                                 "id": "y8dwozoj",
-                                "game": {
-                                    "name": "Tony Hawk's Pro Skater 4",
-                                    "slug": "thps4",
+                                "game_slug": "thps4",
+                                "category": {
+                                    "name": "Any%",
+                                    "slug": "any",
                                 },
-                                "category": {"name": "Any%"},
-                                "subcategory": "Normal, PC",
                                 "players": [
-                                    {"name": "ThePackle", "country": "United States"}
+                                    {
+                                        "name": "ThePackle",
+                                        "nickname": None,
+                                        "country": {
+                                            "id": "us",
+                                            "name": "United States",
+                                        },
+                                    }
                                 ],
                                 "time": "12:34.567",
-                                "date": "2025-08-15T10:30:00Z",
+                                "date": "2025-08-15T10:30:00",
                                 "video": "https://youtube.com/watch?v=example",
-                                "url": "https://speedrun.com/thps4/run/y8dwozoj",
+                                "value_slugs": ["normal", "pc"],
                             }
                         ],
                         "latest_pbs": [
                             {
                                 "id": "z9fxpakl",
-                                "game": {
-                                    "name": "Tony Hawk's Pro Skater 3",
-                                    "slug": "thps3",
+                                "game_slug": "thps3",
+                                "category": {
+                                    "name": "100%",
+                                    "slug": "100",
                                 },
-                                "category": {"name": "100%"},
-                                "subcategory": "Normal, PS2",
                                 "players": [
-                                    {"name": "SpeedRunner123", "country": "Canada"}
+                                    {
+                                        "name": "SpeedRunner123",
+                                        "nickname": None,
+                                        "country": {
+                                            "id": "ca",
+                                            "name": "Canada",
+                                        },
+                                    }
                                 ],
                                 "time": "25:43.123",
-                                "place": 2,
-                                "date": "2025-01-14T15:20:00Z",
+                                "date": "2025-01-14T15:20:00",
                                 "video": "https://youtube.com/watch?v=example2",
-                                "url": "https://speedrun.com/thps3/run/z9fxpakl",
+                                "value_slugs": ["normal", "ps2"],
                             }
                         ],
                         "records": [
                             {
+                                "id": "y8dwozoj",
                                 "game": {
                                     "name": "Tony Hawk's Pro Skater 4",
                                     "slug": "thps4",
-                                    "release": "2002-10-23",
                                 },
-                                "subcategory": "Normal, PC",
-                                "time": "12:34.567",
+                                "category": {
+                                    "name": "Any%",
+                                    "slug": "any",
+                                },
                                 "players": [
                                     {
-                                        "player": {
-                                            "name": "ThePackle",
-                                            "country": "United States",
+                                        "name": "ThePackle",
+                                        "nickname": None,
+                                        "country": {
+                                            "id": "us",
+                                            "name": "United States",
                                         },
-                                        "video": "youtube.com/3w4erfwfwef",
-                                        "arch_video": None,
-                                        "src_url": "https://speedrun.com/thps4/run/y8dwozoj",
-                                        "date": "2025-08-15",
                                     }
                                 ],
+                                "time": "12:34.567",
+                                "date": "2025-08-15",
+                                "video": "https://youtube.com/watch?v=example",
+                                "value_slugs": ["normal", "pc"],
                             }
                         ],
                     }

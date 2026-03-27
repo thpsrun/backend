@@ -15,6 +15,7 @@ GAMES_GET = {
                         "idefaulttime": "realtime",
                         "pointsmax": 1000,
                         "ipointsmax": 100,
+                        "rules": "Timing starts on ...",
                     }
                 }
             },
@@ -59,6 +60,7 @@ GAMES_POST = {
                         "idefaulttime": "realtime",
                         "pointsmax": 1000,
                         "ipointsmax": 100,
+                        "rules": "Timing starts on ...",
                     }
                 }
             },
@@ -116,6 +118,12 @@ GAMES_POST = {
                             "example": "realtime",
                             "description": "DEFAULT IL TIMING METHOD",
                         },
+                        "rules": {
+                            "type": "string",
+                            "maxLength": 5000,
+                            "example": "Timing starts on ...",
+                            "description": "GAME-LEVEL RULES",
+                        },
                     },
                 },
                 "example": {
@@ -126,6 +134,7 @@ GAMES_POST = {
                     "twitch": "Tony Hawk's Pro Skater 4",
                     "defaulttime": "realtime",
                     "idefaulttime": "realtime",
+                    "rules": "Timing starts on ...",
                 },
             }
         },
@@ -149,6 +158,7 @@ GAMES_PUT = {
                         "idefaulttime": "realtime",
                         "pointsmax": 1000,
                         "ipointsmax": 100,
+                        "rules": "Timing starts on ...",
                     }
                 }
             },
@@ -216,6 +226,12 @@ GAMES_PUT = {
                             "example": "realtime",
                             "description": "UPDATED IL DEFAULT TIMING",
                         },
+                        "rules": {
+                            "type": "string",
+                            "maxLength": 5000,
+                            "example": "Timing starts on ...",
+                            "description": "UPDATED GAME-LEVEL RULES",
+                        },
                     },
                 },
                 "example": {
@@ -275,6 +291,7 @@ GAMES_ALL = {
                             "idefaulttime": "realtime",
                             "pointsmax": 1000,
                             "ipointsmax": 100,
+                            "rules": "Timing starts on ...",
                         },
                         {
                             "id": "k6qw5o9p",
@@ -287,6 +304,7 @@ GAMES_ALL = {
                             "idefaulttime": "realtime",
                             "pointsmax": 1000,
                             "ipointsmax": 100,
+                            "rules": None,
                         },
                     ]
                 }

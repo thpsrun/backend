@@ -161,7 +161,10 @@ def auth_rate_limit(
 
         if count > _AUTH_RATE_LIMIT:
             return JsonResponse(
-                {"error": "Too many requests. Please try again later.", "code": 429},
+                {
+                    "error": "Too many requests. Please try again later.",
+                    "details": None,
+                },
                 status=429,
                 headers={"Retry-After": str(window_end - current_time)},
             )

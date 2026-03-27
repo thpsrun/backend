@@ -7,7 +7,6 @@ RunTypeType = Literal["main", "il"]
 RunStatusType = Literal["verified", "new", "rejected"]
 CategoryTypeType = Literal["per-level", "per-game"]
 VariableScopeType = Literal["global", "full-game", "all-levels", "single-level"]
-LeaderboardTimeType = Literal["realtime", "realtime_noloads", "ingame"]
 
 
 class ErrorResponse(BaseModel):
@@ -33,7 +32,7 @@ class ValidationErrorResponse(BaseModel):
     """
 
     error: str = Field(default="Validation failed")
-    validation_errors: dict[str, list[str]]
+    validation_errors: list[dict[str, Any]]
 
 
 class PaginatedResponse(BaseModel):
@@ -87,7 +86,7 @@ class SlugMixin(BaseModel):
     """
 
     name: str
-    slug: str = Field(..., description="URL-friendly slug", min_length=1, max_length=15)
+    slug: str = Field(..., description="URL-friendly slug", min_length=1, max_length=30)
 
 
 VALID_EMBEDS: dict[str, set[str]] = {

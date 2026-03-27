@@ -48,7 +48,7 @@ def sync_game_runs(
         Levels.objects.filter(game=game_id).delete()
         Runs.objects.filter(game=game_id, obsolete=False).delete()
 
-    game_check: dict[dict, str] = src_api(
+    game_check: dict[str, Any] = src_api(
         f"https://speedrun.com/api/v1/games/"
         f"{game_id}?embed=platforms,levels,categories,variables"
     )

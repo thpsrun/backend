@@ -252,20 +252,10 @@ class SpeedrunAdmin(admin.ModelAdmin):
 
 
 class PlayersAdmin(admin.ModelAdmin):
-    """Admin panel used with the `Players` model.
-
-    This panel is for the administration for the `Players` model.
-
-    Methods:
-        - update_player: Updates the metadata for all selected players from the Speedrun.com API.
-        - import_obsolete: Retrieves all non-ranked speedruns from each specific user that match
-            a game from the `Games` model and imports them into the `Runs` model.
-                - Note: This is moderately intensive. Expect this to take time, especially with
-                    rate limiting.
-    """
+    """Admin panel used with the `Players` model."""
 
     list_display = ["name", "user", "claim_status"]
-    actions = ["update_player", "import_obsolete"]
+    actions = ["update_player"]
     search_fields = ["name", "user__username"]
 
     @admin.action(description="Update Player Metadata")
@@ -278,18 +268,6 @@ class PlayersAdmin(admin.ModelAdmin):
         player_ids = [obj.id for obj in queryset]
         return redirect(
             reverse("admin:update_player") + f"?player_ids={','.join(player_ids)}"
-        )
-
-    @admin.action(description="Force Add Obsolete Runs")
-    def import_obsolete(
-        self,
-        _: HttpRequest,
-        queryset: QuerySet["Players"],
-    ) -> HttpResponse:
-        """Retrieves and imports all non-ranked speedruns into the `Runs` model."""
-        player_ids = [obj.id for obj in queryset]
-        return redirect(
-            reverse("admin:import_obsolete") + f"?player_ids={','.join(player_ids)}"
         )
 
     def get_urls(
@@ -307,11 +285,6 @@ class PlayersAdmin(admin.ModelAdmin):
         return custom_urls + urls
 
 
-""" path(
-    "import-obsolete/",
-    self.admin_site.admin_view(ImportObsoleteView.as_view()),
-    name="import_obsolete",
-), """
 admin.site.register(Games, GameAdmin)
 admin.site.register(Awards, DefaultAdmin)
 admin.site.register(CountryCodes, DefaultAdmin)

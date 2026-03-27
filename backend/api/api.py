@@ -14,7 +14,10 @@ from api.v1.routers.auth.verify_src import router as verify_src_router
 from api.v1.routers.guides.guides import router as guides_router
 from api.v1.routers.guides.tags import router as tags_router
 from api.v1.routers.pages.home import router as website_router
+from api.v1.routers.pages.lbs import router as lbs_page_router
 from api.v1.routers.pages.leaderboard import router as leaderboard_page_router
+from api.v1.routers.pages.navbar import router as navbar_router
+from api.v1.routers.pages.history import router as history_router
 from api.v1.routers.resources.categories import router as categories_router
 from api.v1.routers.resources.games import router as games_router
 from api.v1.routers.resources.levels import router as levels_router
@@ -149,7 +152,7 @@ def validation_exception_handler(
         request,
         ValidationErrorResponse(
             error="Request validation failed",
-            validation_errors={"error": "exc.errors"},  # type: ignore
+            validation_errors=exc.errors,
         ).model_dump(),
         status=422,
     )
@@ -257,7 +260,10 @@ ninja_api.add_router("/guides", guides_router, tags=["Guides"])
 ninja_api.add_router("/tags", tags_router, tags=["Tags"])
 
 ninja_api.add_router("/website", website_router, tags=["Website"])
+ninja_api.add_router("/website", lbs_page_router, tags=["Website"])
 ninja_api.add_router("/website", leaderboard_page_router, tags=["Website"])
+ninja_api.add_router("/website", navbar_router, tags=["Website"])
+ninja_api.add_router("", history_router, tags=["Website"])
 
 ninja_api.add_router("/auth", verify_src_router, tags=["Auth"])
 ninja_api.add_router("/auth", register_router, tags=["Auth"])

@@ -18,7 +18,7 @@ if os.getenv("SENTRY_ENABLED") == "True":
 SECRET_KEY = os.getenv("SECRET_KEY")
 SRC_ENCRYPTION_KEY = os.getenv("SRC_ENCRYPTION_KEY", "")
 
-ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS").split(",")  # type: ignore
+ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "").split(",")
 # ALLOWED_IPS = ["127.0.0.1"]
 
 INSTALLED_APPS = [
@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     "srl",
     "api",
     "guides",
+    "nav",
 ]
 
 MIDDLEWARE = [

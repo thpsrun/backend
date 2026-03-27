@@ -78,6 +78,7 @@ def _build_profile_response(
         username=player.user.username if player.user else "",
         is_moderator=len(moderated) > 0,
         has_src_key=has_src_key,
+        joined=player.joined,
         moderated_games=[
             ModeratedGameSchema(id=g.id, name=g.name, slug=g.slug) for g in moderated
         ],
@@ -127,12 +128,11 @@ def update_me(
         "bluesky",
         "discord",
     ):
-        val = getattr(body, field)
-        if val is not None:
-            setattr(player, field, val)
+        if field in body.model_fields_set:
+            setattr(player, field, getattr(body, field))
             update_fields.append(field)
 
-    if body.countrycode is not None:
+    if "countrycode" in body.model_fields_set:
         country = CountryCodes.objects.filter(id=body.countrycode).first()
         if country is None:
             return Status(
@@ -158,7 +158,7 @@ def update_me(
     description=dedent(
         """
     Uploads a new profile picture for the authenticated player.
-    Accepts image files only (max 5 MB). Saves to static/pfp/{player_id}.jpg.
+    Accepts image files only (max 5 MB). Saves to static/pfp/`playerid`.jpg.
     """
     ),
     auth=player_session_auth,
@@ -187,7 +187,7 @@ def upload_pfp(
             ),
         )
 
-    # Takes the full content and re-encodes with Pillow to strip the file of extra stuff (SVGs).
+    # Takes the full content and re-encodes with Pillow to strip the file of extra metadata and crap
     raw: bytes = b"".join(file.chunks())
 
     try:
@@ -302,7 +302,6 @@ def set_src_key(
             ),
         )
 
-    # Encrypt and store (update_or_create handles both new and existing)
     encrypted = encrypt_src_key(body.src_api_key)
     SRCCredential.objects.update_or_create(
         user=player.user,
@@ -387,6 +386,7 @@ def delete_me(
             player.youtube = None
             player.twitter = None
             player.bluesky = None
+            player.discord = None
             player.countrycode = None
             player.claim_status = Players.ClaimStatus.DELETED
             player.sync_paused = True
@@ -401,6 +401,7 @@ def delete_me(
                     "youtube",
                     "twitter",
                     "bluesky",
+                    "discord",
                     "countrycode",
                     "claim_status",
                     "sync_paused",
@@ -408,7 +409,6 @@ def delete_me(
                 ]
             )
 
-            # Remove moderator assignments for the deleted account
             player.moderated_games.clear()
 
             if user is not None:

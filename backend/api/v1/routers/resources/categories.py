@@ -27,11 +27,36 @@ from api.v1.utils import get_or_generate_id
 router = Router()
 
 
+def _filter_scope(
+    variables: list[Variables],
+    category: Categories,
+) -> list[Variables]:
+    """Filter variables by scope rules for a given category type."""
+    filtered = []
+    for var in variables:
+        if var.scope == "single-level":
+            continue
+        if category.type == "per-game" and var.scope == "all-levels":
+            continue
+        if category.type == "per-level" and var.scope == "full-game":
+            continue
+        if var.cat_id is not None and var.cat_id != category.id:
+            continue
+        filtered.append(var)
+    return filtered
+
+
 def category_embeds(
     category: Categories,
     embed_fields: list[str],
+    all_variables: list[Variables] | None = None,
+    values_by_var: dict[str, list[VariableValues]] | None = None,
 ) -> dict:
-    """When requested in the `embed_fields` of a category instance, this will apply the embeds."""
+    """Apply embeds to a category instance.
+
+    When all_variables and values_by_var are provided (batch mode),
+    filters in Python to avoid per-category DB queries.
+    """
     embeds = {}
 
     if "game" in embed_fields:
@@ -49,13 +74,23 @@ def category_embeds(
                 "ipointsmax": category.game.ipointsmax,
             }
 
-    # If variables or values are declared, and depending on which is,
-    # additional context and metadata is added to the query.
     if "variables" in embed_fields or "values" in embed_fields:
-        variables = Variables.objects.filter(
-            game=category.game,
-            cat=category,
-        ).order_by("name")
+        if all_variables is not None:
+            variables = _filter_scope(all_variables, category)
+        else:
+            scope_exclude = (
+                Q(scope="single-level")
+                | Q(scope="all-levels" if category.type == "per-game" else "full-game")
+            )
+            variables = list(
+                Variables.objects.filter(
+                    game=category.game,
+                ).filter(
+                    Q(cat=category) | Q(cat__isnull=True),
+                ).exclude(
+                    scope_exclude,
+                ).order_by("name")
+            )
 
         variables_data = []
         for var in variables:
@@ -68,7 +103,12 @@ def category_embeds(
             }
 
             if "values" in embed_fields:
-                values = VariableValues.objects.filter(var=var).order_by("name")
+                if values_by_var is not None:
+                    values = values_by_var.get(var.id, [])
+                else:
+                    values = list(
+                        VariableValues.objects.filter(var=var).order_by("name")
+                    )
                 var_data["values"] = [
                     {
                         "value": val.value,
@@ -83,9 +123,6 @@ def category_embeds(
 
             variables_data.append(var_data)
 
-        # If values are specified in the embed field, then it will embed
-        # the values' metadata to the request. Otherwise, it will return
-        # only basic IDs.
         embed_key = "values" if "values" in embed_fields else "variables"
         embeds[embed_key] = variables_data
 
@@ -160,7 +197,7 @@ def get_all_categories(
         if game:
             queryset = Categories.objects.filter(
                 Q(game__id__iexact=game) | Q(game__slug__iexact=game)
-            ).order_by("name")
+            ).select_related("game").order_by("name")
         else:
             return Status(400, ErrorResponse(
                 error="Please provide the game's unique ID or slug.",
@@ -170,17 +207,32 @@ def get_all_categories(
         if type:
             queryset = queryset.filter(type=type)
 
-        categories = queryset[offset : offset + limit]
+        categories = list(queryset[offset : offset + limit])
 
-        # For each of the categories, it will go through and add additional context
-        # if the embed option is provided. If not, it will provide basic information
-        # (e.g. the ID of the value), with additional information provided if declared.
+        all_variables = None
+        values_by_var = None
+        if categories and ("variables" in embed_fields or "values" in embed_fields):
+            game_obj = categories[0].game
+            all_variables = list(
+                Variables.objects.filter(game=game_obj).order_by("name")
+            )
+            if "values" in embed_fields:
+                var_ids = [v.id for v in all_variables]
+                all_values = VariableValues.objects.filter(
+                    var_id__in=var_ids,
+                ).order_by("name")
+                values_by_var: dict[str, list[VariableValues]] = {}
+                for val in all_values:
+                    values_by_var.setdefault(val.var_id, []).append(val)
+
         category_schemas = []
         for category in categories:
             category_data = CategorySchema.model_validate(category)
 
             if embed_fields:
-                embed_data = category_embeds(category, embed_fields)
+                embed_data = category_embeds(
+                    category, embed_fields, all_variables, values_by_var,
+                )
                 for field, data in embed_data.items():
                     setattr(category_data, field, data)
 

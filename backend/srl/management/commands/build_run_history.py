@@ -178,6 +178,8 @@ class Command(BaseCommand):
         for run in runs:
             run_time = getattr(run, time_column) or 0
             if run_time <= 0:
+                run_time = getattr(run, "time_secs") or 0
+            if run_time <= 0:
                 continue
 
             effective_date = run.effective_date  # type: ignore
@@ -213,8 +215,6 @@ class Command(BaseCommand):
                 old_bonus = 0
                 if streak_continues and old_wr_id:
                     old_bonus = runs_streak_updates.get(old_wr_id, 0)
-                    if old_bonus == 0 and current_wr_run:
-                        old_bonus = current_wr_run.bonus
 
                 run_ids_to_update = list(active_entries.keys())
 

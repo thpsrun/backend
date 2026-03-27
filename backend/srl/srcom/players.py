@@ -1,5 +1,6 @@
 import os
 import time
+from typing import Any
 
 import requests
 from celery import shared_task
@@ -24,7 +25,7 @@ def sync_players(
             player dict information.
     """
     if isinstance(players_data, str):
-        src_data: dict[dict, str] = src_api(
+        src_data: dict[str, Any] = src_api(
             f"https://speedrun.com/api/v1/users/{players_data}"
         )
 

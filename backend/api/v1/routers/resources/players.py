@@ -10,7 +10,7 @@ from srl.models import CountryCodes, Players, Runs
 
 from api.permissions import admin_auth, moderator_auth, public_auth
 from api.v1.docs.players import PLAYERS_DELETE, PLAYERS_GET, PLAYERS_POST, PLAYERS_PUT
-from api.v1.routers.utils.query_utils import compute_run_subcategory
+from api.v1.schemas.runs import compute_run_subcategory
 from api.v1.schemas.base import ErrorResponse, validate_embeds
 from api.v1.schemas.players import (
     ModeratedGameEmbedSchema,
@@ -34,15 +34,30 @@ def apply_player_embeds(
     ) -> dict:
         return {
             "id": run.id,
-            "game": run.game.name if run.game else None,
-            "category": compute_run_subcategory(run),
-            "level": run.level.name if run.level else None,
+            "game": {
+                "name": run.game.name,
+                "slug": run.game.slug,
+            } if run.game else None,
+            "category": {
+                "name": run.category.name,
+                "slug": run.category.slug,
+            } if run.category else None,
+            "subcategory": compute_run_subcategory(run),
+            "level": {
+                "name": run.level.name,
+                "slug": run.level.slug,
+            } if run.level else None,
             "place": run.place,
+            "points": run.points,
             "time": run.p_time,
             "date": run.v_date.isoformat() if run.v_date else None,
             "url": run.url,
             "video": run.video,
             "arch_video": run.arch_video,
+            "value_slugs": [
+                rvv.value.slug
+                for rvv in run.runvariablevalues_set.all()
+            ],
         }
 
     def _fetch_player_runs(
@@ -200,8 +215,7 @@ def get_player(
 
         player_data = PlayerSchema.model_validate(player)
 
-        # Always populate moderated_games (null if not a moderator)
-        mod_games = list(player.moderated_games.all())  # type: ignore[attr-defined]
+        mod_games = list(player.moderated_games.all())  # type: ignore
         player_data.moderated_games = (
             [
                 ModeratedGameEmbedSchema(id=g.id, name=g.name, slug=g.slug)
