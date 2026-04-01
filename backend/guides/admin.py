@@ -23,8 +23,4 @@ class GuidesAdmin(admin.ModelAdmin):
     fieldsets = (
         ("Basic Information", {"fields": ("title", "slug", "game", "tags")}),
         ("Content", {"fields": ("short_description", "content")}),
-        # ("User Information", {
-        #     "fields": ("submitted_user",),
-        #     "description": "User who submitted this guide"
-        # }),
     )

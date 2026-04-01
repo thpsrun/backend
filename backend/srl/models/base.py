@@ -9,7 +9,7 @@ def validate_image(
     file_width = image.file.image._size[0]
     file_height = image.file.image._size[1]
 
-    limit_mb = 3
+    limit_mb = 3  # award image upload cap
     if file_size > limit_mb * 1024 * 1024:
         raise ValidationError(f"Max size of file is {limit_mb} MB")
     elif file_width != file_height:

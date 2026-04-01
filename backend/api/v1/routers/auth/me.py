@@ -4,16 +4,6 @@ import os
 from textwrap import dedent
 
 import requests as http_requests
-from django.conf import settings
-from django.db import transaction
-from django.http import HttpRequest
-from ninja import File, Router, Status
-from ninja.files import UploadedFile
-from ninja.responses import codes_4xx
-from PIL import Image
-from srl.encryption import encrypt_src_key
-from srl.models import CountryCodes, Players, SRCCredential
-
 from api.permissions import player_session_auth
 from api.rate_limiting import auth_rate_limit
 from api.v1.schemas.auth import (
@@ -26,6 +16,15 @@ from api.v1.schemas.auth import (
     SRCKeyStatusResponse,
 )
 from api.v1.schemas.base import ErrorResponse
+from django.conf import settings
+from django.db import transaction
+from django.http import HttpRequest
+from ninja import File, Router, Status
+from ninja.files import UploadedFile
+from ninja.responses import codes_4xx
+from PIL import Image
+from srl.encryption import encrypt_src_key
+from srl.models import CountryCodes, Players, SRCCredential
 
 logger = logging.getLogger(__name__)
 
@@ -52,15 +51,12 @@ def list_countries(
 def _build_profile_response(
     player: Players,
 ) -> PlayerProfileResponse:
-    """Creates the profile response from the Players model to return to the user."""
-    # Note: For a single-player profile endpoint, these 2-3 queries are acceptable.
-    # If this were a list endpoint, we'd prefetch moderated_games and src_credential
-    # on the queryset instead.
     moderated = list(player.moderated_games.all())
 
     has_src_key = False
-    if player.user_id:
-        has_src_key = SRCCredential.objects.filter(user_id=player.user_id).exists()
+    if player.user:
+        if player.user.id:
+            has_src_key = SRCCredential.objects.filter(user_id=player.user.id).exists()
 
     return PlayerProfileResponse(
         player_id=player.id,
@@ -74,9 +70,10 @@ def _build_profile_response(
         bluesky=player.bluesky,
         discord=player.discord,
         pfp=player.pfp,
+        ex_stream=player.ex_stream,
         claim_status=player.claim_status,
         username=player.user.username if player.user else "",
-        is_moderator=len(moderated) > 0,
+        is_superuser=player.user.is_superuser if player.user else False,
         has_src_key=has_src_key,
         joined=player.joined,
         moderated_games=[
@@ -127,6 +124,7 @@ def update_me(
         "twitter",
         "bluesky",
         "discord",
+        "ex_stream",
     ):
         if field in body.model_fields_set:
             setattr(player, field, getattr(body, field))

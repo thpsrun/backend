@@ -27,8 +27,6 @@ def apply_player_embeds(
     player: Players,
     embed_fields: list[str],
 ) -> dict:
-    """Apply requested embeds to a player instance."""
-
     def _serialize_run(
         run: Runs,
     ) -> dict:
@@ -49,11 +47,12 @@ def apply_player_embeds(
             } if run.level else None,
             "place": run.place,
             "points": run.points,
-            "time": run.p_time,
+            "time": run.time if run.p_time == "0" else run.p_time,
             "date": run.v_date.isoformat() if run.v_date else None,
             "url": run.url,
             "video": run.video,
             "arch_video": run.arch_video,
+            "obsolete": run.obsolete,
             "value_slugs": [
                 rvv.value.slug
                 for rvv in run.runvariablevalues_set.all()

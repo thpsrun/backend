@@ -1,6 +1,6 @@
-import time
 from textwrap import dedent
 
+import requests as http_requests
 from django.contrib.auth import login
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
@@ -9,7 +9,8 @@ from django.db import IntegrityError, transaction
 from django.http import HttpRequest
 from ninja import Router, Status
 from ninja.responses import codes_4xx
-from srl.models import Players
+from srl.encryption import encrypt_src_key
+from srl.models import Players, RunPlayers, SRCCredential
 
 from api.rate_limiting import auth_rate_limit
 from api.v1.schemas.auth import RegisterRequest, RegisterResponse
@@ -20,12 +21,13 @@ router = Router()
 
 @router.post(
     "/register",
-    response={201: RegisterResponse, codes_4xx: ErrorResponse},
+    response={201: RegisterResponse, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Register Account",
     description=dedent(
         """
-    Requires a prior call to /auth/verify-src that stored the player ID in the session.
-    Creates a Django user, links it to the verified player, and logs the user in.
+    Verifies the caller's Speedrun.com identity via their SRC API key,
+    creates a Django user, links it to the matching player, and logs the user in.
+    If save_key is true, the API key is encrypted and stored for future use.
     """
     ),
     auth=None,
@@ -35,36 +37,49 @@ def register(
     request: HttpRequest,
     body: RegisterRequest,
 ) -> Status:
-    player_id: str | None = request.session.get("src_verified_player_id")
-
-    if not player_id:
+    try:
+        src_response = http_requests.get(
+            "https://www.speedrun.com/api/v1/profile",
+            headers={"X-API-Key": body.src_api_key},
+            timeout=10,
+        )
+    except http_requests.RequestException:
         return Status(
-            403,
+            400,
             ErrorResponse(
-                error="SRC verification required before registering",
+                error="Failed to contact Speedrun.com API",
                 details=None,
             ),
         )
 
-    verified_at: int = request.session.get("src_verified_at", 0)
-    if int(time.time()) - verified_at > 900:
-        request.session.pop("src_verified_player_id", None)
-        request.session.pop("src_verified_at", None)
+    if src_response.status_code != 200:
         return Status(
-            403,
+            400,
             ErrorResponse(
-                error="SRC verification expired, please verify again",
+                error="Invalid or expired SRC API key",
                 details=None,
             ),
         )
 
     try:
-        player = Players.objects.get(id=player_id)
+        src_data = src_response.json()
+        src_user_id: str = src_data["data"]["id"]
+    except (KeyError, ValueError) as e:
+        return Status(
+            400,
+            ErrorResponse(
+                error="Unexpected response from Speedrun.com API",
+                details={"exception": str(e)},
+            ),
+        )
+
+    try:
+        player = Players.objects.get(id=src_user_id)
     except Players.DoesNotExist:
         return Status(
             404,
             ErrorResponse(
-                error="Player not found",
+                error="No player found for this SRC account",
                 details=None,
             ),
         )
@@ -73,7 +88,21 @@ def register(
         return Status(
             409,
             ErrorResponse(
-                error="This player account has already been claimed",
+                error="An account already exists for this player",
+                details=None,
+            ),
+        )
+
+    has_verified_run = RunPlayers.objects.filter(
+        player=player,
+        run__vid_status="verified",
+    ).exists()
+
+    if not has_verified_run:
+        return Status(
+            403,
+            ErrorResponse(
+                error="You must have at least one verified run to register",
                 details=None,
             ),
         )
@@ -100,6 +129,13 @@ def register(
             player.claim_status = Players.ClaimStatus.CLAIMED
             player.sync_paused = True
             player.save(update_fields=["user", "claim_status", "sync_paused"])
+
+            if body.save_key:
+                encrypted = encrypt_src_key(body.src_api_key)
+                SRCCredential.objects.create(
+                    user=user,
+                    encrypted_api_key=encrypted,
+                )
     except IntegrityError:
         return Status(
             409,
@@ -110,8 +146,6 @@ def register(
         )
 
     login(request, user, backend="django.contrib.auth.backends.ModelBackend")
-    request.session.pop("src_verified_player_id", None)
-    request.session.pop("src_verified_at", None)
 
     return Status(
         201,

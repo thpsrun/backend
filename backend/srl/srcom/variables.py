@@ -39,6 +39,7 @@ def sync_variables(
             },
         )
 
+    # Only subcategory variables have selectable values to sync
     if src_variable.is_subcategory:
         sync_values.delay(src_variable.model_dump())
 

@@ -59,9 +59,6 @@ def list_guides(
         str | None, Query, Field(description="Comma-separated embeds (game,tags)")
     ] = None,
 ) -> Status:
-    # Checks to see what embeds are being used versus what is allowed
-    # via this endpoint. It will return an error to the client if they
-    # have an embed type not supported.
     embed_list = []
     if embed:
         embed_list = [e.strip() for e in embed.split(",")]
@@ -74,8 +71,6 @@ def list_guides(
 
     queryset = Guides.objects.all()
 
-    # If parameters are fulfilled by the client, this will further
-    # drill down what the client is looking for.
     if game:
         queryset = queryset.filter(
             Q(game__slug__iexact=game) | Q(game__id__iexact=game),
@@ -85,8 +80,6 @@ def list_guides(
             Q(tags__slug__iexact=tag) | Q(tags__id__iexact=tag),
         )
 
-    # If embeds are added, this will append further information
-    # based on what is being requested.
     if "game" in embed_list:
         queryset = queryset.select_related("game")
     if "tags" in embed_list:
@@ -134,9 +127,6 @@ def get_guide(
         str | None, Query, Field(description="Comma-separated embeds (game,tags)")
     ] = None,
 ) -> Status:
-    # Checks to see what embeds are being used versus what is allowed
-    # via this endpoint. It will return an error to the client if they
-    # have an embed type not supported.
     embed_list = []
     if embed:
         embed_list = [e.strip() for e in embed.split(",")]
@@ -147,9 +137,6 @@ def get_guide(
                 details=None,
             ))
 
-    # Will check to see if a query exists then related/prefetch the embeds
-    # provided for more information (if they are declared). It will then
-    # do a quick check to see if the Guide exists, if not it will throw a 404.
     queryset = Guides.objects.filter(slug__iexact=slug)
     if "game" in embed_list:
         queryset = queryset.select_related("game")
@@ -198,9 +185,6 @@ def create_guide(
             details={"games": {data.game_id}},
         ))
 
-    # Bulk checking all tags specified by the user versus what is currently
-    # within the `Tags` database. This endpoint does not auto-create them,
-    # so it will show an error if one fails.
     if data.tag_ids:
         existing_tags = Tags.objects.filter(
             Q(id__in=data.tag_ids) | Q(slug__in=data.tag_ids)
@@ -219,8 +203,6 @@ def create_guide(
                 details={"missing_tags": list(missing_tags)},
             ))
 
-    # Will attempt to create the guide based on the payload provided by the client.
-    # If an error occurs with creation at any point, it will fail and throw a 500.
     try:
         with transaction.atomic():
             guide = Guides.objects.create(
@@ -288,9 +270,6 @@ def update_guide(
                 details=None,
             ))
 
-    # Bulk checking all tags specified by the user versus what is currently
-    # within the `Tags` database. This endpoint does not auto-create them,
-    # so it will show an error if one fails.
     if data.tag_ids is not None:
         existing_tags = Tags.objects.filter(
             Q(id__in=data.tag_ids) | Q(slug__in=data.tag_ids)
@@ -309,9 +288,6 @@ def update_guide(
                 details={"missing_tags": list(missing_tags)},
             ))
 
-    # After all validations, it will begin to update the guide in the database
-    # to then return to the client. Major check here is to ensure that, if the slug
-    # is provided, it will ensure that the slug is unique.
     try:
         with transaction.atomic():
             if data.title is not None:

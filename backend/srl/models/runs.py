@@ -218,6 +218,7 @@ class Runs(models.Model):
         auto_now=True,
     )
 
+    # Maps timing method -> (display string field, seconds field)
     _TIMING_FIELD_MAP: dict[str, tuple[str, str]] = {
         "realtime": ("time", "time_secs"),
         "realtime_noloads": ("timenl", "timenl_secs"),
@@ -227,6 +228,7 @@ class Runs(models.Model):
     def _primary_timing_method(
         self,
     ) -> str:
+        # Category timing overrides game defaults; IL runs use idefaulttime
         if self.category and self.category.defaulttime:
             return self.category.defaulttime
         if self.runtype == "il":

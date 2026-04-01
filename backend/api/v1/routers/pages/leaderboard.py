@@ -51,7 +51,6 @@ router = Router()
 def get_overall_leaderboard(
     request: HttpRequest,
 ) -> Status:
-    """Get series-wide points leaderboard across all games."""
     try:
         data = check_cache_query(
             overall_leaderboard_cache_key(),
@@ -101,7 +100,6 @@ def get_game_leaderboard(
         Field(description="Optional: 'oldest-runs' for THPS4 oldest PBs embed"),
     ] = None,
 ) -> Status:
-    """Get per-game points leaderboard with optional oldest-runs embed for THPS4."""
     if len(game_id) > 15:
         return Status(400, ErrorResponse(
             error="ID must be 15 characters or less",

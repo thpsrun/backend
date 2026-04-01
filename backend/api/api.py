@@ -10,7 +10,8 @@ from ninja.errors import ValidationError
 
 from api.v1.routers.auth.me import router as me_router
 from api.v1.routers.auth.register import router as register_router
-from api.v1.routers.auth.verify_src import router as verify_src_router
+from api.v1.routers.auth.submissions import router as submissions_router
+from api.v1.routers.auth.sync_logs import router as sync_logs_router
 from api.v1.routers.guides.guides import router as guides_router
 from api.v1.routers.guides.tags import router as tags_router
 from api.v1.routers.pages.home import router as website_router
@@ -265,6 +266,7 @@ ninja_api.add_router("/website", leaderboard_page_router, tags=["Website"])
 ninja_api.add_router("/website", navbar_router, tags=["Website"])
 ninja_api.add_router("", history_router, tags=["Website"])
 
-ninja_api.add_router("/auth", verify_src_router, tags=["Auth"])
 ninja_api.add_router("/auth", register_router, tags=["Auth"])
 ninja_api.add_router("/auth", me_router, tags=["Auth"])
+ninja_api.add_router("/auth", submissions_router, tags=["Auth"])
+ninja_api.add_router("/auth", sync_logs_router, tags=["Auth Admin"])

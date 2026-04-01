@@ -147,9 +147,6 @@ def update_tag(
             details=None,
         ))
 
-    # After all validations, it will begin to update the tag in the database
-    # to then return to the client. Major check here is to ensure that, if the slug
-    # is provided, it will ensure that the slug is unique.
     try:
         with transaction.atomic():
             if data.name is not None:

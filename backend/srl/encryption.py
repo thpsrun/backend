@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from cryptography.fernet import Fernet, InvalidToken  # noqa: F401
+from cryptography.fernet import Fernet  # noqa: F401
 from django.conf import settings
 
 
@@ -17,10 +17,12 @@ def _get_fernet() -> Fernet:
     return Fernet(key.encode())
 
 
-def encrypt_src_key(plain_key: str,) -> str:
+def encrypt_src_key(
+    plain_key: str,
+) -> str:
     """Encrypts an SRC API key for database storage.
 
-    Args:
+    Arguments:
         plain_key: The raw SRC API key.
 
     Returns:
@@ -30,10 +32,12 @@ def encrypt_src_key(plain_key: str,) -> str:
     return f.encrypt(plain_key.encode()).decode()
 
 
-def decrypt_src_key(encrypted_key: str,) -> str:
+def decrypt_src_key(
+    encrypted_key: str,
+) -> str:
     """Decrypts a stored SRC API key for use in SRC API calls.
 
-    Args:
+    Arguments:
         encrypted_key: The Fernet-encrypted ciphertext.
 
     Returns:

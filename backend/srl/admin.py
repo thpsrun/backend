@@ -20,6 +20,7 @@ from srl.models import (
     RunPlayers,
     Runs,
     RunVariableValues,
+    SRCSyncTask,
     Variables,
     VariableValues,
 )
@@ -296,3 +297,13 @@ admin.site.register(Runs, SpeedrunAdmin)
 admin.site.register(Players, PlayersAdmin)
 admin.site.register(Platforms, DefaultAdmin)
 admin.site.register(NowStreaming)
+
+
+class SRCSyncTaskAdmin(admin.ModelAdmin):
+    list_display = ["id", "run", "action", "status", "moderator", "attempts", "created_at"]
+    list_filter = ["action", "status"]
+    search_fields = ["run__id"]
+    readonly_fields = ["created_at", "updated_at"]
+
+
+admin.site.register(SRCSyncTask, SRCSyncTaskAdmin)

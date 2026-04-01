@@ -2,7 +2,6 @@ from typing import Any
 
 from celery import shared_task
 from django.db import transaction
-
 from srl.models import (
     Categories,
     Games,
@@ -16,13 +15,8 @@ from srl.models import (
 from srl.srcom.categories import sync_categories
 from srl.srcom.levels import sync_levels
 from srl.srcom.players import sync_players
-from srl.srcom.variables import sync_variables
 from srl.srcom.schema.internal import RunSyncContext, RunSyncTimesContext
-from srl.srcom.schema.src import (
-    SrcGamesModel,
-    SrcLeaderboardModel,
-    SrcRunsModel,
-)
+from srl.srcom.schema.src import SrcGamesModel, SrcLeaderboardModel, SrcRunsModel
 from srl.srcom.utils import (
     build_leaderboard_combos,
     create_leaderboard_link,
@@ -32,6 +26,7 @@ from srl.srcom.utils import (
     update_obsolete,
     update_standings,
 )
+from srl.srcom.variables import sync_variables
 from srl.utils import points_formula
 
 
@@ -116,6 +111,8 @@ def sync_leaderboards(
     Arguments:
         leaderboard_data (dict): Object from the leaderboards API endpoint on SRC.
     """
+    # lrt_fix: SRC's API has a bug with "realtime_noloads" where, if it is the only timing method
+    # utilized by a run, it will instead show as "time" (RTA). Kinda dumb.
     lrt_fix_check = False
 
     src_lb = SrcLeaderboardModel.model_validate(leaderboard_data)
@@ -179,7 +176,7 @@ def sync_obsolete_runs(
     player: str,
 ) -> None:
     run_data: dict[str, Any] | None = src_api(
-        f"https://speedrun.com/api/v1/runs?user={player}&max=200&embed=players,game,level,category",
+        f"https://speedrun.com/api/v1/runs?user={player}&max=200",
         True,
     )
 
@@ -191,7 +188,7 @@ def sync_obsolete_runs(
             offset += 200
             run_data = src_api(
                 f"https://speedrun.com/api/v1/"
-                f"runs?user={player}&max=200&offset={offset}&embed=players,game,level,category",
+                f"runs?user={player}&max=200&offset={offset}",
                 True,
             )
 
@@ -230,6 +227,9 @@ def sync_obsolete_runs(
                         )
                         default["points"] = 0
                         default["obsolete"] = True
+
+                        if run.level:
+                            default["level_id"] = run.level
 
                         with transaction.atomic():
                             run_obj, _ = Runs.objects.update_or_create(

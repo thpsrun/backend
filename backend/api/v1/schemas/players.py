@@ -128,6 +128,7 @@ class PlayerRunSchema(BaseEmbedSchema):
     url: str
     video: str | None = None
     arch_video: str | None = None
+    obsolete: bool | None = None
 
 
 class PlayerSchema(PlayerBaseSchema):

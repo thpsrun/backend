@@ -23,6 +23,7 @@ class Categories(models.Model):
         ("per-game", "Full Game"),
     ]
 
+    # RTA = real-time, LRT = load-removed time, IGT = in-game timer
     leaderboard_choices = [
         ("realtime", "RTA"),
         ("realtime_noloads", "LRT"),

@@ -1,7 +1,6 @@
 from celery import shared_task
 from django.conf import settings
 from django.db import transaction
-
 from srl.models import Games
 from srl.srcom.schema.src import SrcGamesModel
 from srl.utils import src_api
@@ -22,6 +21,7 @@ def sync_game(
 
     src_game = SrcGamesModel.model_validate(src_data)
 
+    # Category Extensions games cap at a lower max (e.g. 50) vs standard FG/IL
     points_max = (
         settings.POINTS_MAX_FG
         if "category extensions" not in src_game.names.international.lower()
@@ -49,5 +49,5 @@ def sync_game(
             },
         )
 
-        for plat in game.platforms:
-            game.platforms.add(plat)
+        for plat in src_game.platforms:
+            game.platforms.add(plat.id)
