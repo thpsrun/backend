@@ -78,18 +78,20 @@ def category_embeds(
         if all_variables is not None:
             variables = _filter_scope(all_variables, category)
         else:
-            scope_exclude = (
-                Q(scope="single-level")
-                | Q(scope="all-levels" if category.type == "per-game" else "full-game")
+            scope_exclude = Q(scope="single-level") | Q(
+                scope="all-levels" if category.type == "per-game" else "full-game"
             )
             variables = list(
                 Variables.objects.filter(
                     game=category.game,
-                ).filter(
+                )
+                .filter(
                     Q(cat=category) | Q(cat__isnull=True),
-                ).exclude(
+                )
+                .exclude(
                     scope_exclude,
-                ).order_by("name")
+                )
+                .order_by("name")
             )
 
         variables_data = []
@@ -160,9 +162,7 @@ def category_embeds(
 )
 def get_all_categories(
     request: HttpRequest,
-    game: Annotated[
-        str | None, Query, Field(description="Filter by game ID or slug")
-    ] = None,
+    game: Annotated[str, Query, Field(description="Filter by game ID or slug")],
     type: Annotated[
         CategoryTypeType | None, Query, Field(description="Filter by type")
     ] = None,
@@ -188,21 +188,22 @@ def get_all_categories(
         embed_fields = [field.strip() for field in embed.split(",") if field.strip()]
         invalid_embeds = validate_embeds("categories", embed_fields)
         if invalid_embeds:
-            return Status(400, ErrorResponse(
-                error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
-                details=None,
-            ))
+            return Status(
+                400,
+                ErrorResponse(
+                    error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
+                    details=None,
+                ),
+            )
 
     try:
-        if game:
-            queryset = Categories.objects.filter(
+        queryset = (
+            Categories.objects.filter(
                 Q(game__id__iexact=game) | Q(game__slug__iexact=game)
-            ).select_related("game").order_by("name")
-        else:
-            return Status(400, ErrorResponse(
-                error="Please provide the game's unique ID or slug.",
-                details=None,
-            ))
+            )
+            .select_related("game")
+            .order_by("name")
+        )
 
         if type:
             queryset = queryset.filter(type=type)
@@ -231,7 +232,10 @@ def get_all_categories(
 
             if embed_fields:
                 embed_data = category_embeds(
-                    category, embed_fields, all_variables, values_by_var,
+                    category,
+                    embed_fields,
+                    all_variables,
+                    values_by_var,
                 )
                 for field, data in embed_data.items():
                     setattr(category_data, field, data)
@@ -240,10 +244,13 @@ def get_all_categories(
 
         return Status(200, category_schemas)
     except Exception as e:
-        return Status(500, ErrorResponse(
-            error="Category Retrieval Failed",
-            details={"exception": str(e)},
-        ))
+        return Status(
+            500,
+            ErrorResponse(
+                error="Category Retrieval Failed",
+                details={"exception": str(e)},
+            ),
+        )
 
 
 @router.get(
@@ -279,10 +286,13 @@ def get_category(
     ] = None,
 ) -> Status:
     if len(id) > 15:
-        return Status(400, ErrorResponse(
-            error="ID must be 15 characters or less",
-            details=None,
-        ))
+        return Status(
+            400,
+            ErrorResponse(
+                error="ID must be 15 characters or less",
+                details=None,
+            ),
+        )
 
     # Checks to see what embeds are being used versus what is allowed
     # via this endpoint. It will return an error to the client if they
@@ -292,18 +302,30 @@ def get_category(
         embed_fields = [field.strip() for field in embed.split(",") if field.strip()]
         invalid_embeds = validate_embeds("categories", embed_fields)
         if invalid_embeds:
-            return Status(400, ErrorResponse(
-                error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
-                details={"valid_embeds": ["game", "variables", "values"]},
-            ))
+            return Status(
+                400,
+                ErrorResponse(
+                    error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
+                    details={"valid_embeds": ["game", "variables", "values"]},
+                ),
+            )
 
     try:
-        category = Categories.objects.filter(id__iexact=id).first()
+        category = (
+            Categories.objects.select_related("game")
+            .filter(
+                id__iexact=id,
+            )
+            .first()
+        )
         if not category:
-            return Status(404, ErrorResponse(
-                error="Category ID Doesn't Exist",
-                details=None,
-            ))
+            return Status(
+                404,
+                ErrorResponse(
+                    error="Category ID Doesn't Exist",
+                    details=None,
+                ),
+            )
 
         category_data = CategorySchema.model_validate(category)
 
@@ -314,15 +336,18 @@ def get_category(
 
         return Status(200, category_data)
     except Exception as e:
-        return Status(500, ErrorResponse(
-            error="Category Retrieval Failure",
-            details={"exception": str(e)},
-        ))
+        return Status(
+            500,
+            ErrorResponse(
+                error="Category Retrieval Failure",
+                details={"exception": str(e)},
+            ),
+        )
 
 
 @router.post(
     "/",
-    response={200: CategorySchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={201: CategorySchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Create Category",
     description=dedent(
         """Creates a brand new category.
@@ -353,32 +378,41 @@ def create_category(
     try:
         game = Games.objects.filter(id=category_data.game_id).first()
         if not game:
-            return Status(404, ErrorResponse(
-                error="Game Doesn't Exist",
-                details=None,
-            ))
+            return Status(
+                404,
+                ErrorResponse(
+                    error="Game Doesn't Exist",
+                    details=None,
+                ),
+            )
 
         try:
             category_id = get_or_generate_id(
                 category_data.id,
                 lambda id: Categories.objects.filter(id=id).exists(),
             )
-        except ValueError as e:
-            return Status(400, ErrorResponse(
-                error="ID Already Exists",
-                details={"exception": str(e)},
-            ))
+        except ValueError:
+            return Status(
+                400,
+                ErrorResponse(
+                    error="ID Already Exists",
+                    details=None,
+                ),
+            )
 
         create_data = category_data.model_dump(exclude={"game_id"})
         create_data["id"] = category_id
         category = Categories.objects.create(game=game, **create_data)
 
-        return Status(200, CategorySchema.model_validate(category))
+        return Status(201, CategorySchema.model_validate(category))
     except Exception as e:
-        return Status(500, ErrorResponse(
-            error="Failed to create category",
-            details={"exception": str(e)},
-        ))
+        return Status(
+            500,
+            ErrorResponse(
+                error="Failed to create category",
+                details={"exception": str(e)},
+            ),
+        )
 
 
 @router.put(
@@ -415,21 +449,33 @@ def update_category(
     category_data: CategoryUpdateSchema,
 ) -> Status:
     try:
-        category = Categories.objects.filter(id__iexact=id).first()
+        category = (
+            Categories.objects.select_related("game")
+            .filter(
+                id__iexact=id,
+            )
+            .first()
+        )
         if not category:
-            return Status(404, ErrorResponse(
-                error="Category does not exist",
-                details=None,
-            ))
+            return Status(
+                404,
+                ErrorResponse(
+                    error="Category does not exist",
+                    details=None,
+                ),
+            )
 
         update_data = category_data.model_dump(exclude_unset=True)
         if "game_id" in update_data:
             game = Games.objects.filter(id=update_data["game_id"]).first()
             if not game:
-                return Status(400, ErrorResponse(
-                    error="Game does not exist",
-                    details=None,
-                ))
+                return Status(
+                    400,
+                    ErrorResponse(
+                        error="Game does not exist",
+                        details=None,
+                    ),
+                )
             category.game = game
             del update_data["game_id"]
 
@@ -439,10 +485,13 @@ def update_category(
         category.save()
         return Status(200, CategorySchema.model_validate(category))
     except Exception as e:
-        return Status(500, ErrorResponse(
-            error="Failed to update category",
-            details={"exception": str(e)},
-        ))
+        return Status(
+            500,
+            ErrorResponse(
+                error="Failed to update category",
+                details={"exception": str(e)},
+            ),
+        )
 
 
 @router.delete(
@@ -466,18 +515,30 @@ def delete_category(
     id: str,
 ) -> Status:
     try:
-        category = Categories.objects.filter(id__iexact=id).first()
+        category = (
+            Categories.objects.select_related("game")
+            .filter(
+                id__iexact=id,
+            )
+            .first()
+        )
         if not category:
-            return Status(404, ErrorResponse(
-                error="Category does not exist",
-                details=None,
-            ))
+            return Status(
+                404,
+                ErrorResponse(
+                    error="Category does not exist",
+                    details=None,
+                ),
+            )
 
         name = category.name
         category.delete()
         return Status(200, {"message": f"Category '{name}' deleted successfully"})
     except Exception as e:
-        return Status(500, ErrorResponse(
-            error="Failed to delete category",
-            details={"exception": str(e)},
-        ))
+        return Status(
+            500,
+            ErrorResponse(
+                error="Failed to delete category",
+                details={"exception": str(e)},
+            ),
+        )

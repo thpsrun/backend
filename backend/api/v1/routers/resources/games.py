@@ -17,7 +17,7 @@ from api.v1.utils import get_or_generate_id
 router = Router()
 
 
-def _variable_values_prefetch() -> Prefetch:
+def _value_prefetch() -> Prefetch:
     return Prefetch(
         "variablevalues_set",
         queryset=VariableValues.objects.annotate(
@@ -35,7 +35,7 @@ def _game_variables_prefetch() -> Prefetch:
     return Prefetch(
         "variables_set",
         queryset=Variables.objects.prefetch_related(
-            _variable_values_prefetch(),
+            _value_prefetch(),
         ),
     )
 
@@ -61,8 +61,7 @@ def game_embeds(
                         default=F("order"),
                         output_field=IntegerField(),
                     )
-                )
-                .order_by("sort_key", "name"),
+                ).order_by("sort_key", "name"),
             ),
         )
         needs_variables = True
@@ -77,8 +76,7 @@ def game_embeds(
                         default=F("order"),
                         output_field=IntegerField(),
                     )
-                )
-                .order_by("sort_key", "name"),
+                ).order_by("sort_key", "name"),
             ),
         )
         needs_variables = True
@@ -92,13 +90,13 @@ def game_embeds(
     return queryset
 
 
-_SCOPE_TO_CAT_TYPE: dict[str, str] = {
+_SCOPE: dict[str, str] = {
     "full-game": "per-game",
     "all-levels": "per-level",
 }
 
 
-def _build_variables_for_entity(
+def _build_cat_embed(
     game: Games,
     entity_id: str | None = None,
     entity_type: str = "cat",
@@ -119,7 +117,7 @@ def _build_variables_for_entity(
 
         # Filter by scope when building for categories
         if entity_type == "cat" and entity_cat_type:
-            allowed_cat_type = _SCOPE_TO_CAT_TYPE.get(var.scope)
+            allowed_cat_type = _SCOPE.get(var.scope)
             if allowed_cat_type and allowed_cat_type != entity_cat_type:
                 continue
             # single-level scoped vars don't belong on categories
@@ -161,12 +159,16 @@ def _build_categories_embed(
                 "name": cat.name,
                 "slug": cat.slug,
                 "type": cat.type,
+                "players": cat.players,
                 "url": cat.url,
                 "rules": cat.rules,
                 "appear_on_main": cat.appear_on_main,
                 "archive": cat.archive,
-                "variables": _build_variables_for_entity(
-                    game, cat.id, "cat", cat.type,
+                "variables": _build_cat_embed(
+                    game,
+                    cat.id,
+                    "cat",
+                    cat.type,
                 ),
             }
         )
@@ -185,7 +187,7 @@ def _build_levels_embed(
                 "slug": level.slug,
                 "url": level.url,
                 "rules": level.rules,
-                "variables": _build_variables_for_entity(game, level.id, "level"),
+                "variables": _build_cat_embed(game, level.id, "level"),
             }
         )
     return result
@@ -255,10 +257,13 @@ def get_all_games(
         embed_fields = [field.strip() for field in embed.split(",") if field.strip()]
         invalid_embeds = validate_embeds("games", embed_fields)
         if invalid_embeds:
-            return Status(400, ErrorResponse(
-                error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
-                details={"valid_embeds": ["categories", "levels", "platforms"]},
-            ))
+            return Status(
+                400,
+                ErrorResponse(
+                    error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
+                    details={"valid_embeds": ["categories", "levels", "platforms"]},
+                ),
+            )
 
     try:
         queryset = Games.objects.all().order_by("release")
@@ -280,10 +285,13 @@ def get_all_games(
 
         return Status(200, game_schemas)
     except Exception as e:
-        return Status(500, ErrorResponse(
-            error="Failed to retrieve games",
-            details={"exception": str(e)},
-        ))
+        return Status(
+            500,
+            ErrorResponse(
+                error="Failed to retrieve games",
+                details={"exception": str(e)},
+            ),
+        )
 
 
 @router.get(
@@ -315,10 +323,13 @@ def get_game(
     ] = None,
 ) -> Status:
     if len(id) > 15:
-        return Status(400, ErrorResponse(
-            error="ID must be 15 characters or less",
-            details=None,
-        ))
+        return Status(
+            400,
+            ErrorResponse(
+                error="ID must be 15 characters or less",
+                details=None,
+            ),
+        )
 
     # Checks to see what embeds are being used versus what is allowed
     # via this endpoint. It will return an error to the client if they
@@ -328,10 +339,13 @@ def get_game(
         embed_fields = [field.strip() for field in embed.split(",") if field.strip()]
         invalid_embeds = validate_embeds("games", embed_fields)
         if invalid_embeds:
-            return Status(400, ErrorResponse(
-                error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
-                details={"valid_embeds": ["categories", "levels", "platforms"]},
-            ))
+            return Status(
+                400,
+                ErrorResponse(
+                    error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
+                    details={"valid_embeds": ["categories", "levels", "platforms"]},
+                ),
+            )
 
     try:
         queryset = Games.objects.all()
@@ -339,10 +353,13 @@ def get_game(
 
         game = queryset.filter(Q(id__iexact=id) | Q(slug__iexact=id)).first()
         if not game:
-            return Status(404, ErrorResponse(
-                error="Game does not exist",
-                details=None,
-            ))
+            return Status(
+                404,
+                ErrorResponse(
+                    error="Game does not exist",
+                    details=None,
+                ),
+            )
 
         game_data = GameSchema.model_validate(game)
         if "categories" in embed_fields:
@@ -353,15 +370,18 @@ def get_game(
             game_data.platforms = _build_platforms_embed(game)
         return Status(200, game_data)
     except Exception as e:
-        return Status(500, ErrorResponse(
-            error="Failed to retrieve game",
-            details={"exception": str(e)},
-        ))
+        return Status(
+            500,
+            ErrorResponse(
+                error="Failed to retrieve game",
+                details={"exception": str(e)},
+            ),
+        )
 
 
 @router.post(
     "/",
-    response={200: GameSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={201: GameSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Create Game",
     description=dedent(
         """Creates a brand new game.
@@ -393,12 +413,15 @@ def create_game(
             Q(name__iexact=game_data.name) | Q(slug__iexact=game_data.slug)
         ).first()
         if game_check:
-            return Status(400, ErrorResponse(
-                error="Game Already Exists",
-                details={
-                    "exception": "Either the name of the game or its slug already exists."
-                },
-            ))
+            return Status(
+                400,
+                ErrorResponse(
+                    error="Game Already Exists",
+                    details={
+                        "exception": "Either the name of the game or its slug already exists."
+                    },
+                ),
+            )
 
         try:
             game_id = get_or_generate_id(
@@ -406,21 +429,27 @@ def create_game(
                 lambda id: Games.objects.filter(id=id).exists(),
             )
         except ValueError as e:
-            return Status(400, ErrorResponse(
-                error="ID Already Exists",
-                details={"exception": str(e)},
-            ))
+            return Status(
+                400,
+                ErrorResponse(
+                    error="ID Already Exists",
+                    details={"exception": str(e)},
+                ),
+            )
 
         create_data = game_data.model_dump()
         create_data["id"] = game_id
         game = Games.objects.create(**create_data)
 
-        return Status(200, GameSchema.model_validate(game))
+        return Status(201, GameSchema.model_validate(game))
     except Exception as e:
-        return Status(500, ErrorResponse(
-            error="Game Creation Failed",
-            details={"exception": str(e)},
-        ))
+        return Status(
+            500,
+            ErrorResponse(
+                error="Game Creation Failed",
+                details={"exception": str(e)},
+            ),
+        )
 
 
 @router.put(
@@ -455,10 +484,13 @@ def update_game(
     try:
         game = Games.objects.filter(Q(id__iexact=id) | Q(slug__iexact=id)).first()
         if not game:
-            return Status(404, ErrorResponse(
-                error="Game does not exist",
-                details=None,
-            ))
+            return Status(
+                404,
+                ErrorResponse(
+                    error="Game does not exist",
+                    details=None,
+                ),
+            )
 
         for attr, value in game_data.model_dump(exclude_unset=True).items():
             setattr(game, attr, value)
@@ -466,10 +498,13 @@ def update_game(
         game.save()
         return Status(200, GameSchema.model_validate(game))
     except Exception as e:
-        return Status(500, ErrorResponse(
-            error="Failed to update game",
-            details={"exception": str(e)},
-        ))
+        return Status(
+            500,
+            ErrorResponse(
+                error="Failed to update game",
+                details={"exception": str(e)},
+            ),
+        )
 
 
 @router.delete(
@@ -495,16 +530,22 @@ def delete_game(
     try:
         game = Games.objects.filter(Q(id__iexact=id) | Q(slug__iexact=id)).first()
         if not game:
-            return Status(404, ErrorResponse(
-                error="Game does not exist",
-                details=None,
-            ))
+            return Status(
+                404,
+                ErrorResponse(
+                    error="Game does not exist",
+                    details=None,
+                ),
+            )
 
         name = game.name
         game.delete()
         return Status(200, {"message": f"Game '{name}' deleted successfully"})
     except Exception as e:
-        return Status(500, ErrorResponse(
-            error="Failed to delete game",
-            details={"exception": str(e)},
-        ))
+        return Status(
+            500,
+            ErrorResponse(
+                error="Failed to delete game",
+                details={"exception": str(e)},
+            ),
+        )

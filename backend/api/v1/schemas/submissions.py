@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any, Literal
 
 from ninja import Schema
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from api.v1.schemas.runs import PlayerRunEmbedSchema
 
@@ -121,6 +121,130 @@ class ChangePlayersResponse(Schema):
     message: str
 
 
+class SubmitPlayerEntry(Schema):
+    """A player entry for run submission to SRC.
+
+    For rel=user, provide the SRC user/player ID.
+    For rel=guest, provide a display name.
+    """
+
+    rel: Literal["user", "guest"]
+    id: str | None = Field(
+        default=None,
+        description="SRC player ID. Required when rel=user.",
+    )
+    name: str | None = Field(
+        default=None,
+        description="Guest display name. Required when rel=guest.",
+    )
+
+    @model_validator(mode="after")
+    def validate_rel_fields(self) -> "SubmitPlayerEntry":
+        if self.rel == "user" and not self.id:
+            raise ValueError("id is required when rel=user")
+        if self.rel == "guest" and not self.name:
+            raise ValueError("name is required when rel=guest")
+        return self
+
+
+class RunSubmitSchema(Schema):
+    """Request body for POST /auth/submissions/submit."""
+
+    game_id: str = Field(
+        ...,
+        description="Game ID (must exist locally).",
+    )
+    category_id: str = Field(
+        ...,
+        description="Category ID (must exist for the game).",
+    )
+    level_id: str | None = Field(
+        default=None,
+        description="Level ID for IL runs (must exist for the game).",
+    )
+    players: list[SubmitPlayerEntry] = Field(
+        ...,
+        min_length=1,
+        description="At least one player. Supports user and guest entries.",
+    )
+    time: str | None = Field(
+        default=None,
+        description="Human-readable RTA time (e.g. '1h 23m 45s 678ms').",
+    )
+    timenl: str | None = Field(
+        default=None,
+        description="Human-readable load-removed time.",
+    )
+    timeigt: str | None = Field(
+        default=None,
+        description="Human-readable in-game time.",
+    )
+    video: str = Field(
+        ...,
+        description="Video proof URL (required). Must be a YouTube URL.",
+    )
+
+    @field_validator("video")
+    @classmethod
+    def validate_video_url(cls, v: str) -> str:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(v)
+        allowed_hosts = {
+            "www.youtube.com",
+            "youtube.com",
+            "youtu.be",
+            "m.youtube.com",
+        }
+        if (
+            parsed.scheme not in ("http", "https")
+            or parsed.netloc not in allowed_hosts
+        ):
+            raise ValueError(
+                "Video must be a YouTube URL"
+            )
+        return v
+    comment: str | None = Field(
+        default=None,
+        max_length=2000,
+        description="Optional run comment.",
+    )
+    date: str | None = Field(
+        default=None,
+        description="Date the run was performed (YYYY-MM-DD). SRC defaults to today.",
+    )
+    variable_values: dict[str, str] | None = Field(
+        default=None,
+        description="Variable/value ID mapping: {variable_id: value_id}.",
+    )
+
+    @model_validator(mode="after")
+    def validate_at_least_one_time(self) -> "RunSubmitSchema":
+        if not any([self.time, self.timenl, self.timeigt]):
+            raise ValueError(
+                "At least one timing value is required (time, timenl, or timeigt)."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_player_fields(self) -> "RunSubmitSchema":
+        for i, p in enumerate(self.players):
+            if p.rel == "user" and not p.id:
+                raise ValueError(f"Player {i}: 'id' is required when rel='user'.")
+            if p.rel == "guest" and not p.name:
+                raise ValueError(f"Player {i}: 'name' is required when rel='guest'.")
+        return self
+
+
+class RunSubmitResponse(Schema):
+    """Response after successful run submission to SRC."""
+
+    run_id: str
+    src_url: str
+    vid_status: str
+    message: str
+
+
 # --- Superuser sync log schemas ---
 
 
@@ -156,3 +280,8 @@ class SyncLogResponse(Schema):
 
     count: int
     results: list[SyncLogEntry]
+
+
+class SyncRetryResponse(Schema):
+    task_id: int
+    message: str

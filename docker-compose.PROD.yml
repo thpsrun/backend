@@ -58,11 +58,29 @@ services:
     networks:
       - thpsrun
 
+  celery-beat:
+    container_name: celery-beat
+    restart: unless-stopped
+    build: .
+    command: celery -A website beat --loglevel=info
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+      - redis
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - thpsrun
+
   redis:
     container_name: redis
     image: redis:alpine
     restart: unless-stopped
-    command: redis-server --requirepass ${REDIS_PASSWORD}
+    command: redis-server --requirepass ${REDIS_PASSWORD} --maxmemory 256mb --maxmemory-policy allkeys-lru
     security_opt:
       - no-new-privileges:true
     networks:

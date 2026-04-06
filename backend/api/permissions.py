@@ -127,6 +127,22 @@ class PlayerSessionAuth(SessionAuth):
         return player
 
 
+class SuperuserSessionAuth(PlayerSessionAuth):
+    def authenticate(
+        self,
+        request: HttpRequest,
+        token: str,
+    ) -> Players | None:
+        player = super().authenticate(request, token)
+        if player is None:
+            return None
+        if not hasattr(player, "user") or player.user is None:
+            return None
+        if not player.user.is_superuser:
+            return None
+        return player
+
+
 public_auth: PublicOrRoleAuth = PublicOrRoleAuth("read_only")
 read_only_auth: RoleBasedAPIKeyAuth = RoleBasedAPIKeyAuth("read_only")
 contributor_auth: RoleBasedAPIKeyAuth = RoleBasedAPIKeyAuth("contributor")
@@ -136,3 +152,4 @@ admin_auth: RoleBasedAPIKeyAuth = RoleBasedAPIKeyAuth("admin")
 api_key_required: RoleBasedAPIKeyAuth = read_only_auth
 
 player_session_auth: PlayerSessionAuth = PlayerSessionAuth()
+superuser_session_auth: SuperuserSessionAuth = SuperuserSessionAuth()

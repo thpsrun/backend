@@ -220,7 +220,7 @@ def get_all_levels(
     except Exception as e:
         return Status(500, ErrorResponse(
             error="Level Retrieval Failure",
-            details={"exception": str(e)},
+            details=None,
         ))
 
 
@@ -276,7 +276,9 @@ def get_level(
             ))
 
     try:
-        level = Levels.objects.filter(id__iexact=id).first()
+        level = Levels.objects.select_related("game").filter(
+            id__iexact=id,
+        ).first()
         if not level:
             return Status(404, ErrorResponse(
                 error="Level ID does not exist",
@@ -295,13 +297,13 @@ def get_level(
     except Exception as e:
         return Status(500, ErrorResponse(
             error="Failed to retrieve level",
-            details={"exception": str(e)},
+            details=None,
         ))
 
 
 @router.post(
     "/",
-    response={200: LevelSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={201: LevelSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Create Level",
     description=dedent(
         """Creates a brand new level.
@@ -345,19 +347,19 @@ def create_level(
         except ValueError as e:
             return Status(400, ErrorResponse(
                 error="ID Already Exists",
-                details={"exception": str(e)},
+                details=None,
             ))
 
         create_data = level_data.model_dump(exclude={"game_id"})
         create_data["id"] = level_id
         level = Levels.objects.create(game=game, **create_data)
 
-        return Status(200, LevelSchema.model_validate(level))
+        return Status(201, LevelSchema.model_validate(level))
 
     except Exception as e:
         return Status(500, ErrorResponse(
             error="Failed to create level",
-            details={"exception": str(e)},
+            details=None,
         ))
 
 
@@ -394,7 +396,9 @@ def update_level(
     level_data: LevelUpdateSchema,
 ) -> Status:
     try:
-        level = Levels.objects.filter(id__iexact=id).first()
+        level = Levels.objects.select_related("game").filter(
+            id__iexact=id,
+        ).first()
         if not level:
             return Status(404, ErrorResponse(
                 error="Level does not exist",
@@ -421,7 +425,7 @@ def update_level(
     except Exception as e:
         return Status(500, ErrorResponse(
             error="Failed to update level",
-            details={"exception": str(e)},
+            details=None,
         ))
 
 
@@ -446,7 +450,9 @@ def delete_level(
     id: str,
 ) -> Status:
     try:
-        level = Levels.objects.filter(id__iexact=id).first()
+        level = Levels.objects.select_related("game").filter(
+            id__iexact=id,
+        ).first()
         if not level:
             return Status(404, ErrorResponse(
                 error="Level does not exist",
@@ -459,5 +465,5 @@ def delete_level(
     except Exception as e:
         return Status(500, ErrorResponse(
             error="Failed to delete level",
-            details={"exception": str(e)},
+            details=None,
         ))

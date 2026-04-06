@@ -16,6 +16,7 @@ from api.v1.schemas.players import (
     ModeratedGameEmbedSchema,
     PlayerCreateSchema,
     PlayerSchema,
+    PlayerSearchResultSchema,
     PlayerUpdateSchema,
 )
 from api.v1.utils import get_or_generate_id
@@ -128,6 +129,53 @@ def apply_player_embeds(
 
 
 @router.get(
+    "/search",
+    response={200: list[PlayerSearchResultSchema], codes_4xx: ErrorResponse},
+    summary="Search Players",
+    description=dedent(
+        """Search for players by name or nickname. Returns lightweight results
+    suitable for autocomplete/typeahead.
+
+    **Supported Parameters:**
+    - `q` (str): Search query (min 2 characters). Matches against name and nickname.
+    - `limit` (int): Max results to return (default 10, max 25).
+
+    **Examples:**
+    - `/players/search?q=hawk` - Search for players matching "hawk".
+    - `/players/search?q=spe&limit=5` - Search with a custom limit.
+    """
+    ),
+    auth=public_auth,
+)
+def search_players(
+    request: HttpRequest,
+    q: Annotated[
+        str, Query, Field(min_length=2, max_length=30, description="Search query"),
+    ],
+    limit: Annotated[
+        int, Query, Field(default=10, ge=1, le=25, description="Max results"),
+    ] = 10,
+) -> Status:
+    players = (
+        Players.objects.filter(Q(name__icontains=q) | Q(nickname__icontains=q))
+        .select_related("countrycode")
+        .order_by("name")[:limit]
+    )
+    return Status(
+        200,
+        [
+            PlayerSearchResultSchema(
+                id=p.id,
+                name=p.name,
+                nickname=p.nickname,
+                country_id=p.countrycode,
+            )
+            for p in players
+        ],
+    )
+
+
+@router.get(
     "/{id}",
     response={200: PlayerSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Get Player by ID",
@@ -200,6 +248,7 @@ def get_player(
             Players.objects.filter(
                 Q(id__iexact=id) | Q(name__iexact=id) | Q(nickname__iexact=id)
             )
+            .select_related("countrycode")
             .prefetch_related("moderated_games")
             .first()
         )
@@ -243,7 +292,7 @@ def get_player(
 
 @router.post(
     "/",
-    response={200: PlayerSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={201: PlayerSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Create Player",
     description=dedent(
         """Creates a brand new player.
@@ -302,7 +351,7 @@ def create_player(
         create_data["id"] = player_id
         player = Players.objects.create(countrycode=country, **create_data)
 
-        return Status(200, PlayerSchema.model_validate(player))
+        return Status(201, PlayerSchema.model_validate(player))
 
     except Exception as e:
         return Status(

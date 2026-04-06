@@ -225,7 +225,7 @@ def create_guide(
     except Exception as e:
         return Status(500, ErrorResponse(
             error="Guide Creation Failed",
-            details={"exception": {str(e)}},
+            details={"exception": str(e)},
         ))
 
 
@@ -322,7 +322,7 @@ def update_guide(
     except Exception as e:
         return Status(500, ErrorResponse(
             error="Guide Update Failed",
-            details={"exception": {str(e)}},
+            details={"exception": str(e)},
         ))
 
 
@@ -360,5 +360,5 @@ def delete_guide(
     except Exception as e:
         return Status(500, ErrorResponse(
             error="Guide Delete Failed",
-            details={"exception": {str(e)}},
+            details={"exception": str(e)},
         ))

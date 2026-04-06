@@ -110,7 +110,7 @@ def create_tag(
     except Exception as e:
         return Status(500, ErrorResponse(
             error="Tag Creation Failed",
-            details={"exception": {str(e)}},
+            details={"exception": str(e)},
         ))
 
 
@@ -173,8 +173,8 @@ def update_tag(
 
     except Exception as e:
         return Status(500, ErrorResponse(
-            error=f"Failed to update tag: {str(e)}",
-            details=None,
+            error="Failed to update tag",
+            details={"exception": str(e)},
         ))
 
 
@@ -211,6 +211,6 @@ def delete_tag(
         return Status(200, {"message": f"Tag '{name}' deleted successfully"})
     except Exception as e:
         return Status(500, ErrorResponse(
-            error=f"Failed to delete tag: {str(e)}",
-            details=None,
+            error="Failed to delete tag",
+            details={"exception": str(e)},
         ))

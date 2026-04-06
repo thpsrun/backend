@@ -39,7 +39,7 @@ class Command(BaseCommand):
         runs_queryset = Runs.objects.prefetch_related("run_players__player").all()
         total_runs = runs_queryset.count()
 
-        for run in runs_queryset:
+        for run in runs_queryset.iterator(chunk_size=1000):
             run_players_count = run.run_players.count()  # type: ignore
 
             if run_players_count > 0:

@@ -119,7 +119,7 @@ def get_platform(
 
 @router.post(
     "/",
-    response={200: PlatformSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={201: PlatformSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Create Platform",
     description=dedent(
         """Creates a brand new platform.
@@ -154,7 +154,7 @@ def create_platform(
         create_data = platform_data.model_dump()
         create_data["id"] = platform_id
         platform = Platforms.objects.create(**create_data)
-        return Status(200, PlatformSchema.model_validate(platform))
+        return Status(201, PlatformSchema.model_validate(platform))
 
     except Exception as e:
         return Status(500, ErrorResponse(

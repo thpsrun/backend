@@ -38,13 +38,19 @@ def sync_players(
         return  # Player has claimed their account; skip SRC sync
 
     if src_player.pfp is not None and download_pfp:
-        response = requests.get(src_player.pfp)
+        response = requests.get(src_player.pfp, timeout=30)
 
+        retries = 0
         while response.status_code == 420 or response.status_code == 503:
+            retries += 1
+            if retries >= 30:
+                raise ValueError(
+                    f"SRC API rate limit exceeded after 30 retries (pfp: {src_player.id})"
+                )
             time.sleep(60)
-            response = requests.get(src_player.pfp)
+            response = requests.get(src_player.pfp, timeout=30)
 
-        folder_path = os.path.join(settings.STATIC_ROOT, "pfp")
+        folder_path = os.path.join(settings.MEDIA_ROOT, "pfp")
         os.makedirs(folder_path, exist_ok=True)
 
         file_name = f"{src_player.id}.jpg"
@@ -75,16 +81,20 @@ def sync_players(
     except CountryCodes.DoesNotExist:
         cc_get = None
 
+    defaults = {
+        "name": src_player.names.international,
+        "url": src_player.weblink,
+        "countrycode": cc_get,
+        "pronouns": src_player.pronouns,
+        "twitch": src_player.twitch_url,
+        "youtube": src_player.youtube_url,
+    }
+
+    if download_pfp:
+        defaults["pfp"] = f"{settings.MEDIA_URL}pfp/{src_player.id}.jpg"
+
     with transaction.atomic():
         Players.objects.update_or_create(
             id=src_player.id,
-            defaults={
-                "name": src_player.names.international,
-                "url": src_player.weblink,
-                "countrycode": cc_get,
-                "pfp": f"{settings.STATIC_URL}pfp/{src_player.id}.jpg" if download_pfp else None,
-                "pronouns": src_player.pronouns,
-                "twitch": src_player.twitch_url,
-                "youtube": src_player.youtube_url,
-            },
+            defaults=defaults,
         )

@@ -94,7 +94,6 @@ class PlayerProfileResponse(Schema):
     pfp: str | None
     claim_status: str
     username: str
-    is_moderator: bool = False
     is_superuser: bool = False
     ex_stream: bool = False
     has_src_key: bool = False
@@ -107,7 +106,7 @@ class PfpUploadResponse(Schema):
 
 
 class PlayerUpdateRequest(Schema):
-    name: str | None = Field(None, max_length=30)
+    name: str | None = Field(None, min_length=1, max_length=30)
     nickname: str | None = Field(None, max_length=30)
     pronouns: str | None = Field(None, max_length=50)
     countrycode: str | None = None

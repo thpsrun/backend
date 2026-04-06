@@ -1,4 +1,5 @@
 from __future__ import annotations
+import re
 
 from django.contrib import admin
 from django.contrib.admin.models import LogEntry
@@ -171,8 +172,6 @@ class APIActivityLogEntryAdmin(admin.ModelAdmin):
             message = message.replace("via API", "<strong>via API</strong>")
 
         if "Key:" in message:
-            import re
-
             message = re.sub(
                 r"Key: ([^)]+)",
                 r'Key: <code style="background: #f8f9fa; padding: 2px 4px;\

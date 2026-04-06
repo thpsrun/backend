@@ -3,7 +3,6 @@ from textwrap import dedent
 from typing import Any
 
 import sentry_sdk
-from django.conf import settings
 from django.http import HttpRequest, HttpResponse
 from ninja import NinjaAPI, Redoc
 from ninja.errors import ValidationError
@@ -189,7 +188,6 @@ def global_exception_handler(
         api_key_header = request.headers.get("X-API-Key")
         if api_key_header:
             scope.set_tag("has_api_key", "true")
-            scope.set_tag("api_key_prefix", api_key_header[:8] + "...")
         else:
             scope.set_tag("has_api_key", "false")
 
@@ -205,19 +203,13 @@ def global_exception_handler(
         },
     )
 
-    if settings.DEBUG:
-        error_data = ErrorResponse(
-            error="An unexpected error occurred",
-            details={
-                "exception": str(exc),
-                "type": type(exc).__name__,
-            },
-        ).model_dump()
-    else:
-        error_data = ErrorResponse(
-            error="An unexpected error occurred",
-            details=None,
-        ).model_dump()
+    error_data = ErrorResponse(
+        error="An unexpected error occurred",
+        details={
+            "exception": str(exc),
+            "type": type(exc).__name__,
+        },
+    ).model_dump()
 
     return ninja_api.create_response(
         request,

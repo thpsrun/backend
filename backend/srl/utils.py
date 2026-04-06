@@ -73,12 +73,18 @@ def src_api(
     headers = {
         "User-Agent": "thps.run/4.0 (https://thps.run; automation@thps.run)",
     }
-    response = requests.get(url, headers=headers)
+    response = requests.get(url, headers=headers, timeout=30)
 
+    retries = 0
     while response.status_code == 420 or response.status_code == 503:
+        retries += 1
+        if retries >= 30:
+            raise ValueError(
+                f"SRC API rate limit exceeded after 30 retries ({url})"
+            )
         print("[DEBUG] Rate limit exceeded, waiting 60 seconds...")
         time.sleep(60)
-        response = requests.get(url, headers=headers)
+        response = requests.get(url, headers=headers, timeout=30)
 
     if response.status_code != 200:
         raise ValueError(
@@ -124,12 +130,12 @@ class TimeDict(TypedDict):
 
 
 def time_conversion(
-    time: SrcRunsTimes,
+    times: SrcRunsTimes,
 ) -> tuple[str, str, str]:
     """Processes the returned time values of a run entry in a string.
 
     Arguments:
-        time (SrcRunsTimes): Time data from a speedrun.
+        times (SrcRunsTimes): Time data from a speedrun.
 
     Returns:
         tuple: A tuple containing:
@@ -141,11 +147,11 @@ def time_conversion(
         - `convert_time`
     """
 
-    rta = convert_time(time.realtime_t) if time.realtime_t > 0 else "0"
+    rta = convert_time(times.realtime_t) if times.realtime_t > 0 else "0"
     noloads = (
-        convert_time(time.realtime_noloads_t) if time.realtime_noloads_t > 0 else "0"
+        convert_time(times.realtime_noloads_t) if times.realtime_noloads_t > 0 else "0"
     )
-    igt = convert_time(time.ingame_t) if time.ingame_t > 0 else "0"
+    igt = convert_time(times.ingame_t) if times.ingame_t > 0 else "0"
 
     return rta, noloads, igt
 
@@ -225,7 +231,7 @@ def get_streak_start_date(
         run__category=run.category,
         run__level=run.level,
         run__runtype=run.runtype,
-        points=max_points,
+        points__gte=max_points,
     )
 
     rvvs = list(RunVariableValues.objects.filter(run=run))

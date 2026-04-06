@@ -176,7 +176,7 @@ def upload_pfp(
             ),
         )
 
-    if file.size and file.size > 5 * 1024 * 1024:
+    if not file.size or file.size > 5 * 1024 * 1024:
         return Status(
             400,
             ErrorResponse(
@@ -191,16 +191,17 @@ def upload_pfp(
     try:
         with Image.open(io.BytesIO(raw)) as img:
             rgb = img.convert("RGB")
-    except Exception:
+    except Exception as e:
         return Status(
             400,
             ErrorResponse(
                 error="Uploaded file is not a valid image",
-                details=None,
+                details={"exception": str(e)},
             ),
         )
 
-    file_path = os.path.join(PFP_DIR, f"{player.id}.jpg")
+    safe_id = "".join(c for c in player.id if c.isalnum() or c in "-_")
+    file_path = os.path.join(PFP_DIR, f"{safe_id}.jpg")
     temp_path = f"{file_path}.tmp"
 
     try:
@@ -286,7 +287,7 @@ def set_src_key(
             400,
             ErrorResponse(
                 error="Unexpected response from Speedrun.com API",
-                details={"exception": str(e)},
+                details=None,
             ),
         )
 
@@ -411,27 +412,33 @@ def delete_me(
 
             if user is not None:
                 user.delete()
-    except Exception:
+    except Exception as e:
         logger.exception("Failed to delete account for player %s", player.id)
         return Status(
             500,
             ErrorResponse(
                 error="Failed to delete account",
-                details=None,
+                details={"exception": str(e)},
             ),
         )
 
     if old_pfp:
-        pfp_fs_path = os.path.join(PFP_DIR, os.path.basename(old_pfp))
-        try:
-            os.remove(pfp_fs_path)
-        except FileNotFoundError:
-            pass
-        except OSError:
-            logger.warning(
-                "Failed to remove pfp file %s after account deletion",
-                pfp_fs_path,
-            )
+        pfp_basename = os.path.basename(old_pfp)
+        pfp_fs_path = os.path.join(PFP_DIR, pfp_basename)
+        if not os.path.abspath(pfp_fs_path).startswith(
+            os.path.abspath(PFP_DIR),
+        ):
+            logger.warning("Skipping suspicious pfp path: %s", old_pfp)
+        else:
+            try:
+                os.remove(pfp_fs_path)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                logger.warning(
+                    "Failed to remove pfp file %s after account deletion",
+                    pfp_fs_path,
+                )
 
     logger.info(
         "Account deleted: player_id=%s user_id=%s",

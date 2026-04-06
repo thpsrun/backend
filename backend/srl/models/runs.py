@@ -37,6 +37,10 @@ class Runs(models.Model):
                 fields=["runtype"],
                 name="idx_runs_runtype",
             ),
+            models.Index(
+                fields=["game", "category", "level", "obsolete"],
+                name="idx_runs_game_cat_level_obs",
+            ),
         ]
 
     statuschoices = [
@@ -45,7 +49,7 @@ class Runs(models.Model):
         ("rejected", "Rejected"),
     ]
 
-    runtype = [
+    RUNTYPE_CHOICES = [
         ("main", "Full Game"),
         ("il", "Individual Level"),
     ]
@@ -57,7 +61,7 @@ class Runs(models.Model):
     )
     runtype = models.CharField(
         max_length=5,
-        choices=runtype,
+        choices=RUNTYPE_CHOICES,
         verbose_name="Full-Game or IL",
     )
     game = models.ForeignKey(
@@ -186,7 +190,7 @@ class Runs(models.Model):
         blank=True,
         null=True,
         on_delete=models.SET_NULL,
-        related_name="approver",
+        related_name="approved_runs",
     )
     obsolete = models.BooleanField(
         verbose_name="Obsolete?",
@@ -253,14 +257,6 @@ class Runs(models.Model):
 
     def __str__(self):
         return self.id
-
-    def set_variables(self, variable_value_map: dict):
-        for variable, value in variable_value_map.items():
-            VariableValues.objects.create(
-                run=self,
-                variable=variable,
-                value=value,
-            )
 
 
 class RunVariableValues(models.Model):

@@ -1,4 +1,3 @@
-import time
 from textwrap import dedent
 
 import requests as http_requests
@@ -64,7 +63,7 @@ def verify_src(
             400,
             ErrorResponse(
                 error="Unexpected response from Speedrun.com API",
-                details={"exception": str(e)},
+                details=None,
             ),
         )
 
@@ -101,9 +100,6 @@ def verify_src(
                 details=None,
             ),
         )
-
-    request.session["src_verified_player_id"] = player.id
-    request.session["src_verified_at"] = int(time.time())
 
     return Status(
         200,

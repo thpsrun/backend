@@ -11,6 +11,7 @@ from api.v1.schemas.base import (
 )
 from api.v1.schemas.runs import RunCreateSchema, RunSchema, RunUpdateSchema
 from api.v1.utils import get_or_generate_id
+from django.db import transaction
 from django.db.models import Q
 from django.http import HttpRequest
 from ninja import Query, Router, Status
@@ -244,7 +245,7 @@ def get_all_runs(
     try:
         queryset = (
             Runs.objects.all()
-            .select_related("category", "level")
+            .select_related("game", "category", "level")
             .prefetch_related(
                 "run_players__player__countrycode",
                 "runvariablevalues_set__variable",
@@ -411,7 +412,7 @@ def get_run(
 
 @router.post(
     "/",
-    response={200: RunSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={201: RunSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Create Run",
     description=dedent(
         """Create a new speedrun record with full validation.
@@ -555,36 +556,35 @@ def create_run(
         )
         create_data["id"] = run_id
 
-        run = Runs.objects.create(
-            game=game,
-            category=category,
-            level=level,
-            **create_data,
-        )
+        with transaction.atomic():
+            run = Runs.objects.create(
+                game=game,
+                category=category,
+                level=level,
+                **create_data,
+            )
 
-        for index, player in enumerate(players_list, start=1):
-            RunPlayers.objects.create(run=run, player=player, order=index)
+            RunPlayers.objects.bulk_create([
+                RunPlayers(run=run, player=player, order=index)
+                for index, player in enumerate(players_list, start=1)
+            ])
 
-        if run_data.variable_values:
-            try:
+            if run_data.variable_values:
+                rvv_objs = []
                 for var_id, value_id in run_data.variable_values.items():
                     variable = Variables.objects.filter(id=var_id).first()
                     value = VariableValues.objects.filter(
-                        value=value_id, var=variable
+                        value=value_id, var=variable,
                     ).first()
 
                     if variable and value:
-                        RunVariableValues.objects.create(
-                            run=run, variable=variable, value=value
+                        rvv_objs.append(
+                            RunVariableValues(
+                                run=run, variable=variable, value=value,
+                            )
                         )
-            except Exception as e:
-                return Status(
-                    500,
-                    ErrorResponse(
-                        error="Run Update Failed (Variables)",
-                        details={"exception": str(e)},
-                    ),
-                )
+                if rvv_objs:
+                    RunVariableValues.objects.bulk_create(rvv_objs)
 
         refetched_run = (
             Runs.objects.filter(id=run.id)
@@ -610,7 +610,7 @@ def create_run(
         if refetched_run.vid_status == "verified":
             recalculate_run(refetched_run)
 
-        return Status(200, response)
+        return Status(201, response)
 
     except Exception as e:
         return Status(
@@ -754,36 +754,39 @@ def update_run(
 
             del update_data["player_ids"]
 
-        if "variable_values" in update_data:
-            try:
+        with transaction.atomic():
+            if "variable_values" in update_data:
                 RunVariableValues.objects.filter(run=run).delete()
 
                 if update_data["variable_values"]:
-                    for var_id, value_id in update_data["variable_values"].items():
-                        variable = Variables.objects.filter(id=var_id).first()
+                    rvv_objs = []
+                    for var_id, value_id in update_data[
+                        "variable_values"
+                    ].items():
+                        variable = Variables.objects.filter(
+                            id=var_id,
+                        ).first()
                         value = VariableValues.objects.filter(
-                            value=value_id, var=variable
+                            value=value_id, var=variable,
                         ).first()
 
                         if variable and value:
-                            RunVariableValues.objects.create(
-                                run=run, variable=variable, value=value
+                            rvv_objs.append(
+                                RunVariableValues(
+                                    run=run,
+                                    variable=variable,
+                                    value=value,
+                                )
                             )
-            except Exception as e:
-                return Status(
-                    500,
-                    ErrorResponse(
-                        error="Run Update Failed (Variables)",
-                        details={"exception": str(e)},
-                    ),
-                )
+                    if rvv_objs:
+                        RunVariableValues.objects.bulk_create(rvv_objs)
 
-            del update_data["variable_values"]
+                del update_data["variable_values"]
 
-        for field, value in update_data.items():
-            setattr(run, field, value)
+            for field, value in update_data.items():
+                setattr(run, field, value)
 
-        run.save()
+            run.save()
 
         refetched_run = (
             Runs.objects.filter(id=run.id)

@@ -177,7 +177,9 @@ def get_all_variables(
             ))
 
     try:
-        queryset = Variables.objects.all().order_by("name")
+        queryset = Variables.objects.select_related(
+            "game", "cat", "level",
+        ).all().order_by("name")
 
         # If parameters are fulfilled by the client, this will further
         # drill down what the client is looking for.
@@ -312,7 +314,7 @@ def get_all_values(
 
 @router.post(
     "/values/",
-    response={200: VariableValueSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={201: VariableValueSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Create Variable Value",
     description=dedent(
         """Creates a brand new variable value.
@@ -365,7 +367,7 @@ def create_value(
             rules=value_data.rules,
         )
 
-        return Status(200, VariableValueSchema.model_validate(new_value))
+        return Status(201, VariableValueSchema.model_validate(new_value))
 
     except Exception as e:
         return Status(500, ErrorResponse(
@@ -600,7 +602,9 @@ def get_variable(
             ))
 
     try:
-        variable = Variables.objects.filter(id__iexact=id).first()
+        variable = Variables.objects.select_related(
+            "game", "cat", "level",
+        ).filter(id__iexact=id).first()
         if not variable:
             return Status(404, ErrorResponse(
                 error="Variable ID does not exist",
@@ -642,7 +646,7 @@ def get_variable(
 
 @router.post(
     "/",
-    response={200: VariableSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={201: VariableSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Create Variable",
     description=dedent(
         """Creates a brand new variable with validation for scope and relationship constraints.
@@ -720,7 +724,7 @@ def create_variable(
             game=game, cat=category, level=level, **create_data
         )
 
-        return Status(200, VariableSchema.model_validate(variable))
+        return Status(201, VariableSchema.model_validate(variable))
 
     except Exception as e:
         return Status(500, ErrorResponse(
@@ -759,7 +763,9 @@ def update_variable(
     variable_data: VariableUpdateSchema,
 ) -> Status:
     try:
-        variable = Variables.objects.filter(id__iexact=id).first()
+        variable = Variables.objects.select_related(
+            "game", "cat", "level",
+        ).filter(id__iexact=id).first()
         if not variable:
             return Status(404, ErrorResponse(
                 error="Variable does not exist",
@@ -849,7 +855,9 @@ def delete_variable(
     id: str,
 ) -> Status:
     try:
-        variable = Variables.objects.filter(id__iexact=id).first()
+        variable = Variables.objects.select_related(
+            "game", "cat", "level",
+        ).filter(id__iexact=id).first()
         if not variable:
             return Status(404, ErrorResponse(
                 error="Variable does not exist",

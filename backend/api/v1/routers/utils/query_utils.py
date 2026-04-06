@@ -9,7 +9,7 @@ from srl.models import Players, RunHistory, RunPlayers, Runs
 from api.v1.routers.utils import (
     main_pbs_cache_key,
     main_records_cache_key,
-    main_stats,
+    main_stats_cache_key,
     main_wrs_cache_key,
 )
 from api.v1.schemas.runs import PlayerRunEmbedSchema, compute_run_subcategory
@@ -269,16 +269,8 @@ def query_stats() -> dict[str, Any]:
         or 0.0
     )
 
-    runs_with_vars = Runs.objects.prefetch_related(
-        "runvariablevalues_set__value",
-    ).filter(
-        runvariablevalues__isnull=False,
-    )
-    subcat_count = len({compute_run_subcategory(r) for r in runs_with_vars} - {None})
-
     return {
         "runs": run_count,
-        "subcategories": subcat_count,
         "players": player_count,
         "total_time_secs": total_time_secs,
     }
@@ -434,7 +426,7 @@ def get_cached_embed(
         "latest-wrs": main_wrs_cache_key,
         "latest-pbs": main_pbs_cache_key,
         "records": main_records_cache_key,
-        "stats": main_stats,
+        "stats": main_stats_cache_key,
     }
 
     query_functions: dict[str, Any] = {

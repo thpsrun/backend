@@ -11,12 +11,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 if os.getenv("SENTRY_ENABLED") == "True":
     sentry_sdk.init(
         dsn=os.getenv("SENTRY_DSN"),
-        send_default_pii=True,
-        traces_sample_rate=1.0,
+        send_default_pii=False,
+        traces_sample_rate=0.5,
     )
 
 SECRET_KEY = os.getenv("SECRET_KEY")
-SRC_ENCRYPTION_KEY = os.getenv("SRC_ENCRYPTION_KEY", "")
+SRC_ENCRYPTION_KEY = os.getenv("SRC_ENCRYPTION_KEY")
 
 ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "").split(",")
 # ALLOWED_IPS = ["127.0.0.1"]
@@ -50,8 +50,8 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "corsheaders.middleware.CorsMiddleware",
-    "django.middleware.common.CommonMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "allauth.account.middleware.AccountMiddleware",
@@ -99,12 +99,13 @@ else:
     APPEND_SLASH = True
     MIDDLEWARE.insert(1, "whitenoise.middleware.WhiteNoiseMiddleware")
 
+    CSRF_TRUSTED_ORIGINS = [os.getenv("FRONTEND_URL", "")]
     CSRF_COOKIE_SECURE = True
     SESSION_COOKIE_SECURE = True
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
     SECURE_SSL_REDIRECT = True
-    SECURE_HSTS_SECONDS = 3600
+    SECURE_HSTS_SECONDS = 31536000
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
     SECURE_CONTENT_TYPE_NOSNIFF = True

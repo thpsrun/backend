@@ -53,15 +53,15 @@ def sync_game_runs(
 
         if game.categories:
             for category in game.categories:
-                sync_categories.delay(category)
+                sync_categories(category)
 
         if game.levels:
             for level in game.levels:
-                sync_levels.delay(level)
+                sync_levels(level)
 
         if game.variables:
             for variable in game.variables:
-                sync_variables.delay(variable)
+                sync_variables(variable)
 
         if game.categories:
             variables = game.variables or []
@@ -145,6 +145,9 @@ def sync_leaderboards(
         max_points = game_info.pointsmax
         if game_info.defaulttime == "realtime_noloads":
             lrt_fix_check = True
+
+    if not src_lb.runs:
+        return
 
     run_variables = src_lb.runs[0].run.values
 
@@ -336,16 +339,16 @@ def sync_run(
                     order=order,
                 )
 
-        if len(run_data.values) > 0:
-            for var_id, val_id in run_data.values.items():
-                RunVariableValues.objects.update_or_create(
-                    run=run_obj,
-                    variable_id=var_id,
-                    value_id=val_id,
-                )
+            if len(run_data.values) > 0:
+                for var_id, val_id in run_data.values.items():
+                    RunVariableValues.objects.update_or_create(
+                        run=run_obj,
+                        variable_id=var_id,
+                        value_id=val_id,
+                    )
 
         if place >= 1:
-            update_standings(
+            update_standings.delay(
                 is_wr=(place == 1),
                 game_id=context_data.game_id,
                 variable_value_map=context_data.variable_value_map,
@@ -354,7 +357,7 @@ def sync_run(
                 default_time_type=context_data.default_time_type,
             )
 
-        update_obsolete(
+        update_obsolete.delay(
             game_id=context_data.game_id,
             variable_value_map=context_data.variable_value_map,
             players=run_data.players,
@@ -362,5 +365,5 @@ def sync_run(
             default_time_type=context_data.default_time_type,
         )
 
-        for player in player_ids:
+        for player in set(player_ids):
             sync_players(player)

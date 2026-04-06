@@ -1,5 +1,6 @@
 import logging
 
+import requests as http_requests
 from api.permissions import player_session_auth
 from api.rate_limiting import auth_rate_limit
 from api.v1.schemas.base import ErrorResponse
@@ -7,6 +8,8 @@ from api.v1.schemas.submissions import (
     ChangePlayersRequest,
     ChangePlayersResponse,
     ModerationGameGroup,
+    RunSubmitResponse,
+    RunSubmitSchema,
     SubmissionHubResponse,
     SubmissionRunSchema,
     SyncStatusSchema,
@@ -17,10 +20,18 @@ from django.db import transaction
 from django.http import HttpRequest
 from ninja import Router, Status
 from ninja.responses import codes_4xx
+from srl.encryption import decrypt_src_key
 from srl.leaderboard.trigger import recalculate_run
-from srl.models import Players, Runs, SRCCredential, SRCSyncTask
+from srl.models import Players, Runs, RunVariableValues, SRCCredential, SRCSyncTask
+from srl.models.categories import Categories
+from srl.models.games import Games
+from srl.models.levels import Levels
 from srl.models.run_players import RunPlayers
+from srl.models.variable_values import VariableValues
+from srl.models.variables import Variables
 from srl.tasks import sync_src_action
+from srl.time_parser import parse_time
+from srl.utils import convert_time
 
 logger = logging.getLogger(__name__)
 
@@ -61,9 +72,7 @@ def _get_sync_statuses(
 
 def _build_run_players(run: Runs) -> list[dict]:
     """Build ordered player list from prefetched RunPlayers."""
-    rps = run.run_players.select_related(
-        "player__countrycode",
-    ).order_by("order")
+    rps = sorted(run.run_players.all(), key=lambda rp: rp.order)
     return [
         {
             "id": rp.player.id,
@@ -81,6 +90,60 @@ def _build_run_players(run: Runs) -> list[dict]:
 def _has_src_key(player: Players) -> bool:
     """Check if the player has a stored SRC API key."""
     return SRCCredential.objects.filter(user=player.user).exists()
+
+
+SRC_API_BASE = "https://www.speedrun.com/api/v1"
+SRC_TIMEOUT = 15
+
+
+def _build_src_run_payload(
+    body: RunSubmitSchema,
+    time_secs: dict[str, float],
+) -> dict:
+    """Build the SRC API payload for POST /runs."""
+    run_data: dict = {
+        "game": body.game_id,
+        "category": body.category_id,
+        "players": [],
+        "times": {},
+        "video": body.video,
+    }
+
+    if body.level_id:
+        run_data["level"] = body.level_id
+
+    if body.comment:
+        run_data["comment"] = body.comment
+
+    if body.date:
+        run_data["date"] = body.date
+
+    for player in body.players:
+        if player.rel == "user":
+            run_data["players"].append(
+                {"rel": "user", "id": player.id},
+            )
+        else:
+            run_data["players"].append(
+                {"rel": "guest", "name": player.name},
+            )
+
+    if "realtime" in time_secs:
+        run_data["times"]["realtime"] = time_secs["realtime"]
+    if "realtime_noloads" in time_secs:
+        run_data["times"]["realtime_noloads"] = (
+            time_secs["realtime_noloads"]
+        )
+    if "ingame" in time_secs:
+        run_data["times"]["ingame"] = time_secs["ingame"]
+
+    if body.variable_values:
+        run_data["variables"] = {
+            var_id: {"type": "pre-defined", "value": val_id}
+            for var_id, val_id in body.variable_values.items()
+        }
+
+    return {"run": run_data}
 
 
 @router.get(
@@ -411,6 +474,336 @@ def update_run_players(
             message=(
                 f"Players updated locally for run {run_id}. "
                 f"SRC sync is in progress."
+            ),
+        ),
+    )
+
+
+@router.post(
+    "/submissions/submit",
+    response={
+        201: RunSubmitResponse,
+        codes_4xx: ErrorResponse,
+        503: ErrorResponse,
+    },
+    auth=player_session_auth,
+    url_name="submit_run",
+)
+@auth_rate_limit
+def submit_run(
+    request: HttpRequest,
+    body: RunSubmitSchema,
+) -> Status:
+    """Submit a run to SRC and create a local record on success."""
+    player: Players = request.auth  # type: ignore
+
+    # --- 1. Verify SRC API key exists ---
+    try:
+        cred = SRCCredential.objects.get(user=player.user)
+        api_key = decrypt_src_key(cred.encrypted_api_key)
+    except SRCCredential.DoesNotExist:
+        return Status(
+            400,
+            ErrorResponse(
+                error=(
+                    "No SRC API key configured. "
+                    "Add one in profile settings."
+                ),
+                details=None,
+            ),
+        )
+    except Exception as e:
+        logger.exception(
+            "Failed to decrypt SRC API key for player %s",
+            player.id,
+        )
+        return Status(
+            400,
+            ErrorResponse(
+                error=(
+                    "SRC API key could not be decrypted. "
+                    "Please re-add it in profile settings."
+                ),
+                details={"exception": str(e)},
+            ),
+        )
+
+    # --- 2. Validate game/category/level locally ---
+    try:
+        game = Games.objects.get(id=body.game_id)
+    except Games.DoesNotExist:
+        return Status(
+            422,
+            ErrorResponse(
+                error=f"Game not found: {body.game_id}",
+                details=None,
+            ),
+        )
+
+    try:
+        category = Categories.objects.get(
+            id=body.category_id, game=game,
+        )
+    except Categories.DoesNotExist:
+        return Status(
+            422,
+            ErrorResponse(
+                error=(
+                    "Category not found for game: "
+                    f"{body.category_id}"
+                ),
+                details=None,
+            ),
+        )
+
+    level = None
+    if body.level_id:
+        try:
+            level = Levels.objects.get(id=body.level_id, game=game)
+        except Levels.DoesNotExist:
+            return Status(
+                422,
+                ErrorResponse(
+                    error=(
+                        "Level not found for game: "
+                        f"{body.level_id}"
+                    ),
+                    details=None,
+                ),
+            )
+
+    # --- 3. Validate players ---
+    user_player_map: dict[str, Players] = {}
+    for p in body.players:
+        if p.rel == "user":
+            try:
+                user_player_map[p.id] = Players.objects.get(
+                    id=p.id,
+                )
+            except Players.DoesNotExist:
+                return Status(
+                    422,
+                    ErrorResponse(
+                        error=f"Player not found: {p.id}",
+                        details=None,
+                    ),
+                )
+
+    # --- 4. Validate variable values ---
+    if body.variable_values:
+        for var_id, val_id in body.variable_values.items():
+            try:
+                Variables.objects.get(id=var_id)
+            except Variables.DoesNotExist:
+                return Status(
+                    422,
+                    ErrorResponse(
+                        error=f"Variable not found: {var_id}",
+                        details=None,
+                    ),
+                )
+            try:
+                VariableValues.objects.get(
+                    value=val_id, var_id=var_id,
+                )
+            except VariableValues.DoesNotExist:
+                return Status(
+                    422,
+                    ErrorResponse(
+                        error=(
+                            f"Variable value not found: "
+                            f"{val_id} for variable {var_id}"
+                        ),
+                        details=None,
+                    ),
+                )
+
+    # --- 5. Parse times ---
+    time_secs: dict[str, float] = {}
+    time_display: dict[str, str] = {}
+    time_seconds: dict[str, float] = {}
+    time_fields = [
+        ("realtime", body.time, "time", "time_secs"),
+        ("realtime_noloads", body.timenl, "timenl", "timenl_secs"),
+        ("ingame", body.timeigt, "timeigt", "timeigt_secs"),
+    ]
+    for src_key, raw_value, str_field, secs_field in time_fields:
+        if raw_value:
+            try:
+                parsed = parse_time(raw_value)
+            except ValueError:
+                return Status(
+                    422,
+                    ErrorResponse(
+                        error=(
+                            f"Invalid time format for "
+                            f"{str_field}: {raw_value!r}"
+                        ),
+                        details=None,
+                    ),
+                )
+            time_secs[src_key] = parsed
+            time_display[str_field] = convert_time(parsed)
+            time_seconds[secs_field] = parsed
+
+    # --- 6. Build SRC payload and call SRC ---
+    src_payload = _build_src_run_payload(body, time_secs)
+
+    try:
+        src_response = http_requests.post(
+            f"{SRC_API_BASE}/runs",
+            json=src_payload,
+            headers={"X-API-Key": api_key},
+            timeout=SRC_TIMEOUT,
+        )
+    except http_requests.ConnectionError:
+        return Status(
+            503,
+            ErrorResponse(
+                error="Could not connect to SRC. Try again later.",
+                details=None,
+            ),
+        )
+    except http_requests.Timeout:
+        return Status(
+            503,
+            ErrorResponse(
+                error=(
+                    "SRC is currently unavailable (timeout). "
+                    "Try again later."
+                ),
+                details=None,
+            ),
+        )
+
+    if src_response.status_code == 401:
+        return Status(
+            401,
+            ErrorResponse(
+                error=(
+                    "SRC API key is invalid or expired. "
+                    "Update it in profile settings."
+                ),
+                details=None,
+            ),
+        )
+    elif src_response.status_code == 400:
+        return Status(
+            400,
+            ErrorResponse(
+                error="Speedrun.com rejected the submission",
+                details=None,
+            ),
+        )
+    elif src_response.status_code == 420:
+        return Status(
+            429,
+            ErrorResponse(
+                error=(
+                    "SRC is rate limiting requests. "
+                    "Try again in a few minutes."
+                ),
+                details=None,
+            ),
+        )
+    elif src_response.status_code >= 500:
+        return Status(
+            503,
+            ErrorResponse(
+                error=(
+                    "SRC is currently unavailable. "
+                    "Try again later."
+                ),
+                details=None,
+            ),
+        )
+    elif src_response.status_code not in (200, 201):
+        return Status(
+            400,
+            ErrorResponse(
+                error=(
+                    "Unexpected SRC response "
+                    f"({src_response.status_code})."
+                ),
+                details=None,
+            ),
+        )
+
+    # --- 7. Extract SRC run ID ---
+    try:
+        src_data = src_response.json()
+        src_run_id = src_data["data"]["id"]
+    except (KeyError, TypeError, ValueError) as e:
+        logger.error(
+            "Unexpected SRC response format: %s (error: %s)",
+            src_response.text[:500],
+            str(e),
+        )
+        return Status(
+            400,
+            ErrorResponse(
+                error=(
+                    "SRC accepted the run but returned "
+                    "an unexpected response format."
+                ),
+                details=None,
+            ),
+        )
+
+    # --- 8. Create local record ---
+    runtype = "il" if level else "main"
+    src_run_url = (
+        f"https://www.speedrun.com/run/{src_run_id}"
+    )
+
+    with transaction.atomic():
+        run = Runs.objects.create(
+            id=src_run_id,
+            game=game,
+            category=category,
+            level=level,
+            runtype=runtype,
+            place=0,
+            url=src_run_url,
+            video=body.video,
+            vid_status="new",
+            date=body.date,
+            description=body.comment,
+            time=time_display.get("time"),
+            time_secs=time_seconds.get("time_secs"),
+            timenl=time_display.get("timenl"),
+            timenl_secs=time_seconds.get("timenl_secs"),
+            timeigt=time_display.get("timeigt"),
+            timeigt_secs=time_seconds.get("timeigt_secs"),
+        )
+
+        for i, p in enumerate(body.players):
+            if p.rel == "user" and p.id in user_player_map:
+                RunPlayers.objects.create(
+                    run=run,
+                    player=user_player_map[p.id],
+                    order=i + 1,
+                )
+
+        if body.variable_values:
+            for var_id, val_id in (
+                body.variable_values.items()
+            ):
+                RunVariableValues.objects.create(
+                    run=run,
+                    variable_id=var_id,
+                    value_id=val_id,
+                )
+
+    return Status(
+        201,
+        RunSubmitResponse(
+            run_id=src_run_id,
+            src_url=src_run_url,
+            vid_status="new",
+            message=(
+                "Run submitted to SRC and saved locally. "
+                "Pending verification."
             ),
         ),
     )

@@ -31,6 +31,5 @@ sentry-sdk==2.*
 tzdata==2025.*
 uritemplate==4.2.*
 urllib3>=2.5.0
-wheel==0.46.*
 whitenoise==6.*
 yarl==1.22.*

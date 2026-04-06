@@ -1,11 +1,12 @@
 import logging
 
-from api.permissions import player_session_auth
+from api.permissions import superuser_session_auth
 from api.v1.schemas.base import ErrorResponse
 from api.v1.schemas.submissions import (
     SyncLogEntry,
     SyncLogResponse,
     SyncLogRunSchema,
+    SyncRetryResponse,
 )
 from django.http import HttpRequest
 from ninja import Query, Router, Status
@@ -19,7 +20,7 @@ router = Router()
 
 @router.get(
     "/admin/sync-logs",
-    auth=player_session_auth,
+    auth=superuser_session_auth,
     response={200: SyncLogResponse, codes_4xx: ErrorResponse},
     summary="SRC Sync Logs (Superuser)",
     description=(
@@ -48,15 +49,6 @@ def get_sync_logs(
     offset: int = Query(0, ge=0),
 ) -> Status:
     player: Players = request.auth  # type: ignore
-
-    if not player.user.is_superuser:
-        return Status(
-            403,
-            ErrorResponse(
-                error="Superuser access required.",
-                details=None,
-            ),
-        )
 
     qs = SRCSyncTask.objects.select_related(
         "run__game",
@@ -119,8 +111,8 @@ def get_sync_logs(
 
 @router.post(
     "/admin/sync-logs/{task_id}/retry",
-    auth=player_session_auth,
-    response={200: dict, codes_4xx: ErrorResponse},
+    auth=superuser_session_auth,
+    response={200: SyncRetryResponse, codes_4xx: ErrorResponse},
     summary="Retry Failed Sync Task (Superuser)",
     description=(
         "Resets a failed SRC sync task to pending and re-queues it. "
@@ -132,15 +124,6 @@ def retry_sync_task(
     task_id: int,
 ) -> Status:
     player: Players = request.auth  # type: ignore
-
-    if not player.user.is_superuser:
-        return Status(
-            403,
-            ErrorResponse(
-                error="Superuser access required.",
-                details=None,
-            ),
-        )
 
     try:
         sync_task = SRCSyncTask.objects.get(id=task_id)
@@ -182,8 +165,5 @@ def retry_sync_task(
 
     return Status(
         200,
-        {
-            "task_id": sync_task.id,
-            "message": "Sync task re-queued.",
-        },
+        {"task_id": sync_task.id, "message": "Sync task re-queued."},
     )

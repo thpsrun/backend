@@ -6,6 +6,33 @@ from pydantic import Field, field_validator
 from api.v1.schemas.base import BaseEmbedSchema
 
 
+class PlayerSearchResultSchema(BaseEmbedSchema):
+    """Lightweight schema for player search/autocomplete results.
+
+    Attributes:
+        id (str): Player ID.
+        name (str): Player name on Speedrun.com.
+        nickname (str | None): Custom nickname override.
+        country_id (str | None): Country code ID.
+    """
+
+    id: str
+    name: str
+    nickname: str | None = None
+    country_id: str | None = None
+
+    @field_validator("country_id", mode="before")
+    @classmethod
+    def convert_country_to_id(cls, v: Any) -> str | None:
+        if v is None:
+            return None
+        if isinstance(v, str):
+            return v
+        if hasattr(v, "id"):
+            return v.id
+        return None
+
+
 class PlayerBaseSchema(BaseEmbedSchema):
     """Base schema for `Players` data without embeds.
 

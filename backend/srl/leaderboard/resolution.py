@@ -18,7 +18,7 @@ def resolve_leaderboard(
     return {
         "game_id": run.game.id,
         "category_id": run.category.id,
-        "level_id": run.level.id,
+        "level_id": run.level.id if run.level else None,
         "runtype": run.runtype,
         "variable_value_map": dict(rvvs),
     }

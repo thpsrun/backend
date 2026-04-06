@@ -69,7 +69,7 @@ def register(
             400,
             ErrorResponse(
                 error="Unexpected response from Speedrun.com API",
-                details={"exception": str(e)},
+                details=None,
             ),
         )
 

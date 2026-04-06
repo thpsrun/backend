@@ -1,7 +1,8 @@
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
-from pydantic import BaseModel, Field, field_serializer
+from django.conf import settings
+from pydantic import BaseModel, Field, field_serializer, model_validator
 
 RunTypeType = Literal["main", "il"]
 RunStatusType = Literal["verified", "new", "rejected"]
@@ -19,6 +20,17 @@ class ErrorResponse(BaseModel):
 
     error: str
     details: dict[str, Any] | None = None
+
+    _SENSITIVE_KEYS: set[str] = {"exception", "type"}
+
+    @model_validator(mode="after")
+    def strip_exception_details_in_production(self) -> Self:
+        if not settings.DEBUG and self.details:
+            for key in self._SENSITIVE_KEYS:
+                self.details.pop(key, None)
+            if not self.details:
+                self.details = None
+        return self
 
 
 class ValidationErrorResponse(BaseModel):

@@ -27,6 +27,7 @@ class CategoryBaseSchema(SlugMixin, BaseEmbedSchema):
     appear_on_main: bool = Field(
         default=False, exclude=True, description="Show on main leaderboard page"
     )
+    players: int = Field(default=1, ge=1, description="Number of players accepted")
     archive: bool = Field(default=False, description="Hidden from listings")
 
 
@@ -94,6 +95,7 @@ class CategoryCreateSchema(SlugMixin, BaseEmbedSchema):
     appear_on_main: bool = Field(
         default=False, exclude=True, description="Show on main leaderboard page"
     )
+    players: int = Field(default=1, ge=1, description="Number of players accepted")
     order: int = Field(
         default=0, exclude=True, description="Sort order; managed via admin panel"
     )
@@ -123,6 +125,7 @@ class CategoryUpdateSchema(BaseEmbedSchema):
     appear_on_main: bool | None = Field(
         None, description="Show on main leaderboard page"
     )
+    players: int | None = Field(None, ge=1, description="Number of players accepted")
     order: int | None = Field(
         default=None, description="Sort order; managed via admin panel"
     )

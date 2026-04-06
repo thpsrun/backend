@@ -1,3 +1,5 @@
+from typing import Any
+
 from celery import shared_task
 from django.conf import settings
 from django.db import transaction
@@ -15,7 +17,7 @@ def sync_game(
     Arguments:
         game_id (str): Unique ID for an SRC game.
     """
-    src_data: dict[dict, str] = src_api(
+    src_data: dict[str, Any] = src_api(
         f"https://speedrun.com/api/v1/games/{game_id}?embed=platforms"
     )
 

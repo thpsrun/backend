@@ -82,6 +82,11 @@ class Categories(models.Model):
             "Items with order>=1 sort first in ascending order."
         ),
     )
+    players = models.PositiveIntegerField(
+        verbose_name="Number of Players",
+        default=1,
+        help_text="Number of players this category accepts.",
+    )
     archive = models.BooleanField(
         verbose_name="Archive Category",
         default=False,

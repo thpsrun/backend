@@ -107,7 +107,7 @@ def get_live_streams(
 
 @router.post(
     "/",
-    response={200: StreamSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={201: StreamSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Create Stream",
     description=dedent(
         """Creates a new stream record for a player.
@@ -162,7 +162,7 @@ def create_stream(
             stream_time=stream_data.stream_time or datetime.now(),
         )
 
-        return Status(200, StreamSchema.model_validate(stream))
+        return Status(201, StreamSchema.model_validate(stream))
 
     except Exception as e:
         return Status(500, ErrorResponse(
