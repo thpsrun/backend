@@ -40,7 +40,7 @@ class CategoriesReadTest(TestCase):
         )
 
     def setUp(self) -> None:
-        self.client = TestClient(categories_router)
+        self.client = TestClient(categories_router)  # type: ignore
 
     def test_list_categories_requires_game(self) -> None:
         response = self.client.get("/all")
@@ -75,7 +75,7 @@ class CategoriesWriteTest(AuthTestBase):
 
     def setUp(self) -> None:
         super().setUp()
-        self.client = TestClient(categories_router)
+        self.client = TestClient(categories_router)  # type: ignore
 
     def test_create_category(self) -> None:
         response = self.client.post(
@@ -86,7 +86,7 @@ class CategoriesWriteTest(AuthTestBase):
                 "slug": "100-percent",
                 "type": "per-game",
                 "url": "https://speedrun.com/test-game#100",
-            },
+            },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 200)
@@ -106,7 +106,7 @@ class CategoriesWriteTest(AuthTestBase):
                 "slug": "any-percent",
                 "type": "per-game",
                 "url": "https://speedrun.com/test-game#any",
-            },
+            },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 200)
@@ -122,7 +122,7 @@ class CategoriesWriteTest(AuthTestBase):
                 "slug": "any",
                 "type": "per-game",
                 "url": "https://speedrun.com/test#any",
-            },
+            },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 404)
@@ -139,7 +139,7 @@ class CategoriesWriteTest(AuthTestBase):
 
         response = self.client.put(
             "/toupdate",
-            json={"name": "Updated Category"},
+            json={"name": "Updated Category"},  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 200)

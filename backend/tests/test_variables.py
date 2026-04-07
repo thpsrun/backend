@@ -1,13 +1,7 @@
 from api.v1.routers.resources.variables import router as variables_router
 from django.test import TestCase
 from ninja.testing import TestClient
-from srl.models import (
-    Categories,
-    Games,
-    Platforms,
-    Variables,
-    VariableValues,
-)
+from srl.models import Categories, Games, Platforms, Variables, VariableValues
 
 from tests.test_auth import AuthTestBase
 
@@ -64,7 +58,7 @@ class VariablesReadTest(TestCase):
         )
 
     def setUp(self) -> None:
-        self.client = TestClient(variables_router)
+        self.client = TestClient(variables_router)  # type: ignore
 
     def test_list_variables(self) -> None:
         response = self.client.get("/all")
@@ -106,7 +100,7 @@ class VariablesWriteTest(AuthTestBase):
 
     def setUp(self) -> None:
         super().setUp()
-        self.client = TestClient(variables_router)
+        self.client = TestClient(variables_router)  # type: ignore
 
     def test_create_variable(self) -> None:
         response = self.client.post(
@@ -116,7 +110,7 @@ class VariablesWriteTest(AuthTestBase):
                 "name": "Difficulty",
                 "slug": "difficulty",
                 "scope": "full-game",
-            },
+            },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 200)
@@ -134,7 +128,7 @@ class VariablesWriteTest(AuthTestBase):
                 "name": "Version",
                 "slug": "version",
                 "scope": "full-game",
-            },
+            },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 200)
@@ -150,14 +144,14 @@ class VariablesWriteTest(AuthTestBase):
                 "name": "Subcategory",
                 "slug": "subcategory",
                 "scope": "full-game",
-            },
+            },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["name"], "Subcategory")
         variable = Variables.objects.get(name="Subcategory")
-        self.assertEqual(variable.cat.id, "cat1")
+        self.assertEqual(variable.cat.id, "cat1")  # type: ignore
 
     def test_update_variable(self) -> None:
         Variables.objects.create(
@@ -170,7 +164,7 @@ class VariablesWriteTest(AuthTestBase):
 
         response = self.client.put(
             "/toupdate",
-            json={"name": "Updated Variable"},
+            json={"name": "Updated Variable"},  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 200)
@@ -248,7 +242,7 @@ class VarValuesReadTest(TestCase):
         )
 
     def setUp(self) -> None:
-        self.client = TestClient(variables_router)
+        self.client = TestClient(variables_router)  # type: ignore
 
     def test_list_values_requires_var(self) -> None:
         response = self.client.get("/values/all")
@@ -343,7 +337,7 @@ class VarValuesWriteTest(AuthTestBase):
 
     def setUp(self) -> None:
         super().setUp()
-        self.client = TestClient(variables_router)
+        self.client = TestClient(variables_router)  # type: ignore
 
     def test_create_value(self) -> None:
         response = self.client.post(
@@ -352,7 +346,7 @@ class VarValuesWriteTest(AuthTestBase):
                 "variable_id": "var1",
                 "name": "Easy",
                 "rules": "Easy difficulty rules",
-            },
+            },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 200)
@@ -371,7 +365,7 @@ class VarValuesWriteTest(AuthTestBase):
                 "variable_id": "var1",
                 "name": "Hard Mode",
                 "slug": "hard-mode",
-            },
+            },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 200)
@@ -384,10 +378,10 @@ class VarValuesWriteTest(AuthTestBase):
         response = self.client.post(
             "/values/",
             json={
-                "value": "val1",  # Already exists
+                "value": "val1",
                 "variable_id": "var1",
                 "name": "Duplicate",
-            },
+            },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 400)
@@ -400,7 +394,7 @@ class VarValuesWriteTest(AuthTestBase):
             json={
                 "variable_id": "nonexistent",
                 "name": "Test",
-            },
+            },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 400)
@@ -414,7 +408,7 @@ class VarValuesWriteTest(AuthTestBase):
                 "name": "Updated Normal",
                 "rules": "Updated rules",
                 "archive": True,
-            },
+            },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 200)
@@ -435,7 +429,7 @@ class VarValuesWriteTest(AuthTestBase):
 
         response = self.client.put(
             "/values/val1",
-            json={"variable_id": "var2"},
+            json={"variable_id": "var2"},  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 200)
@@ -443,12 +437,12 @@ class VarValuesWriteTest(AuthTestBase):
         self.assertEqual(data["value"], "val1")
 
         val = VariableValues.objects.get(value="val1")
-        self.assertEqual(val.var.id, "var2")
+        self.assertEqual(val.var.id, "var2")  # type: ignore
 
     def test_update_value_404(self) -> None:
         response = self.client.put(
             "/values/nonexistent",
-            json={"name": "Updated"},
+            json={"name": "Updated"},  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 404)

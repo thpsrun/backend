@@ -38,7 +38,7 @@ class LevelsReadTest(TestCase):
         )
 
     def setUp(self) -> None:
-        self.client = TestClient(levels_router)
+        self.client = TestClient(levels_router)  # type: ignore
 
     def test_list_levels(self) -> None:
         response = self.client.get("/all")
@@ -67,7 +67,7 @@ class LevelsWriteTest(AuthTestBase):
 
     def setUp(self) -> None:
         super().setUp()
-        self.client = TestClient(levels_router)
+        self.client = TestClient(levels_router)  # type: ignore
 
     def test_create_level(self) -> None:
         response = self.client.post(
@@ -77,7 +77,7 @@ class LevelsWriteTest(AuthTestBase):
                 "name": "School",
                 "slug": "school",
                 "url": "https://speedrun.com/test-game/School",
-            },
+            },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 200)
@@ -95,7 +95,7 @@ class LevelsWriteTest(AuthTestBase):
                 "name": "Warehouse",
                 "slug": "warehouse",
                 "url": "https://speedrun.com/test-game/Warehouse",
-            },
+            },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 200)
@@ -110,7 +110,7 @@ class LevelsWriteTest(AuthTestBase):
                 "name": "Level",
                 "slug": "level",
                 "url": "https://speedrun.com/test/Level",
-            },
+            },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 404)
@@ -126,7 +126,7 @@ class LevelsWriteTest(AuthTestBase):
 
         response = self.client.put(
             "/toupdate",
-            json={"name": "Updated Level"},
+            json={"name": "Updated Level"},  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 200)

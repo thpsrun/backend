@@ -47,7 +47,7 @@ class StreamsReadTest(TestCase):
         )
 
     def setUp(self) -> None:
-        self.client = TestClient(streams_router)
+        self.client = TestClient(streams_router)  # type: ignore
 
     def test_live_streams(self) -> None:
         response = self.client.get("/live")
@@ -81,7 +81,7 @@ class StreamsWriteTest(AuthTestBase):
 
     def setUp(self) -> None:
         super().setUp()
-        self.client = TestClient(streams_router)
+        self.client = TestClient(streams_router)  # type: ignore
 
     def test_create_stream(self) -> None:
         response = self.client.post(
@@ -91,7 +91,7 @@ class StreamsWriteTest(AuthTestBase):
                 "game_id": "game1",
                 "title": "Test Stream!",
                 "offline_ct": 0,
-            },
+            },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 200)
@@ -115,7 +115,7 @@ class StreamsWriteTest(AuthTestBase):
                 "game_id": "game1",
                 "title": "Another Stream",
                 "offline_ct": 0,
-            },
+            },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 400)
@@ -133,7 +133,7 @@ class StreamsWriteTest(AuthTestBase):
 
         response = self.client.put(
             "/streamer1",
-            json={"title": "Updated Title"},
+            json={"title": "Updated Title"},  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 200)

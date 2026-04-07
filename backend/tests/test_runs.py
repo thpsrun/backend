@@ -82,7 +82,7 @@ class RunsReadTest(TestCase):
         )
 
     def setUp(self) -> None:
-        self.client = TestClient(runs_router)
+        self.client = TestClient(runs_router)  # type: ignore
 
     def test_list_runs(self) -> None:
         response = self.client.get("/all")
@@ -175,7 +175,7 @@ class RunsWriteTest(AuthTestBase):
 
     def setUp(self) -> None:
         super().setUp()
-        self.client = TestClient(runs_router)
+        self.client = TestClient(runs_router)  # type: ignore
 
     def test_create_run(self) -> None:
         response = self.client.post(
@@ -189,7 +189,7 @@ class RunsWriteTest(AuthTestBase):
                 "time": "5m 30s",
                 "time_secs": 330.0,
                 "player_ids": ["player1"],
-            },
+            },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 200)
@@ -211,7 +211,7 @@ class RunsWriteTest(AuthTestBase):
                 "url": "https://speedrun.com/test-game/run/run001",
                 "time": "6m 00s",
                 "time_secs": 360.0,
-            },
+            },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 200)
@@ -226,7 +226,7 @@ class RunsWriteTest(AuthTestBase):
                 "runtype": "main",
                 "place": 1,
                 "url": "https://speedrun.com/test/run/new",
-            },
+            },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 400)
@@ -251,7 +251,7 @@ class RunsWriteTest(AuthTestBase):
                 "place": 1,
                 "time": "5m 00s",
                 "time_secs": 300.0,
-            },
+            },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 200)

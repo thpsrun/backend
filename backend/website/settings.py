@@ -234,7 +234,6 @@ SOCIALACCOUNT_PROVIDERS = {
     },
 }
 
-# Token expiry: 7 days (satisfies "remember me" requirement)
 SESSION_COOKIE_AGE = 60 * 60 * 24 * 7  # 7 days in seconds
 
 # ALLAUTH HEADLESS

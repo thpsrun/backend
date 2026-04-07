@@ -26,7 +26,7 @@ class PlayersReadTest(TestCase):
         )
 
     def setUp(self) -> None:
-        self.client = TestClient(players_router)
+        self.client = TestClient(players_router)  # type: ignore
 
     def test_get_player(self) -> None:
         response = self.client.get("/player1")
@@ -59,7 +59,7 @@ class PlayersWriteTest(AuthTestBase):
 
     def setUp(self) -> None:
         super().setUp()
-        self.client = TestClient(players_router)
+        self.client = TestClient(players_router)  # type: ignore
 
     def test_create_player(self) -> None:
         response = self.client.post(
@@ -67,7 +67,7 @@ class PlayersWriteTest(AuthTestBase):
             json={
                 "name": "NewPlayer",
                 "url": "https://speedrun.com/user/NewPlayer",
-            },
+            },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 200)
@@ -83,7 +83,7 @@ class PlayersWriteTest(AuthTestBase):
                 "id": "custom01",
                 "name": "CustomPlayer",
                 "url": "https://speedrun.com/user/CustomPlayer",
-            },
+            },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 200)
@@ -97,14 +97,14 @@ class PlayersWriteTest(AuthTestBase):
                 "name": "PlayerWithCountry",
                 "url": "https://speedrun.com/user/PlayerWithCountry",
                 "country_id": "usa",
-            },
+            },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["name"], "PlayerWithCountry")
         player = Players.objects.get(name="PlayerWithCountry")
-        self.assertEqual(player.countrycode.id, "usa")
+        self.assertEqual(player.countrycode.id, "usa")  # type: ignore
 
     def test_create_player_duplicate(self) -> None:
         Players.objects.create(
@@ -119,7 +119,7 @@ class PlayersWriteTest(AuthTestBase):
                 "id": "existing",
                 "name": "Another",
                 "url": "https://speedrun.com/user/Another",
-            },
+            },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 400)
@@ -138,7 +138,7 @@ class PlayersWriteTest(AuthTestBase):
             json={
                 "nickname": "UpdatedNick",
                 "pronouns": "They/Them",
-            },
+            },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 200)

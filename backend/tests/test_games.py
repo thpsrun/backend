@@ -30,7 +30,7 @@ class GamesReadTest(TestCase):
         cls.game.platforms.add("pc")
 
     def setUp(self) -> None:
-        self.client = TestClient(games_router)
+        self.client = TestClient(games_router)  # type: ignore
 
     def test_list_games(self) -> None:
         response = self.client.get("/all")
@@ -66,7 +66,7 @@ class GamesWriteTest(AuthTestBase):
 
     def setUp(self) -> None:
         super().setUp()
-        self.client = TestClient(games_router)
+        self.client = TestClient(games_router)  # type: ignore
 
     def test_create_game(self) -> None:
         response = self.client.post(
@@ -79,7 +79,7 @@ class GamesWriteTest(AuthTestBase):
                 "boxart": "https://example.com/boxart.png",
                 "defaulttime": "realtime",
                 "idefaulttime": "realtime",
-            },
+            },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 200)
@@ -101,18 +101,18 @@ class GamesWriteTest(AuthTestBase):
                 "boxart": "https://example.com/boxart.png",
                 "defaulttime": "realtime",
                 "idefaulttime": "realtime",
-            },
+            },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["id"], "customid")
 
-    def test_create_game_duplicate(self) -> None:
+    def test_game_duplicate(self) -> None:
         response = self.client.post(
             "/",
             json={
-                "id": "game1",  # Already exists from setUpTestData
+                "id": "game1",
                 "name": "Duplicate ID Game",
                 "slug": "dup-id-game",
                 "twitch": "Duplicate ID Game",
@@ -120,14 +120,14 @@ class GamesWriteTest(AuthTestBase):
                 "boxart": "https://example.com/boxart.png",
                 "defaulttime": "realtime",
                 "idefaulttime": "realtime",
-            },
+            },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 400)
         data = response.json()
         self.assertEqual(data["error"], "ID Already Exists")
 
-    def test_create_game_unauthed(self) -> None:
+    def test_create_unauthenticated(self) -> None:
         full_client = Client()
         response = full_client.post(
             "/api/v1/games/",
@@ -152,7 +152,7 @@ class GamesWriteTest(AuthTestBase):
             json={
                 "name": "Updated Game Name",
                 "slug": "updated-game",
-            },
+            },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 200)
@@ -164,7 +164,7 @@ class GamesWriteTest(AuthTestBase):
     def test_update_game_404(self) -> None:
         response = self.client.put(
             "/nonexistent",
-            json={"name": "Updated Name", "slug": "updated"},
+            json={"name": "Updated Name", "slug": "updated"},  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 404)

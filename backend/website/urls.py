@@ -16,9 +16,7 @@ urlpatterns = [
     path("illiad/", admin.site.urls),
     path("api/v1/", ninja_api.urls),
     path("docs/", include("guides.urls")),
-    # Needed for OAuth handshake (even in headless mode)
     path("accounts/", include("allauth.urls")),
-    # Headless API endpoints
     path("_allauth/", include("allauth.headless.urls")),
 ] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 

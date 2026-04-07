@@ -79,9 +79,8 @@ def src_api(
     while response.status_code == 420 or response.status_code == 503:
         retries += 1
         if retries >= 30:
-            raise ValueError(
-                f"SRC API rate limit exceeded after 30 retries ({url})"
-            )
+            raise ValueError(f"SRC API rate limit exceeded after 30 retries ({url})")
+
         print("[DEBUG] Rate limit exceeded, waiting 60 seconds...")
         time.sleep(60)
         response = requests.get(url, headers=headers, timeout=30)
@@ -178,8 +177,8 @@ def calculate_bonus(
 
     if runtype == "main":
         return int(capped * settings.STREAK_BONUS_FG)
-    else:  # IL
-        return int(capped * settings.STREAK_BONUS_IL)  # Cumulative floor
+    else:
+        return int(capped * settings.STREAK_BONUS_IL)
 
 
 def runs_share_player(
@@ -247,8 +246,7 @@ def get_streak_start_date(
         ).filter(rv_count=0)
 
     wr_history = (
-        wr_history_qs
-        .select_related("run")
+        wr_history_qs.select_related("run")
         .prefetch_related("run__players")
         .order_by("-start_date")
     )
@@ -266,7 +264,9 @@ def get_streak_start_date(
         entry_start_date = entry.start_date.date()
 
         if entry_start_date < cutoff_date:
-            if streak_start is None or runs_share_player(entry_player_ids, tracking_player_ids):
+            if streak_start is None or runs_share_player(
+                entry_player_ids, tracking_player_ids
+            ):
                 streak_start = entry_start_date
             break
 
