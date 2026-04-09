@@ -2,7 +2,7 @@ from textwrap import dedent
 
 import requests as http_requests
 from django.contrib.auth import login
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
@@ -10,11 +10,13 @@ from django.http import HttpRequest
 from ninja import Router, Status
 from ninja.responses import codes_4xx
 from srl.encryption import encrypt_src_key
-from srl.models import Players, RunPlayers, SRCCredential
+from srl.models import Players, RunPlayers
 
 from api.rate_limiting import auth_rate_limit
 from api.v1.schemas.auth import RegisterRequest, RegisterResponse
 from api.v1.schemas.base import ErrorResponse
+
+User = get_user_model()
 
 router = Router()
 
@@ -131,11 +133,8 @@ def register(
             player.save(update_fields=["user", "claim_status", "sync_paused"])
 
             if body.save_key:
-                encrypted = encrypt_src_key(body.src_api_key)
-                SRCCredential.objects.create(
-                    user=user,
-                    encrypted_api_key=encrypted,
-                )
+                user.encrypted_api_key = encrypt_src_key(body.src_api_key)
+                user.save(update_fields=["encrypted_api_key"])
     except IntegrityError:
         return Status(
             409,

@@ -1,3 +1,4 @@
+import re
 from datetime import date
 
 from ninja import Schema
@@ -97,12 +98,20 @@ class PlayerProfileResponse(Schema):
     is_superuser: bool = False
     ex_stream: bool = False
     has_src_key: bool = False
+    bio: str | None = None
+    short_bio: str | None = None
+    gradient_1: str | None = None
+    gradient_2: str | None = None
+    gradient_3: str | None = None
     joined: date | None = None
     moderated_games: list[ModeratedGameSchema] = []
 
 
 class PfpUploadResponse(Schema):
     pfp: str
+
+
+HEX_COLOR_PATTERN = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
 
 class PlayerUpdateRequest(Schema):
@@ -116,6 +125,23 @@ class PlayerUpdateRequest(Schema):
     bluesky: str | None = Field(None, max_length=200)
     discord: str | None = Field(None, max_length=32)
     ex_stream: bool | None = None
+    bio: str | None = Field(None, max_length=1000)
+    short_bio: str | None = Field(None, max_length=100)
+    gradient_1: str | None = Field(None, max_length=7)
+    gradient_2: str | None = Field(None, max_length=7)
+    gradient_3: str | None = Field(None, max_length=7)
+
+    @field_validator("gradient_1", "gradient_2", "gradient_3", mode="before")
+    @classmethod
+    def validate_hex_color(
+        cls,
+        v: str | None,
+    ) -> str | None:
+        if v is None:
+            return v
+        if not HEX_COLOR_PATTERN.match(v):
+            raise ValueError("Must be a valid hex color (#RRGGBB)")
+        return v
 
     @field_validator("twitch", "youtube", "twitter", "bluesky", mode="before")
     @classmethod

@@ -77,7 +77,7 @@ def _parse_value_slugs(
     optionally filtered by variable value slugs (subcategory). Returns
     every WR from first to current with timing deltas.
 
-    **Examples:**
+    Examples:
     - `/history/thug1/category/any` - Any% WR history for THUG1
     - `/history/thug1/category/any?values=beginner` - Any% Beginner
     """
@@ -181,7 +181,7 @@ def get_fg_wr_history(
     Get the complete world record history for an individual level
     category, optionally filtered by variable value slugs.
 
-    **Examples:**
+    Examples:
     - `/history/thps1/level/warehouse/agg` - Warehouse AG&G WR history
     - `/history/thps1/level/warehouse/agg?values=console,igt`
     """

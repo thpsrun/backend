@@ -38,12 +38,12 @@ router = Router()
     description=dedent(
         """Gets all guides within the database, with optional querying and embeds.
 
-    **Query Parameters:**
+    Query Parameters:
     - `game` (str | None): Filter guides based on the game's slug or ID.
     - `tag` (str | None): Filter guides based on the tag's slug or ID.
     - `embed` (list | None): Comma-separated list of resources to embed.
 
-    **Supported Embeds:**
+    Supported Embeds:
     - `game`: Includes the metadata of the game the tag belongs to.
     - `tags`: Include metadata of the tags belonging to this guide.
     """
@@ -108,11 +108,11 @@ def list_guides(
     description=dedent(
         """Get a specific guide by its slug.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `slug` (str): Simplified, URL friendly name of the guide.
     - `embed` (list | None): Comma-separated list of resources to embed.
 
-    **Supported Embeds:**
+    Supported Embeds:
     - `game`: Includes the metadata of the game the tag belongs to.
     - `tags`: Include metadata of the tags belonging to this guide.
     """
@@ -160,9 +160,9 @@ def get_guide(
     description=dedent(
         """Creates a brand new guide.
 
-    **REQUIRES CONTRIBUTOR ACCESS OR HIGHER.**
+    REQUIRES CONTRIBUTOR ACCESS OR HIGHER.
 
-    **Request Body:**
+    Request Body:
     - `title` (str): Name of the guide.
     - `game_id` (str): Unique game ID or slug of the game this is associated with.
     - `tag_ids` (list | None): List of tag IDs or their slug.
@@ -236,9 +236,9 @@ def create_guide(
     description=dedent(
         """Modifies an existing guide.
 
-    **REQUIRES CONTRIBUTOR ACCESS OR HIGHER.**
+    REQUIRES CONTRIBUTOR ACCESS OR HIGHER.
 
-    **Request Body:**
+    Request Body:
     - `title` (str | None): Name of the guide.
     - `game_id` (str | None): Unique game ID or slug of the game this is associated with.
     - `tag_ids` (list | None): List of tag IDs or their slug.
@@ -333,9 +333,9 @@ def update_guide(
     description=dedent(
         """Deletes an existing guide.
 
-    **REQUIRES ADMIN ACCESS OR HIGHER.**
+    REQUIRES ADMIN ACCESS OR HIGHER.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `slug` (str): Simplified, URL friendly name of the guide.
     """
     ),

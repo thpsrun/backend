@@ -148,6 +148,3 @@ npm/*
 pyproject.toml
 .pylintrc
 static/
-
-# Yeah, I use Claude to help a bit; fight me.
-.claude/

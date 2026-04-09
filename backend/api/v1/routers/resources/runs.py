@@ -1,16 +1,6 @@
 from textwrap import dedent
 from typing import Annotated
 
-from api.permissions import admin_auth, moderator_auth, public_auth
-from api.v1.docs.runs import RUNS_ALL, RUNS_DELETE, RUNS_GET, RUNS_POST, RUNS_PUT
-from api.v1.schemas.base import (
-    ErrorResponse,
-    RunStatusType,
-    RunTypeType,
-    validate_embeds,
-)
-from api.v1.schemas.runs import RunCreateSchema, RunSchema, RunUpdateSchema
-from api.v1.utils import get_or_generate_id
 from django.db import transaction
 from django.db.models import Q
 from django.http import HttpRequest
@@ -29,6 +19,17 @@ from srl.models import (
     Variables,
     VariableValues,
 )
+
+from api.permissions import admin_auth, moderator_auth, public_auth
+from api.v1.docs.runs import RUNS_ALL, RUNS_DELETE, RUNS_GET, RUNS_POST, RUNS_PUT
+from api.v1.schemas.base import (
+    ErrorResponse,
+    RunStatusType,
+    RunTypeType,
+    validate_embeds,
+)
+from api.v1.schemas.runs import RunCreateSchema, RunSchema, RunUpdateSchema
+from api.v1.utils import get_or_generate_id
 
 router = Router()
 
@@ -167,7 +168,7 @@ def apply_run_embeds(
     description=dedent(
         """Retrieve runs with extensive filtering and search capabilities.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `game_id` (str | None): Filter by specific game ID or slug
     - `category_id` (str | None): Filter by specific category ID
     - `level_id` (str | None): Filter by specific level ID (for IL runs)
@@ -180,11 +181,11 @@ def apply_run_embeds(
     - `limit`: Results per page (default 50, max 100)
     - `offset`: Results to skip (default 0)
 
-    **Examples:**
+    Examples:
     - `/runs/all?game_id=thps4` - All runs for THPS4
     - `/runs/all?game_id=thps4&category_id=any&place=1` - THPS4 Any% world records
     - `/runs/all?player_id=v8lponvj&runtype=main` - Player's full-game runs
-    - `/runs/all?search=normal&place=1&status=verified` - Verified WRs with "normal" in category/level/value
+    - `/runs/all?search=normal&place=1&status=verified` - Verified WRs with "normal" in cat/level.
     - `/runs/all?game_id=thps4&level_id=alcatraz&embed=player,game` - Alcatraz ILs with embeds
     """
     ),
@@ -310,20 +311,20 @@ def get_all_runs(
     description=dedent(
         """Retrieve a single run by its ID with full details and optional embeds.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `id` (str): Unique ID of the run being queried.
     - `embed` (list | None): Comma-separated list of resources to embed.
 
-    **Response Fields:**
+    Response Fields:
     - `players`: Array of all players who participated in this run (always included).
 
-    **Supported Embeds:**
+    Supported Embeds:
     - `game`: Includes the metadata of the game related to the run queried.
     - `category`: Includes the metadata of the category related to the run queried.
     - `level`: Include the metadata of the level related to the run queried (if an IL run).
     - `variables`: Include the metadata of the variables and values related to the run.
 
-    **Examples:**
+    Examples:
     - `/runs/y8dwozoj` - Basic run data with players.
     - `/runs/y8dwozoj?embed=game` - Include game metadata.
     - `/runs/y8dwozoj?embed=game,category,variables` - Full run details with embeds.
@@ -417,15 +418,15 @@ def get_run(
     description=dedent(
         """Create a new speedrun record with full validation.
 
-    **REQUIRES MODERATOR ACCESS OR HIGHER.**
+    REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    **Complex Validation:**
+    Complex Validation:
     - Game/category/level relationships must be valid.
     - Players must exist if specified.
     - Variable values must match variable constraints.
     - Run type must match category type.
 
-    **Request Body:**
+    Request Body:
     - `game_id` (str): Game ID the run belongs to.
     - `category_id` (str | None): Category ID the run belongs to.
     - `level_id` (str | None): Level ID (for IL runs).
@@ -440,7 +441,7 @@ def get_run(
     - `url` (str): Speedrun.com URL.
     - `variable_values` (dict[str, str] | None): Variable value selections as key-value pairs.
 
-    **Variable Values Format:**
+    Variable Values Format:
     ```json
     {
         "variable_values": {
@@ -564,23 +565,28 @@ def create_run(
                 **create_data,
             )
 
-            RunPlayers.objects.bulk_create([
-                RunPlayers(run=run, player=player, order=index)
-                for index, player in enumerate(players_list, start=1)
-            ])
+            RunPlayers.objects.bulk_create(
+                [
+                    RunPlayers(run=run, player=player, order=index)
+                    for index, player in enumerate(players_list, start=1)
+                ]
+            )
 
             if run_data.variable_values:
                 rvv_objs = []
                 for var_id, value_id in run_data.variable_values.items():
                     variable = Variables.objects.filter(id=var_id).first()
                     value = VariableValues.objects.filter(
-                        value=value_id, var=variable,
+                        value=value_id,
+                        var=variable,
                     ).first()
 
                     if variable and value:
                         rvv_objs.append(
                             RunVariableValues(
-                                run=run, variable=variable, value=value,
+                                run=run,
+                                variable=variable,
+                                value=value,
                             )
                         )
                 if rvv_objs:
@@ -629,12 +635,12 @@ def create_run(
     description=dedent(
         """Updates the run based on its unique ID.
 
-    **REQUIRES MODERATOR ACCESS OR HIGHER.**
+    REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `id` (str): Unique ID of the run being edited.
 
-    **Request Body:**
+    Request Body:
     - `game_id` (str | None): Updated game ID.
     - `category_id` (str | None): Updated category ID.
     - `level_id` (str | None): Updated level ID (for IL runs).
@@ -760,14 +766,13 @@ def update_run(
 
                 if update_data["variable_values"]:
                     rvv_objs = []
-                    for var_id, value_id in update_data[
-                        "variable_values"
-                    ].items():
+                    for var_id, value_id in update_data["variable_values"].items():
                         variable = Variables.objects.filter(
                             id=var_id,
                         ).first()
                         value = VariableValues.objects.filter(
-                            value=value_id, var=variable,
+                            value=value_id,
+                            var=variable,
                         ).first()
 
                         if variable and value:
@@ -841,9 +846,9 @@ def update_run(
         """
     Deletes the selected run by its ID.
 
-    **REQUIRES ADMIN ACCESS.**
+    REQUIRES ADMIN ACCESS.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `id` (str): Unique ID of the run being deleted.
     """
     ),

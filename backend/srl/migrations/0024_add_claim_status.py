@@ -3,15 +3,12 @@ from django.db import migrations, models
 
 def migrate_is_claimed_to_claim_status(apps, schema_editor):
     Players = apps.get_model("srl", "Players")
-    # Claimed with a linked user → "claimed"
     Players.objects.filter(is_claimed=True, user__isnull=False).update(
         claim_status="claimed",
     )
-    # Claimed but no user (deleted account) → "deleted"
     Players.objects.filter(is_claimed=True, user__isnull=True).update(
         claim_status="deleted",
     )
-    # Everything else stays "unclaimed" (the default)
 
 
 class Migration(migrations.Migration):

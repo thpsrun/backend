@@ -24,7 +24,7 @@ from ninja.files import UploadedFile
 from ninja.responses import codes_4xx
 from PIL import Image
 from srl.encryption import encrypt_src_key
-from srl.models import CountryCodes, Players, SRCCredential
+from srl.models import CountryCodes, Players
 
 logger = logging.getLogger(__name__)
 
@@ -55,8 +55,7 @@ def _build_profile_response(
 
     has_src_key = False
     if player.user:
-        if player.user.id:
-            has_src_key = SRCCredential.objects.filter(user_id=player.user.id).exists()
+        has_src_key = player.user.encrypted_api_key is not None
 
     return PlayerProfileResponse(
         player_id=player.id,
@@ -75,6 +74,11 @@ def _build_profile_response(
         username=player.user.username if player.user else "",
         is_superuser=player.user.is_superuser if player.user else False,
         has_src_key=has_src_key,
+        bio=player.user.bio if player.user else None,
+        short_bio=player.user.short_bio if player.user else None,
+        gradient_1=player.user.gradient_1 if player.user else None,
+        gradient_2=player.user.gradient_2 if player.user else None,
+        gradient_3=player.user.gradient_3 if player.user else None,
         joined=player.joined,
         moderated_games=[
             ModeratedGameSchema(id=g.id, name=g.name, slug=g.slug) for g in moderated
@@ -145,6 +149,33 @@ def update_me(
 
     if update_fields:
         player.save(update_fields=update_fields)
+
+    user_update_fields: list[str] = []
+    for field in ("bio", "short_bio", "gradient_1", "gradient_2", "gradient_3"):
+        if field in body.model_fields_set:
+            setattr(player.user, field, getattr(body, field))
+            user_update_fields.append(field)
+
+    if user_update_fields:
+        # Validate gradient sequential order against final user state
+        u = player.user
+        if u.gradient_2 is not None and u.gradient_1 is None:
+            return Status(
+                400,
+                ErrorResponse(
+                    error="gradient_2 requires gradient_1 to be set",
+                    details=None,
+                ),
+            )
+        if u.gradient_3 is not None and u.gradient_2 is None:
+            return Status(
+                400,
+                ErrorResponse(
+                    error="gradient_3 requires gradient_2 to be set",
+                    details=None,
+                ),
+            )
+        player.user.save(update_fields=user_update_fields)
 
     return Status(200, _build_profile_response(player))
 
@@ -301,11 +332,8 @@ def set_src_key(
             ),
         )
 
-    encrypted = encrypt_src_key(body.src_api_key)
-    SRCCredential.objects.update_or_create(
-        user=player.user,
-        defaults={"encrypted_api_key": encrypted},
-    )
+    player.user.encrypted_api_key = encrypt_src_key(body.src_api_key)
+    player.user.save(update_fields=["encrypted_api_key"])
 
     return Status(
         200,
@@ -334,7 +362,7 @@ def delete_src_key(
 ) -> Status:
     player: Players = request.auth  # type: ignore
 
-    if not player.user:
+    if not player.user or not player.user.encrypted_api_key:
         return Status(
             404,
             ErrorResponse(
@@ -343,15 +371,8 @@ def delete_src_key(
             ),
         )
 
-    deleted, _ = SRCCredential.objects.filter(user=player.user).delete()
-    if not deleted:
-        return Status(
-            404,
-            ErrorResponse(
-                error="No SRC API key found",
-                details=None,
-            ),
-        )
+    player.user.encrypted_api_key = None
+    player.user.save(update_fields=["encrypted_api_key"])
 
     return Status(204, None)
 

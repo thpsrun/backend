@@ -54,18 +54,18 @@ def get_mock_streaming_data() -> list[dict[str, Any]]:
         """
     Get list of currently live streamers playing speedrun games.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `game_id`: Filter by specific game being streamed
     - `platform`: Filter by streaming platform (twitch, youtube, etc.)
     - `min_viewers`: Minimum viewer count
     - `limit`: Maximum results to return (default 20, max 50)
 
-    **Examples:**
+    Examples:
     - `/streams/live` - All live streamers
     - `/streams/live?game_id=thps4` - Streamers playing THPS4
     - `/streams/live?min_viewers=100` - Streamers with 100+ viewers
 
-    **Note:** This endpoint provides mock data for demonstration.
+    Note: This endpoint provides mock data for demonstration.
     In production, integrate with actual streaming platform APIs.
     """
     ),
@@ -112,9 +112,9 @@ def get_live_streams(
     description=dedent(
         """Creates a new stream record for a player.
 
-    **REQUIRES MODERATOR ACCESS OR HIGHER.**
+    REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    **Request Body:**
+    Request Body:
     - `player_id` (str): Player ID who is streaming.
     - `game_id` (str | None): Game ID being played.
     - `title` (str): Stream title.
@@ -178,12 +178,12 @@ def create_stream(
     description=dedent(
         """Updates the stream for a specific player.
 
-    **REQUIRES MODERATOR ACCESS OR HIGHER.**
+    REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `player_id` (str): Unique ID of the player whose stream is being updated.
 
-    **Request Body:**
+    Request Body:
     - `game_id` (str | None): Updated game ID being played.
     - `title` (str | None): Updated stream title.
     - `offline_ct` (int | None): Updated offline counter (minutes since last seen).
@@ -249,9 +249,9 @@ def update_stream(
     description=dedent(
         """Deletes the stream for a specific player.
 
-    **REQUIRES MODERATOR ACCESS OR HIGHER.**
+    REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `player_id` (str): Unique ID of the player whose stream is being deleted.
     """
     ),

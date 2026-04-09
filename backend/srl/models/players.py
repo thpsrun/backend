@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 
 from srl.models.awards import Awards
@@ -105,7 +106,7 @@ class Players(models.Model):
         ),
     )
     user = models.OneToOneField(
-        "auth.User",
+        settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

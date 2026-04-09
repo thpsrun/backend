@@ -22,7 +22,7 @@ from ninja import Router, Status
 from ninja.responses import codes_4xx
 from srl.encryption import decrypt_src_key
 from srl.leaderboard.trigger import recalculate_run
-from srl.models import Players, Runs, RunVariableValues, SRCCredential, SRCSyncTask
+from srl.models import Players, Runs, RunVariableValues, SRCSyncTask
 from srl.models.categories import Categories
 from srl.models.games import Games
 from srl.models.levels import Levels
@@ -89,7 +89,9 @@ def _build_run_players(run: Runs) -> list[dict]:
 
 def _has_src_key(player: Players) -> bool:
     """Check if the player has a stored SRC API key."""
-    return SRCCredential.objects.filter(user=player.user).exists()
+    if not player.user:
+        return False
+    return player.user.encrypted_api_key is not None
 
 
 SRC_API_BASE = "https://www.speedrun.com/api/v1"
@@ -498,10 +500,7 @@ def submit_run(
     player: Players = request.auth  # type: ignore
 
     # --- 1. Verify SRC API key exists ---
-    try:
-        cred = SRCCredential.objects.get(user=player.user)
-        api_key = decrypt_src_key(cred.encrypted_api_key)
-    except SRCCredential.DoesNotExist:
+    if not player.user or not player.user.encrypted_api_key:
         return Status(
             400,
             ErrorResponse(
@@ -512,6 +511,8 @@ def submit_run(
                 details=None,
             ),
         )
+    try:
+        api_key = decrypt_src_key(player.user.encrypted_api_key)
     except Exception as e:
         logger.exception(
             "Failed to decrypt SRC API key for player %s",

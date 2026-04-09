@@ -4,10 +4,11 @@
 ### Major Changes
 
 #### Overall
-*   Entire frontend of the website is redesigned. New UI, not basic HTML/JS, and much more!!? This is all hosted on the frontend repo, just to keep Django's complexities separate from React's. (Noami)
+*   Entire frontend of the website is redesigned. New UI, not basic HTML/JS, and much more!!? This is all hosted on the frontend repo, just to keep Django's complexities separate from React's. (Thanks to Noami for helping!)
     *   New main page!
     *   New game screen!
-    *   New login system! (Packle)
+    *   New login system!
+        *   SRC API Key is required to integrate!
 *   Migrated the entire API to Django Ninja.
     *   Versioned the API endpoints for future-proofing and to allow better API upgrading as new features/endpoints are added/tested.
     *   GET endpoints are now publicly accessible! All other methods will require authentication.

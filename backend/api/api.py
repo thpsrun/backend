@@ -13,11 +13,11 @@ from api.v1.routers.auth.submissions import router as submissions_router
 from api.v1.routers.auth.sync_logs import router as sync_logs_router
 from api.v1.routers.guides.guides import router as guides_router
 from api.v1.routers.guides.tags import router as tags_router
+from api.v1.routers.pages.history import router as history_router
 from api.v1.routers.pages.home import router as website_router
 from api.v1.routers.pages.lbs import router as lbs_page_router
 from api.v1.routers.pages.leaderboard import router as leaderboard_page_router
 from api.v1.routers.pages.navbar import router as navbar_router
-from api.v1.routers.pages.history import router as history_router
 from api.v1.routers.resources.categories import router as categories_router
 from api.v1.routers.resources.games import router as games_router
 from api.v1.routers.resources.levels import router as levels_router
@@ -125,7 +125,7 @@ ninja_api: NinjaAPI = NinjaAPI(
             },
             {
                 "name": "Auth",
-                "description": "Endpoints related to player authentication and account verification.",
+                "description": "Specific endpoints for run verification and account authentication",
             },
         ],
     },

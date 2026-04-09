@@ -167,10 +167,14 @@ def query_latest_runs(
                     "name": run.category.name if run.category else None,
                     "slug": run.category.slug if run.category else None,
                 },
-                "level": {
-                    "name": run.level.name,
-                    "slug": run.level.slug,
-                } if run.level else None,
+                "level": (
+                    {
+                        "name": run.level.name,
+                        "slug": run.level.slug,
+                    }
+                    if run.level
+                    else None
+                ),
                 "players": main_player_data_export(
                     run.run_players.all(),  # type: ignore
                 ),
@@ -576,7 +580,7 @@ def query_lbs_recent(
         result.append(
             {
                 "runtype": run.runtype,
-                "category": run.category_id,
+                "category": run.category.id if run.category else None,
                 "level": run.level.name if run.level else None,
                 "subcategory": compute_run_subcategory(run),
                 "p_time": run.p_time,
@@ -712,24 +716,29 @@ def query_wr_history(
     from srl.models import Games  # noqa: PLC0415
 
     game = Games.objects.only(
-        "pointsmax", "ipointsmax",
+        "pointsmax",
+        "ipointsmax",
     ).get(id=game_id)
 
     is_il = level_id is not None
     max_points = game.ipointsmax if is_il else game.pointsmax
 
-    qs = RunHistory.objects.filter(
-        run__game_id=game_id,
-        run__category_id=category_id,
-        run__vid_status="verified",
-        points__gte=max_points,
-    ).select_related(
-        "run__game",
-        "run__category",
-        "run__level",
-    ).prefetch_related(
-        "run__run_players__player",
-        "run__runvariablevalues_set__value",
+    qs = (
+        RunHistory.objects.filter(
+            run__game_id=game_id,
+            run__category_id=category_id,
+            run__vid_status="verified",
+            points__gte=max_points,
+        )
+        .select_related(
+            "run__game",
+            "run__category",
+            "run__level",
+        )
+        .prefetch_related(
+            "run__run_players__player",
+            "run__runvariablevalues_set__value",
+        )
     )
 
     if level_id is not None:
@@ -748,8 +757,8 @@ def query_wr_history(
     seen_run_ids: set[str] = set()
     wr_entries: list[tuple[Any, Runs]] = []
     for entry in qs:
-        if entry.run_id not in seen_run_ids:
-            seen_run_ids.add(entry.run_id)
+        if entry.run.id not in seen_run_ids:
+            seen_run_ids.add(entry.run.id)
             wr_entries.append((entry, entry.run))
 
     results: list[dict[str, Any]] = []
@@ -769,33 +778,36 @@ def query_wr_history(
 
         players = []
         for rp in sorted(run.run_players.all(), key=lambda rp: rp.order):
-            players.append({
-                "name": rp.player.name,
-                "nickname": rp.player.nickname or None,
-            })
+            players.append(
+                {
+                    "name": rp.player.name,
+                    "nickname": rp.player.nickname or None,
+                }
+            )
         if not players:
             players = [{"name": "Anonymous", "nickname": None}]
 
-        results.append({
-            "run_id": run.id,
-            "players": players,
-            "history_time": history_time,
-            "history_time_secs": history_time_secs,
-            "delta": delta,
-            "video": run.video or None,
-            "arch_video": run.arch_video or None,
-            "start_date": history_entry.start_date.isoformat(),
-            "end_date": (
-                history_entry.end_date.isoformat()
-                if history_entry.end_date
-                else None
-            ),
-        })
+        results.append(
+            {
+                "run_id": run.id,
+                "players": players,
+                "history_time": history_time,
+                "history_time_secs": history_time_secs,
+                "delta": delta,
+                "video": run.video or None,
+                "arch_video": run.arch_video or None,
+                "start_date": history_entry.start_date.isoformat(),
+                "end_date": (
+                    history_entry.end_date.isoformat()
+                    if history_entry.end_date
+                    else None
+                ),
+            }
+        )
 
         if history_time_secs:
             prev_time = history_time_secs
 
-    # Compute subcategory label from first matching run
     subcategory: str | None = None
     if wr_entries:
         _, first_run = wr_entries[0]

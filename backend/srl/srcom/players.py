@@ -33,9 +33,8 @@ def sync_players(
     else:
         src_player = SrcPlayersModel.model_validate(players_data)
 
-    # Early-return guard: skip sync for players with sync_paused=True
     if Players.objects.filter(id=src_player.id, sync_paused=True).exists():
-        return  # Player has claimed their account; skip SRC sync
+        return
 
     if src_player.pfp is not None and download_pfp:
         response = requests.get(src_player.pfp, timeout=30)

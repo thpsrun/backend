@@ -75,15 +75,15 @@ def get_overall_leaderboard(
 
     Only non-obsolete, verified runs are counted toward point totals.
 
-    **THPS4 note:** The level "Zoo - Feed the Hippos" is automatically excluded
+    THPS4 note: The level "Zoo - Feed the Hippos" is automatically excluded
     from point calculations.
 
-    **Supported Embeds:**
+    Supported Embeds:
     - `oldest-runs` (THPS4 only): Adds an `oldest_runs` key to the response containing
       each runner's personal best sorted by longest-held time (days since the run was set).
       Returns -1 for days_held when the submission date is unknown.
 
-    **Examples:**
+    Examples:
     - `/website/game/thps4/pointslb` - THPS4 leaderboard
     - `/website/game/thps4/pointslb?embed=oldest-runs` - THPS4 leaderboard with oldest PBs
     - `/website/game/n2680o1p/pointslb` - Leaderboard by game ID

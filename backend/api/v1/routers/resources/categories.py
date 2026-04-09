@@ -34,15 +34,16 @@ def _filter_scope(
     """Filter variables by scope rules for a given category type."""
     filtered = []
     for var in variables:
-        if var.scope == "single-level":
-            continue
-        if category.type == "per-game" and var.scope == "all-levels":
-            continue
-        if category.type == "per-level" and var.scope == "full-game":
-            continue
-        if var.cat_id is not None and var.cat_id != category.id:
-            continue
-        filtered.append(var)
+        if var.cat:
+            if var.scope == "single-level":
+                continue
+            if category.type == "per-game" and var.scope == "all-levels":
+                continue
+            if category.type == "per-level" and var.scope == "full-game":
+                continue
+            if var.cat.id is not None and var.cat.id != category.id:
+                continue
+            filtered.append(var)
     return filtered
 
 
@@ -139,18 +140,18 @@ def category_embeds(
         """Retrieves all categories within a `Games` object, including optional embedding and
     querying.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `game` (str | None): Filter by specific game ID or its slug.
     - `type` (str | None): Filter by category type (`per-game` or `per-level`).
     - `limit` (int | None): Results per page (default 50, max 100).
     - `offset` (int | None): Results to skip (default 0).
     - `embed` (list | None): Comma-separated list of resources to embed.
 
-    **Supported Embeds:**
+    Supported Embeds:
     - `variables`: Include metadata of the variables belonging to this category.
     - `values`: Include all metadata for each variable and its values.
 
-    **Examples:**
+    Examples:
     - `/categories/all` - Get all categories
     - `/categories/all?game=thps4` - Get all categories for THPS4.
     - `/categories/all?type=per-game&limit=20` - Get first 20 full-game categories.
@@ -260,16 +261,16 @@ def get_all_categories(
     description=dedent(
         """Retrieves a single category based upon its ID, including optional embedding.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `id` (str): Unique ID of the category being queried.
     - `embed` (list | None): Comma-separated list of resources to embed.
 
-    **Supported Embeds:**
+    Supported Embeds:
     - `game`: Includes the metadata of the game the category belongs to.
     - `variables`: Include metadata of the variables belonging to this category.
     - `values`: Include all metadata for each variable and its values.
 
-    **Examples:**
+    Examples:
     - `/categories/rklge08d` - Get category by ID.
     - `/categories/rklge08d?embed=game` - Get category with game info.
     - `/categories/rklge08d?embed=variables,values` - Get category with variables and values.
@@ -352,9 +353,9 @@ def get_category(
     description=dedent(
         """Creates a brand new category.
 
-    **REQUIRES MODERATOR ACCESS OR HIGHER.**
+    REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    **Request Body:**
+    Request Body:
     - `id` (str): Unique ID (usually based on SRC) of the category.
     - `name` (str): Category name (e.g., "Any%", "100%").
     - `slug` (str): URL-friendly version.
@@ -422,12 +423,12 @@ def create_category(
     description=dedent(
         """Updates the category based on its unique ID.
 
-    **REQUIRES MODERATOR ACCESS OR HIGHER.**
+    REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `id` (str): Unique ID of the category being edited.
 
-    **Request Body:**
+    Request Body:
     - `name` (str | None): Category name (e.g., "Any%", "100%").
     - `slug` (str | None): URL-friendly version.
     - `type` (str | None): Whether this is per-game or per-level category.
@@ -501,9 +502,9 @@ def update_category(
     description=dedent(
         """Deletes the selected category based on its ID.
 
-    **REQUIRES ADMIN ACCESS.**
+    REQUIRES ADMIN ACCESS.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `id` (str): Unique ID of the category being deleted.
     """
     ),

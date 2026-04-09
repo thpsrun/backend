@@ -111,12 +111,12 @@ def apply_value_embeds(
         """Retrieve all variables within the `Variables` object, including optional embedding and
     filtering
 
-    **Supported Embeds:**
+    Supported Embeds:
     - `game`: Include metadata of the game the variable belongs to
     - `category`: Include metadata of the category the variable belongs to
     - `level`: Include metadata of the level the variable belongs to
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `game_id`: Filter by specific game ID or slug
     - `category_id`: Filter by specific category ID
     - `level_id`: Filter by specific level ID
@@ -125,7 +125,7 @@ def apply_value_embeds(
     - `limit`: Results per page (default 50, max 100)
     - `offset`: Results to skip (default 0)
 
-    **Examples:**
+    Examples:
     - `/variables/all` - Get all variables
     - `/variables/all?game_id=thps4` - Get all variables for THPS4
     - `/variables/all?scope=full-game` - Get all full-game variables
@@ -228,16 +228,16 @@ def get_all_variables(
     description=dedent(
         """Retrieve all values for a specific variable.
 
-    **Supported Embeds:**
+    Supported Embeds:
     - `variable`: Include metadata of the variable this value belongs to
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `variable_id` (required): Filter by specific variable ID
     - `embed`: Comma-separated list of resources to embed
     - `limit`: Results per page (default 50, max 100)
     - `offset`: Results to skip (default 0)
 
-    **Examples:**
+    Examples:
     - `/variables/values/all?variable_id=5lygdn8q` - Get all values for a variable
     - `/variables/values/all?variable_id=5lygdn8q&embed=variable` - With embeds
     """
@@ -319,9 +319,9 @@ def get_all_values(
     description=dedent(
         """Creates a brand new variable value.
 
-    **REQUIRES MODERATOR ACCESS OR HIGHER.**
+    REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    **Request Body:**
+    Request Body:
     - `variable_id` (str): Variable ID this value belongs to.
     - `name` (str): Value name.
     - `value` (str | None): Value ID; if not provided, one will be auto-generated.
@@ -383,10 +383,10 @@ def create_value(
     description=dedent(
         """Retrieve a single variable value by its ID.
 
-    **Supported Embeds:**
+    Supported Embeds:
     - `variable`: Include metadata of the variable this value belongs to
 
-    **Examples:**
+    Examples:
     - `/variables/values/pc` - Get value by ID
     - `/variables/values/pc?embed=variable` - Get value with variable data
     """
@@ -453,12 +453,12 @@ def get_value(
     description=dedent(
         """Updates the variable value based on its unique ID.
 
-    **REQUIRES MODERATOR ACCESS OR HIGHER.**
+    REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `value_id` (str): Unique ID of the value being updated.
 
-    **Request Body:**
+    Request Body:
     - `variable_id` (str | None): Updated variable ID.
     - `name` (str | None): Updated value name.
     - `slug` (str | None): Updated URL-friendly slug.
@@ -517,9 +517,9 @@ def update_value(
     description=dedent(
         """Deletes the selected variable value by its ID.
 
-    **REQUIRES ADMIN ACCESS.**
+    REQUIRES ADMIN ACCESS.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `value_id` (str): Unique ID of the value being deleted.
     """
     ),
@@ -560,12 +560,12 @@ def delete_value(
     description=dedent(
         """Retrieve a single variable by its ID, including optional embedding.
 
-    **Supported Embeds:**
+    Supported Embeds:
     - `game`: Include metadata related to the game
     - `category`: Include metadata related to the category
     - `level`: Include metadata related to the level
 
-    **Examples:**
+    Examples:
     - `/variables/5lygdn8q` - Get variable by ID
     - `/variables/5lygdn8q?embed=game` - Get variable with game data
     - `/variables/5lygdn8q?embed=game,category,level` - Get variable with all embeds
@@ -651,9 +651,9 @@ def get_variable(
     description=dedent(
         """Creates a brand new variable with validation for scope and relationship constraints.
 
-    **REQUIRES MODERATOR ACCESS OR HIGHER.**
+    REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    **Request Body:**
+    Request Body:
     - `game_id` (str): Game ID this variable belongs to.
     - `name` (str): Variable name.
     - `scope` (str): Where variable applies (`global`, `full-game`, `all-levels`, `single-level`).
@@ -740,12 +740,12 @@ def create_variable(
     description=dedent(
         """Updates the variable based on its unique ID.
 
-    **REQUIRES MODERATOR ACCESS OR HIGHER.**
+    REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `id` (str): Unique ID of the variable being updated.
 
-    **Request Body:**
+    Request Body:
     - `game_id` (str | None): Updated game ID.
     - `name` (str | None): Updated variable name.
     - `scope` (str | None): Updated scope (`global`, `full-game`, `all-levels`, `single-level`).
@@ -839,11 +839,11 @@ def update_variable(
     response={200: dict[str, str], codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Delete Variable",
     description=dedent(
-        """Deletes the selected variable by its ID. **Also deletes associated values.**
+        """Deletes the selected variable by its ID. Also deletes associated values.
 
-    **REQUIRES ADMIN ACCESS.**
+    REQUIRES ADMIN ACCESS.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `id` (str): Unique ID of the variable being deleted.
     """
     ),

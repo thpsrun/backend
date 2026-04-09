@@ -98,11 +98,11 @@ def _resolve_game(
     variable value slugs (subcategory). Returns all verified, non-obsolete runs with
     full run metadata and embedded player data.
 
-    **Supported Embeds:**
+    Supported Embeds:
     - `stats`: Game-wide run counts (full-game vs IL) and unique player count.
     - `recent`: 5 most recently approved runs across the entire game.
 
-    **Examples:**
+    Examples:
     - `/website/lbs/thug1/category/any` - All Any% runs for THUG1
     - `/website/lbs/thug1/category/any?values=beginner` - Any% Beginner runs
     - `/website/lbs/thps4/category/any?embed=stats,recent` - With game-wide metadata
@@ -223,11 +223,11 @@ def get_category_leaderboard(
     Only level+category combos with actual runs are included. Optionally filter
     by variable value slugs to narrow results to a specific subcategory.
 
-    **Supported Embeds:**
+    Supported Embeds:
     - `stats`: Game-wide run counts (full-game vs IL) and unique player count.
     - `recent`: 5 most recently approved runs across the entire game.
 
-    **Examples:**
+    Examples:
     - `/website/lbs/thug1/levels` - IL summary grid for THUG
     - `/website/lbs/thug1/levels?values=normal` - Filtered to Normal difficulty
     - `/website/lbs/thug1/levels?embed=stats,recent` - With game-wide metadata
@@ -305,11 +305,11 @@ def get_il_summary(
     Get the full leaderboard for a specific level + IL category combination,
     optionally filtered by variable value slugs (subcategory).
 
-    **Supported Embeds:**
+    Supported Embeds:
     - `stats`: Game-wide run counts (full-game vs IL) and unique player count.
     - `recent`: 5 most recently approved runs across the entire game.
 
-    **Examples:**
+    Examples:
     - `/website/lbs/thug1/level/foundry/any` - Foundry Any% for THUG
     - `/website/lbs/thug1/level/foundry/any?values=beginner` - Filtered
     - `/website/lbs/thps4/level/manhattan/any?embed=stats` - With stats

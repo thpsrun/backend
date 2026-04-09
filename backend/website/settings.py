@@ -41,11 +41,14 @@ INSTALLED_APPS = [
     "allauth.headless",
     "rest_framework_api_key",
     # LOCAL
+    "accounts",
     "srl",
     "api",
     "guides",
     "nav",
 ]
+
+AUTH_USER_MODEL = "accounts.CustomUser"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -251,7 +254,7 @@ HEADLESS_FRONTEND_URLS = {
     + "/login/error/",
 }
 
-# EMAIL (Resend via django-anymail)
+# EMAIL (Resend via django-anymail TODO:)
 EMAIL_BACKEND = "anymail.backends.resend.EmailBackend"
 ANYMAIL = {
     "RESEND_API_KEY": os.getenv("RESEND_API_KEY", ""),

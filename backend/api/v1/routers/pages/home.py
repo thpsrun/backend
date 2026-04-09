@@ -23,15 +23,15 @@ router = Router()
     Get aggregated data for the website main page including latest world records,
     personal bests, and current records for featured categories.
 
-    **Supported Embeds:**
+    Supported Embeds:
     - `latest-wrs`: Latest 5 world records within the database.
     - `latest-pbs`: Latest 5 personal bests (excluding WRs) within the database.
     - `records`: Current WRs for featured categories.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `embed`: Comma-separated list of data types to include (required)
 
-    **Examples:**
+    Examples:
     - `/website/main?embed=latest-wrs,latest-pbs` - Recent activity
     - `/website/main?embed=records` - Current world records
     - `/website/main?embed=latest-wrs,latest-pbs,records,stats` - All data

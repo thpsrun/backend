@@ -34,11 +34,11 @@ router = Router()
     description=dedent(
         """Retrieve all platforms within the `Platforms` object, ordered by name.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `limit` (int | None): Results per page (default 50, max 100)
     - `offset`(int | None): Results to skip (default 0)
 
-    **Examples:**
+    Examples:
     - `/platforms/all` - Get all platforms
     - `/platforms/all?limit=20` - Get first 20 platforms
     - `/platforms/all?limit=10&offset=10` - Get platforms 11-20
@@ -77,10 +77,10 @@ def get_all_platforms(
     description=dedent(
         """Retrieve a single platform by its ID or its slug.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `id` (str): Unique ID of the platform being queried.
 
-    **Examples:**
+    Examples:
     - `/platforms/8gej2n3z` - Get platform by ID
     - `/platforms/pc` - Get platform by slug
     """
@@ -124,9 +124,9 @@ def get_platform(
     description=dedent(
         """Creates a brand new platform.
 
-    **REQUIRES MODERATOR ACCESS OR HIGHER.**
+    REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    **Request Body:**
+    Request Body:
     - `id` (str): Unique ID (usually based on SRC) of the platform being created.
     - `name` (str): Platform name (e.g., "PlayStation 2") being created.
     - `slug` (str): URL-friendly version (e.g., "playstation-2").
@@ -170,12 +170,12 @@ def create_platform(
     description=dedent(
         """Updates the platform based on its unique ID.
 
-    **REQUIRES MODERATOR ACCESS OR HIGHER.**
+    REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `id (str): Unique ID (usually based on SRC) of the platform.
 
-    **Request Body:**
+    Request Body:
     - `name` (str | None): Platform name (e.g., "PlayStation 2") being created.
     - `slug` (str | None): URL-friendly version (e.g., "playstation-2").
     """
@@ -217,9 +217,9 @@ def update_platform(
     description=dedent(
         """Deletes the selected platform based on its ID.
 
-    **REQUIRES ADMIN ACCESS.**
+    REQUIRES ADMIN ACCESS.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `id (str): Unique ID (usually based on SRC) of the platform being deleted.
     """
     ),

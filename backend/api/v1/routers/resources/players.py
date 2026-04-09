@@ -10,7 +10,6 @@ from srl.models import CountryCodes, Players, Runs
 
 from api.permissions import admin_auth, moderator_auth, public_auth
 from api.v1.docs.players import PLAYERS_DELETE, PLAYERS_GET, PLAYERS_POST, PLAYERS_PUT
-from api.v1.schemas.runs import compute_run_subcategory
 from api.v1.schemas.base import ErrorResponse, validate_embeds
 from api.v1.schemas.players import (
     ModeratedGameEmbedSchema,
@@ -19,6 +18,7 @@ from api.v1.schemas.players import (
     PlayerSearchResultSchema,
     PlayerUpdateSchema,
 )
+from api.v1.schemas.runs import compute_run_subcategory
 from api.v1.utils import get_or_generate_id
 
 router = Router()
@@ -33,19 +33,31 @@ def apply_player_embeds(
     ) -> dict:
         return {
             "id": run.id,
-            "game": {
-                "name": run.game.name,
-                "slug": run.game.slug,
-            } if run.game else None,
-            "category": {
-                "name": run.category.name,
-                "slug": run.category.slug,
-            } if run.category else None,
+            "game": (
+                {
+                    "name": run.game.name,
+                    "slug": run.game.slug,
+                }
+                if run.game
+                else None
+            ),
+            "category": (
+                {
+                    "name": run.category.name,
+                    "slug": run.category.slug,
+                }
+                if run.category
+                else None
+            ),
             "subcategory": compute_run_subcategory(run),
-            "level": {
-                "name": run.level.name,
-                "slug": run.level.slug,
-            } if run.level else None,
+            "level": (
+                {
+                    "name": run.level.name,
+                    "slug": run.level.slug,
+                }
+                if run.level
+                else None
+            ),
             "place": run.place,
             "points": run.points,
             "time": run.time if run.p_time == "0" else run.p_time,
@@ -54,10 +66,7 @@ def apply_player_embeds(
             "video": run.video,
             "arch_video": run.arch_video,
             "obsolete": run.obsolete,
-            "value_slugs": [
-                rvv.value.slug
-                for rvv in run.runvariablevalues_set.all()
-            ],
+            "value_slugs": [rvv.value.slug for rvv in run.runvariablevalues_set.all()],
         }
 
     def _fetch_player_runs(
@@ -136,11 +145,11 @@ def apply_player_embeds(
         """Search for players by name or nickname. Returns lightweight results
     suitable for autocomplete/typeahead.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `q` (str): Search query (min 2 characters). Matches against name and nickname.
     - `limit` (int): Max results to return (default 10, max 25).
 
-    **Examples:**
+    Examples:
     - `/players/search?q=hawk` - Search for players matching "hawk".
     - `/players/search?q=spe&limit=5` - Search with a custom limit.
     """
@@ -150,10 +159,14 @@ def apply_player_embeds(
 def search_players(
     request: HttpRequest,
     q: Annotated[
-        str, Query, Field(min_length=2, max_length=30, description="Search query"),
+        str,
+        Query,
+        Field(min_length=2, max_length=30, description="Search query"),
     ],
     limit: Annotated[
-        int, Query, Field(default=10, ge=1, le=25, description="Max results"),
+        int,
+        Query,
+        Field(default=10, ge=1, le=25, description="Max results"),
     ] = 10,
 ) -> Status:
     players = (
@@ -168,7 +181,7 @@ def search_players(
                 id=p.id,
                 name=p.name,
                 nickname=p.nickname,
-                country_id=p.countrycode,
+                country_id=p.countrycode.id if p.countrycode else None,
             )
             for p in players
         ],
@@ -184,11 +197,11 @@ def search_players(
 
     Exclusively for this endpoint, you can also GET a player by their username or their nickname.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `id` (str): Unique ID of the player being queried.
     - `embed` (list | None): Comma-separated list of resources to embed.
 
-    **Supported Embeds:**
+    Supported Embeds:
     - `country`: Includes the metadata of the country associated with the player, if any.
     - `stats`: Includes total verified runs, full-game points, and IL points.
     - `awards`: Include the metadata of the awards the player has collected, if any.
@@ -196,7 +209,7 @@ def search_players(
     - `profile`: All verified non-obsolete runs split into `fg` and `il` keys.
     - `profile-obsolete`: All verified runs (including obsolete) split into `fg` and `il` keys.
 
-    **Examples:**
+    Examples:
     - `/players/v8lponvj` - Get player by ID.
     - `/players/v8lponvj?embed=country` - Get player with country info.
     - `/players/v8lponvj?embed=country,stats,awards,profile` - Get player with stats and profile.
@@ -212,11 +225,11 @@ def get_player(
         str | None, Query, Field(description="Comma-separated embeds")
     ] = None,
 ) -> Status:
-    if len(id) > 15:
+    if len(id) > 30:
         return Status(
             400,
             ErrorResponse(
-                error="ID must be 15 characters or less",
+                error="ID must be 30 characters or less",
                 details=None,
             ),
         )
@@ -297,9 +310,9 @@ def get_player(
     description=dedent(
         """Creates a brand new player.
 
-    **REQUIRES MODERATOR ACCESS OR HIGHER.**
+    REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    **Request Body:**
+    Request Body:
     - `id` (str | None): The player ID; if one is not given, it will auto-generate.
     - `name` (str): Player's name on Speedrun.com.
     - `nickname` (str | None): Custom nickname override (displayed instead of name).
@@ -370,12 +383,12 @@ def create_player(
     description=dedent(
         """Updates the player based on their unique ID.
 
-    **REQUIRES MODERATOR ACCESS OR HIGHER.**
+    REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `id` (str): Unique ID of the player being updated.
 
-    **Request Body:**
+    Request Body:
     - name (str | None): Player's name on Speedrun.com.
     - nickname (str | None): Custom nickname override (displayed instead of name).
     - url (str | None): Speedrun.com profile URL.
@@ -450,9 +463,9 @@ def update_player(
     description=dedent(
         """Deletes the selected player based on its ID.
 
-    **REQUIRES ADMIN ACCESS.**
+    REQUIRES ADMIN ACCESS.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `id` (str): Unique ID of the player being deleted.
     """
     ),

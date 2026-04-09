@@ -114,7 +114,7 @@ def sync_src_action(
     5 failed attempts, marks the task as failed and reports to Sentry.
     """
     from srl.encryption import decrypt_src_key
-    from srl.models import SRCCredential, SRCSyncTask
+    from srl.models import SRCSyncTask
 
     try:
         sync_task = SRCSyncTask.objects.select_related(
@@ -128,10 +128,23 @@ def sync_src_action(
     if sync_task.status == SRCSyncTask.Status.SYNCED:
         return
 
+    user = sync_task.moderator.user
+    if not user or not user.encrypted_api_key:
+        sync_task.status = SRCSyncTask.Status.FAILED
+        sync_task.last_error = "No SRC API key stored for moderator"
+        sync_task.save(
+            update_fields=["status", "last_error", "updated_at"],
+        )
+        sentry_sdk.capture_message(
+            f"SRC sync failed: no valid API key for "
+            f"sync task {sync_task_id}",
+            level="error",
+        )
+        return
+
     try:
-        cred = SRCCredential.objects.get(user=sync_task.moderator.user)
-        api_key = decrypt_src_key(cred.encrypted_api_key)
-    except (SRCCredential.DoesNotExist, Exception) as e:
+        api_key = decrypt_src_key(user.encrypted_api_key)
+    except Exception as e:
         sync_task.status = SRCSyncTask.Status.FAILED
         sync_task.last_error = f"Cannot decrypt SRC API key: {e}"
         sync_task.save(

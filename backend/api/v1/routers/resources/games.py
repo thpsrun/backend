@@ -214,17 +214,17 @@ def _build_platforms_embed(
         """Retrieves all games within the `Games` object, including optional embedding and
     pagination.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `limit` (int | None): Results per page (default 50, max 100).
     - `offset` (int | None): Results to skip (default 0).
     - `embed` (list | None): Comma-separated list of resources to embed,
 
-    **Supported Embeds:**
+    Supported Embeds:
     - `categories`: Include metadata related to the game's categories.
     - `levels`: Include metadata related to the game's levels.
     - `platforms`: Include metadata related to the game's available platforms.
 
-    **Examples:**
+    Examples:
     - `/games/all` - Get all games.
     - `/games/all?limit=20` - Get first 20 games.
     - `/games/all?embed=categories,platforms` - Get games with categories and platforms.
@@ -301,12 +301,12 @@ def get_all_games(
     description=dedent(
         """Retrieves a single game by its ID or its slug, including optional embedding.
 
-    **Supported Embeds:**
+    Supported Embeds:
     - `categories`: Include metadata related to the game's categories
     - `levels`: Include metadata related to the game's levels
     - `platforms`: Include metadata related to the game's available platforms
 
-    **Examples:**
+    Examples:
     - `/games/thps4` - Get game by slug
     - `/games/n2680o1p` - Get game by ID
     - `/games/thps4?embed=categories,levels` - Get game with categories and levels
@@ -386,9 +386,9 @@ def get_game(
     description=dedent(
         """Creates a brand new game.
 
-    **REQUIRES MODERATOR ACCESS OR HIGHER.**
+    REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    **Request Body:**
+    Request Body:
     - `id` (str | None): The game ID; if one is not given, it will auto-generate.
     - `name` (str): Game name.
     - `slug` (str): URL-friendly game abbreviation.
@@ -459,9 +459,9 @@ def create_game(
     description=dedent(
         """Updates the game based on its unique ID or slug.
 
-    **REQUIRES MODERATOR ACCESS OR HIGHER.**
+    REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    **Request Body:**
+    Request Body:
     - `name` (str | None): Game name.
     - `slug` (str | None): URL-friendly game abbreviation.
     - `twitch` (str | None): Game name as it appears on Twitch.
@@ -514,9 +514,9 @@ def update_game(
     description=dedent(
         """Deletes the selected game.
 
-    **REQUIRES ADMIN ACCESS.**
+    REQUIRES ADMIN ACCESS.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - id (str): Unique ID or slug of the specified game
     """
     ),
