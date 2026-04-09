@@ -36,11 +36,6 @@ jobs:
                  --max-line-length=100 \
                  $(git ls-files | grep py$)
 
-      - name: "Run mypy for Type Checking"
-        continue-on-error: true
-        run: |
-          mypy thpsbot --ignore-missing-imports
-
   test-backend:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
@@ -108,7 +103,6 @@ jobs:
 
       - name: Run pip-audit
         run: pip-audit -r requirements.txt --desc
-        continue-on-error: true
 
   deploy-dev:
     if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
@@ -147,19 +141,17 @@ jobs:
             docker compose -f docker-compose.PROD.yml run --rm django python manage.py collectstatic --noinput
 
             echo "Restarting Docker containers..."
-            docker compose down -f docker-compose.PROD.yml
+            docker compose -f docker-compose.PROD.yml down
             docker compose -f docker-compose.PROD.yml up -d --build
 
             echo "Cleaning up Docker..."
             docker system prune -f
 
-      - name: Health Check
-        run: |
-          echo "Waiting for services to start..."
-          sleep 30
+            echo "Waiting for services to start..."
+            sleep 30
 
-          echo "Checking API health..."
-          curl -f https://localhost/api/v1/ || echo "!!!!!!! API health check failed !!!!!!!"
+            echo "Checking API health..."
+            curl -f https://localhost/api/v1/ || echo "!!!!!!! API health check failed !!!!!!!"
 
       - name: Notify Success
         if: success()
@@ -212,7 +204,7 @@ jobs:
             BACKUP_FILE="pre-deploy-$(date +'%Y%m%d-%H%M%S').sql.gz"
 
             echo "Creating pre-deployment backup: $BACKUP_FILE"
-            docker exec postgres pg_dump -U $POSTGRES_USER $POSTGRES_DB | gzip > ~/backups/$BACKUP_FILE
+            docker exec postgres sh -c 'pg_dump -U $POSTGRES_USER $POSTGRES_DB' | gzip > ~/backups/$BACKUP_FILE
 
             if [ -f ~/backups/$BACKUP_FILE ]; then
               SIZE=$(du -h ~/backups/$BACKUP_FILE | cut -f1)
@@ -240,7 +232,7 @@ jobs:
             docker compose -f docker-compose.PROD.yml run --rm django python manage.py collectstatic --noinput
 
             echo "Restarting Docker containers..."
-            docker compose down -f docker-compose.PROD.yml
+            docker compose -f docker-compose.PROD.yml down
             docker compose -f docker-compose.PROD.yml up -d --build
 
             echo "Cleaning up Docker..."
@@ -254,10 +246,10 @@ jobs:
           sleep 30
 
           echo "Checking API health..."
-          curl -f https://localhost/api/v1/ || echo "!!!!!!!API health check failed - check logs!!!!!!!"
+          curl -f https://thps.run/api/v1/ || echo "!!!!!!!API health check failed - check logs!!!!!!!"
 
           echo "Checking admin panel..."
-          curl -f https://localhost/illiad/login/ || echo "!!!!!!! Admin panel health check failed - check logs!!!!!!!"
+          curl -f https://thps.run/illiad/login/ || echo "!!!!!!! Admin panel health check failed - check logs!!!!!!!"
 
       - name: Tag Successful Deployment
         if: success()

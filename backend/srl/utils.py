@@ -32,21 +32,12 @@ def convert_time(
     seconds, milliseconds = divmod(round(seconds, 3) * 1000, 1000)
     milliseconds = str(int(milliseconds)).zfill(3)
 
-    if minutes >= 60:
-        hours += math.floor(minutes / 60)
-        minutes = minutes % 60
-
     if hours >= 1:
         final_time = f"{int(hours)}h "
     else:
         final_time = ""
 
-    if minutes == 0:
-        final_time += "0m "
-    elif minutes < 10:
-        final_time += f"{int(minutes)}m "
-    else:
-        final_time += f"{int(minutes)}m "
+    final_time += f"{int(minutes)}m "
 
     if seconds < 10:
         final_time += f"0{int(seconds)}s "
@@ -79,17 +70,20 @@ def src_api(
     Returns:
         response (dict): Dictionary/JSON object from the requested API.
     """
-    response = requests.get(
-        url,
-        headers={
-            "User-Agent": "thps.run/4.0 (https://thps.run; automation@thps.run)",
-        },
-    )
+    headers = {
+        "User-Agent": "thps.run/4.0 (https://thps.run; automation@thps.run)",
+    }
+    response = requests.get(url, headers=headers, timeout=30)
 
+    retries = 0
     while response.status_code == 420 or response.status_code == 503:
+        retries += 1
+        if retries >= 30:
+            raise ValueError(f"SRC API rate limit exceeded after 30 retries ({url})")
+
         print("[DEBUG] Rate limit exceeded, waiting 60 seconds...")
         time.sleep(60)
-        response = requests.get(url)
+        response = requests.get(url, headers=headers, timeout=30)
 
     if response.status_code != 200:
         raise ValueError(
@@ -135,12 +129,12 @@ class TimeDict(TypedDict):
 
 
 def time_conversion(
-    time: SrcRunsTimes,
+    times: SrcRunsTimes,
 ) -> tuple[str, str, str]:
     """Processes the returned time values of a run entry in a string.
 
     Arguments:
-        time (SrcRunsTimes): Time data from a speedrun.
+        times (SrcRunsTimes): Time data from a speedrun.
 
     Returns:
         tuple: A tuple containing:
@@ -152,11 +146,11 @@ def time_conversion(
         - `convert_time`
     """
 
-    rta = convert_time(time.realtime_t) if time.realtime_t > 0 else "0"
+    rta = convert_time(times.realtime_t) if times.realtime_t > 0 else "0"
     noloads = (
-        convert_time(time.realtime_noloads_t) if time.realtime_noloads_t > 0 else "0"
+        convert_time(times.realtime_noloads_t) if times.realtime_noloads_t > 0 else "0"
     )
-    igt = convert_time(time.ingame_t) if time.ingame_t > 0 else "0"
+    igt = convert_time(times.ingame_t) if times.ingame_t > 0 else "0"
 
     return rta, noloads, igt
 
@@ -183,8 +177,8 @@ def calculate_bonus(
 
     if runtype == "main":
         return int(capped * settings.STREAK_BONUS_FG)
-    else:  # IL
-        return int(capped * settings.STREAK_BONUS_IL)  # Cumulative floor
+    else:
+        return int(capped * settings.STREAK_BONUS_IL)
 
 
 def runs_share_player(
@@ -236,7 +230,7 @@ def get_streak_start_date(
         run__category=run.category,
         run__level=run.level,
         run__runtype=run.runtype,
-        points=max_points,
+        points__gte=max_points,
     )
 
     rvvs = list(RunVariableValues.objects.filter(run=run))
@@ -252,8 +246,7 @@ def get_streak_start_date(
         ).filter(rv_count=0)
 
     wr_history = (
-        wr_history_qs
-        .select_related("run")
+        wr_history_qs.select_related("run")
         .prefetch_related("run__players")
         .order_by("-start_date")
     )
@@ -271,7 +264,9 @@ def get_streak_start_date(
         entry_start_date = entry.start_date.date()
 
         if entry_start_date < cutoff_date:
-            if streak_start is None or runs_share_player(entry_player_ids, tracking_player_ids):
+            if streak_start is None or runs_share_player(
+                entry_player_ids, tracking_player_ids
+            ):
                 streak_start = entry_start_date
             break
 

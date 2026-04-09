@@ -23,6 +23,7 @@ class Categories(models.Model):
         ("per-game", "Full Game"),
     ]
 
+    # RTA = real-time, LRT = load-removed time, IGT = in-game timer
     leaderboard_choices = [
         ("realtime", "RTA"),
         ("realtime_noloads", "LRT"),
@@ -80,6 +81,11 @@ class Categories(models.Model):
             "Controls display order. order=0 items sort alphabetically as a fallback. "
             "Items with order>=1 sort first in ascending order."
         ),
+    )
+    players = models.PositiveIntegerField(
+        verbose_name="Number of Players",
+        default=1,
+        help_text="Number of players this category accepts.",
     )
     archive = models.BooleanField(
         verbose_name="Archive Category",

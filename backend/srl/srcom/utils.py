@@ -1,10 +1,9 @@
 from itertools import product
-from typing import List
 
 from celery import shared_task
 from django.db.models import Count, QuerySet
 
-from srl.models import Platforms, Players, Runs
+from srl.models import Platforms, Players, Runs, VariableValues
 from srl.srcom.schema.src import SrcRunsPlayers, SrcVariablesModel
 from srl.utils import convert_time, points_formula, src_api, time_conversion
 
@@ -81,9 +80,9 @@ def create_leaderboard_link(
     """
     base_url = "https://speedrun.com/api/v1/leaderboards/"
     if il_id:
-        url: str = f"{base_url}{game_id}/level/{il_id}/{category_id}"
+        url = f"{base_url}{game_id}/level/{il_id}/{category_id}"
     else:
-        url: str = f"{base_url}{game_id}/category/{category_id}"
+        url = f"{base_url}{game_id}/category/{category_id}"
 
     if var_combo:
         var_string: str = "&".join(
@@ -120,10 +119,8 @@ def filter_by_variable_map(
                 runvariablevalues__value_id=val_id,
             )
     else:
-        qs = (
-            qs
-            .annotate(rv_count=Count("runvariablevalues", distinct=True))
-            .filter(rv_count=0)
+        qs = qs.annotate(rv_count=Count("runvariablevalues", distinct=True)).filter(
+            rv_count=0
         )
     return qs
 
@@ -138,17 +135,17 @@ def build_var_name(
         base_name (str): Usually the level or category name.
         run_variables (dict): Variable:value pairs within a run.
     """
-    if len(run_variables) > 0:
-        var_name = base_name + " ("
-        for _, value in run_variables.items():
-            value_name = (
-                VariableValues.objects.only("name", "value").get(value=value).name
-            )
-            var_name += f"{value_name}, "
-
-        return var_name.removesuffix(", ") + ")"
-    else:
+    if not run_variables:
         return base_name
+
+    value_ids = list(run_variables.values())
+    values_map = dict(
+        VariableValues.objects.filter(value__in=value_ids)
+        .only("value", "name")
+        .values_list("value", "name")
+    )
+    value_names = [values_map.get(v, v) for v in value_ids]
+    return f"{base_name} ({', '.join(value_names)})"
 
 
 def lrt_fix(
@@ -259,7 +256,7 @@ def update_standings(
 def update_obsolete(
     game_id: str,
     variable_value_map: dict[str, str],
-    players: List[SrcRunsPlayers],
+    players: list[SrcRunsPlayers],
     run_type: str,
     default_time_type: str,
 ) -> None:
@@ -272,7 +269,7 @@ def update_obsolete(
     Arguments:
         game_id (str): Unique SRC ID of the game.
         variable_value_map (dict[str, str]): {variable_id: value_id} for the leaderboard variant.
-        players (List[SrcRunsPlayers]): Pydantic list of players passed onto the function.
+        players (list[SrcRunsPlayers]): Pydantic list of players passed onto the function.
         run_type (str): Type of run that needs to be queried (e.g. "main" or "il").
         default_time_type (str): Default time type of the record.
     """
@@ -356,6 +353,6 @@ def create_run_default(
     }
 
     if lrtfix:
-        default: dict = lrt_fix(default)
+        default = lrt_fix(default)
 
     return default

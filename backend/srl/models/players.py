@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 
 from srl.models.awards import Awards
@@ -81,6 +82,12 @@ class Players(models.Model):
         blank=True,
         null=True,
     )
+    discord = models.CharField(
+        max_length=32,
+        verbose_name="Discord",
+        blank=True,
+        null=True,
+    )
     ex_stream = models.BooleanField(
         verbose_name="Stream Exception",
         default=False,
@@ -97,6 +104,37 @@ class Players(models.Model):
             "Earned awards can be selected here. All selected awards will appear on "
             "the Player's profile."
         ),
+    )
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="player",
+    )
+
+    class ClaimStatus(models.TextChoices):
+        UNCLAIMED = "unclaimed", "Unclaimed"
+        CLAIMED = "claimed", "Claimed"
+        DELETED = "deleted", "Deleted"
+
+    claim_status = models.CharField(
+        max_length=10,
+        choices=ClaimStatus.choices,
+        default=ClaimStatus.UNCLAIMED,
+        verbose_name="Claim Status",
+        help_text="Tracks whether a player account is unclaimed, actively claimed, or deleted.",
+    )
+    sync_paused = models.BooleanField(
+        verbose_name="Sync Paused",
+        default=False,
+        help_text="When checked, SRC sync will skip this player.",
+    )
+    joined = models.DateField(
+        verbose_name="Joined",
+        blank=True,
+        null=True,
+        help_text="Date of the player's earliest verified speedrun.",
     )
     created_at = models.DateTimeField(
         auto_now_add=True,

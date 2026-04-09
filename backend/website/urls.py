@@ -16,9 +16,12 @@ urlpatterns = [
     path("illiad/", admin.site.urls),
     path("api/v1/", ninja_api.urls),
     path("docs/", include("guides.urls")),
+    path("accounts/", include("allauth.urls")),
+    path("_allauth/", include("allauth.headless.urls")),
 ] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 
 if settings.DEBUG:
     from debug_toolbar.toolbar import debug_toolbar_urls
 
-    urlpatterns = urlpatterns + debug_toolbar_urls()
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    urlpatterns += debug_toolbar_urls()

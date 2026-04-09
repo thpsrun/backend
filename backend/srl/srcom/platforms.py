@@ -1,3 +1,5 @@
+from typing import Any
+
 from celery import shared_task
 from django.db import transaction
 
@@ -17,7 +19,7 @@ def sync_platforms(
             platform dict information.
     """
     if isinstance(platform_data, str):
-        src_data: dict[dict, str] = src_api(
+        src_data: dict[str, Any] = src_api(
             f"https://speedrun.com/api/v1/platforms/{platform_data}"
         )
 

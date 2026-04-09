@@ -27,7 +27,7 @@ router = Router()
     description=dedent(
         """Returns a list of all available tags to categorize guides.
 
-    **Examples:**
+    Examples:
     - `/tags/all` - Get all tags
     """
     ),
@@ -48,10 +48,10 @@ def list_tags(
     description=dedent(
         """Get a specific tag by its slug.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `slug` (str): URL-friendly tag identifier
 
-    **Examples:**
+    Examples:
     - `/tags/tricks` - Get the "Tricks" tag
     - `/tags/glitches` - Get the "Glitches" tag
     """
@@ -80,9 +80,9 @@ def get_tag(
     description=dedent(
         """Creates a brand new tag for categorizing guides.
 
-    **REQUIRES CONTRIBUTOR ACCESS OR HIGHER.**
+    REQUIRES CONTRIBUTOR ACCESS OR HIGHER.
 
-    **Request Body:**
+    Request Body:
     - `name` (str): Name of the tag
     - `description` (str): Description of what this tag represents
     """
@@ -110,7 +110,7 @@ def create_tag(
     except Exception as e:
         return Status(500, ErrorResponse(
             error="Tag Creation Failed",
-            details={"exception": {str(e)}},
+            details={"exception": str(e)},
         ))
 
 
@@ -121,12 +121,12 @@ def create_tag(
     description=dedent(
         """Update an existing tag.
 
-    **REQUIRES CONTRIBUTOR ACCESS OR HIGHER.**
+    REQUIRES CONTRIBUTOR ACCESS OR HIGHER.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `slug` (str): Tag slug to update
 
-    **Request Body:**
+    Request Body:
     - `name` (str | None): Updated tag name
     - `slug` (str | None): Updated URL-friendly slug
     - `description` (str | None): Updated tag description
@@ -147,9 +147,6 @@ def update_tag(
             details=None,
         ))
 
-    # After all validations, it will begin to update the tag in the database
-    # to then return to the client. Major check here is to ensure that, if the slug
-    # is provided, it will ensure that the slug is unique.
     try:
         with transaction.atomic():
             if data.name is not None:
@@ -176,8 +173,8 @@ def update_tag(
 
     except Exception as e:
         return Status(500, ErrorResponse(
-            error=f"Failed to update tag: {str(e)}",
-            details=None,
+            error="Failed to update tag",
+            details={"exception": str(e)},
         ))
 
 
@@ -188,9 +185,9 @@ def update_tag(
     description=dedent(
         """Delete a tag.
 
-    **REQUIRES CONTRIBUTOR ACCESS OR HIGHER.**
+    REQUIRES CONTRIBUTOR ACCESS OR HIGHER.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `slug` (str): Unique ID or the slug of the tag to remove.
     """
     ),
@@ -214,6 +211,6 @@ def delete_tag(
         return Status(200, {"message": f"Tag '{name}' deleted successfully"})
     except Exception as e:
         return Status(500, ErrorResponse(
-            error=f"Failed to delete tag: {str(e)}",
-            details=None,
+            error="Failed to delete tag",
+            details={"exception": str(e)},
         ))

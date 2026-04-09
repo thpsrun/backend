@@ -2,9 +2,26 @@ import hashlib
 from typing import Any, Callable
 
 from django.core.cache import caches
-from django.db.models import Max, Q
+from django.db.models import Max, Q, QuerySet
 from guides.models import Guides
+from nav.models import NavItem, SocialLink
 from srl.models import Categories, Levels, Players, Runs, Variables, VariableValues
+
+_TS_TTL = 30  # seconds to cache timestamp lookups
+
+
+def _cached_timestamp(
+    ts_key: str,
+    queryset: QuerySet,
+    cache_name: str = "default",
+) -> str:
+    cache = caches[cache_name]
+    timestamp = cache.get(ts_key)
+    if timestamp is None:
+        latest = queryset.aggregate(latest=Max("updated_at"))["latest"]
+        timestamp = latest.isoformat() if latest else "None"
+        cache.set(ts_key, timestamp, timeout=_TS_TTL)
+    return timestamp
 
 
 def leaderboard_cache_key(
@@ -12,21 +29,20 @@ def leaderboard_cache_key(
     category_id: str,
     level_id: str | None = None,
 ) -> str:
-    filters: dict[str, str] = {
+    filters: dict[str, Any] = {
         "game_id": game_id,
         "category_id": category_id,
+        "obsolete": False,
+        "vid_status": "verified",
     }
 
     if level_id is not None:
         filters["level_id"] = level_id
 
-    latest = Runs.objects.filter(**filters).aggregate(
-        latest=Max(
-            "updated_at",
-        )
-    )["latest"]
-
-    timestamp = latest.isoformat() if latest else "None"
+    timestamp = _cached_timestamp(
+        f"ts:lb:{game_id}:{category_id}:{level_id}",
+        Runs.objects.filter(**filters),
+    )
 
     cache_key = [
         f"game:{game_id}",
@@ -43,12 +59,10 @@ def leaderboard_cache_key(
 
 
 def overall_leaderboard_cache_key() -> str:
-    latest = Runs.objects.filter(
-        obsolete=False,
-        vid_status="verified",
-    ).aggregate(latest=Max("updated_at"),)["latest"]
-
-    timestamp = latest.isoformat() if latest else "None"
+    timestamp = _cached_timestamp(
+        "ts:lb:overall",
+        Runs.objects.filter(obsolete=False, vid_status="verified"),
+    )
 
     return f"leaderboard:overall:{timestamp}"
 
@@ -56,13 +70,14 @@ def overall_leaderboard_cache_key() -> str:
 def game_leaderboard_cache_key(
     game_id: str,
 ) -> str:
-    latest = Runs.objects.filter(
-        game_id=game_id,
-        obsolete=False,
-        vid_status="verified",
-    ).aggregate(latest=Max("updated_at"),)["latest"]
-
-    timestamp = latest.isoformat() if latest else "None"
+    timestamp = _cached_timestamp(
+        f"ts:lb:game:{game_id}",
+        Runs.objects.filter(
+            game_id=game_id,
+            obsolete=False,
+            vid_status="verified",
+        ),
+    )
 
     return f"leaderboard:game:{game_id}:{timestamp}"
 
@@ -70,11 +85,10 @@ def game_leaderboard_cache_key(
 def player_cache_key(
     user_id: str,
 ) -> str:
-    latest = Runs.objects.filter(run_players__player__id=user_id).aggregate(
-        latest=Max("updated_at")
-    )["latest"]
-
-    timestamp = latest.isoformat() if latest else "None"
+    timestamp = _cached_timestamp(
+        f"ts:player:{user_id}",
+        Runs.objects.filter(run_players__player__id=user_id),
+    )
 
     return f"player_stats:{user_id}:{timestamp}"
 
@@ -84,9 +98,9 @@ def wr_cache_key(
     category_id: str,
     level_id: str | None = None,
 ) -> str:
-    filters = {
+    filters: dict[str, Any] = {
         "game_id": game_id,
-        "cat_id": category_id,
+        "category_id": category_id,
         "place": 1,
         "obsolete": False,
     }
@@ -94,98 +108,105 @@ def wr_cache_key(
     if level_id is not None:
         filters["level_id"] = level_id
 
-    latest = Runs.objects.filter(**filters).aggregate(latest=Max("updated_at"))[
-        "latest"
-    ]
-
-    timestamp = latest.isoformat() if latest else "None"
+    timestamp = _cached_timestamp(
+        f"ts:wr:{game_id}:{category_id}:{level_id}",
+        Runs.objects.filter(**filters),
+    )
 
     return f"wr:game:{game_id}:cat:{category_id}:level{level_id}:{timestamp}"
 
 
 def main_wrs_cache_key() -> str:
-    latest = Runs.objects.filter(
-        place=1,
-        obsolete=False,
-        vid_status="verified",
-    ).aggregate(latest=Max("updated_at"),)["latest"]
-
-    timestamp = latest.isoformat() if latest else "None"
+    timestamp = _cached_timestamp(
+        "ts:main:wrs",
+        Runs.objects.filter(place=1, obsolete=False, vid_status="verified"),
+    )
 
     return f"main:wrs:{timestamp}"
 
 
 def main_pbs_cache_key() -> str:
-    latest = Runs.objects.filter(
-        place__gt=1,
-        obsolete=False,
-        vid_status="verified",
-    ).aggregate(latest=Max("updated_at"),)["latest"]
-
-    timestamp = latest.isoformat() if latest else "None"
+    timestamp = _cached_timestamp(
+        "ts:main:pbs",
+        Runs.objects.filter(place__gt=1, obsolete=False, vid_status="verified"),
+    )
 
     return f"main:pbs:{timestamp}"
 
 
 def main_records_cache_key() -> str:
-    run_latest = Runs.objects.filter(
-        place=1,
-        obsolete=False,
-        runtype="main",
-        category__appear_on_main=True,
-        vid_status="verified",
-    ).aggregate(latest=Max("updated_at"),)["latest"]
+    run_ts = _cached_timestamp(
+        "ts:main:records:runs",
+        Runs.objects.filter(
+            place=1,
+            obsolete=False,
+            runtype="main",
+            category__appear_on_main=True,
+            vid_status="verified",
+        ),
+    )
 
-    cat_latest = Categories.objects.filter(
-        appear_on_main=True,
-    ).aggregate(
-        latest=Max("updated_at"),
-    )["latest"]
+    cat_ts = _cached_timestamp(
+        "ts:main:records:cats",
+        Categories.objects.filter(appear_on_main=True),
+    )
 
-    vv_latest = VariableValues.objects.aggregate(
-        latest=Max("updated_at"),
-    )["latest"]
+    vv_ts = _cached_timestamp(
+        "ts:main:records:vv",
+        VariableValues.objects.all(),
+    )
 
-    timestamps = [t for t in [run_latest, cat_latest, vv_latest] if t is not None]
-    latest = max(timestamps) if timestamps else None
-    timestamp = latest.isoformat() if latest else "None"
+    timestamps = [t for t in [run_ts, cat_ts, vv_ts] if t != "None"]
+    timestamp = max(timestamps) if timestamps else "None"
 
-    return f"main:records:{timestamp}"
+    return f"main:record:{timestamp}"
+
+
+def main_stats_cache_key() -> str:
+    timestamp = _cached_timestamp(
+        "ts:main:stats",
+        Runs.objects.filter(vid_status="verified"),
+    )
+
+    return f"main:stats:{timestamp}"
 
 
 def main_players_runs_cache_key(
     player: str,
 ) -> str:
-    player_data = Players.objects.get(
+    player_obj = Players.objects.filter(
         Q(id__iexact=player) | Q(name__iexact=player) | Q(nickname__iexact=player)
-    ).id
+    ).first()
+    player_data = player_obj.id if player_obj else player
 
-    latest_runs = Runs.objects.filter(
-        run_players__player=player_data,
-        vid_status="verified",
-    ).aggregate(latest=Max("updated_at"),)["latest"]
+    timestamp = _cached_timestamp(
+        f"ts:player:runs:{player_data}",
+        Runs.objects.filter(
+            run_players__player=player_data,
+            vid_status="verified",
+        ),
+    )
 
-    timestamp = latest_runs.isoformat() if latest_runs else "None"
-
-    return f"player:runs:{timestamp}"
+    return f"player:runs:{player_data}:{timestamp}"
 
 
 def game_categories_cache_key(
     game_id: str,
 ) -> str:
-    cat_latest = Categories.objects.filter(
-        game_id=game_id,
-    ).aggregate(
-        latest=Max("updated_at"),
-    )["latest"]
+    cat_ts = _cached_timestamp(
+        f"ts:game:cats:{game_id}",
+        Categories.objects.filter(game_id=game_id),
+    )
 
-    var_latest = Variables.objects.filter(
-        Q(game_id=game_id) | Q(cat__game_id=game_id),
-    ).aggregate(latest=Max("updated_at"),)["latest"]
+    var_ts = _cached_timestamp(
+        f"ts:game:cats:vars:{game_id}",
+        Variables.objects.filter(
+            Q(game_id=game_id) | Q(cat__game_id=game_id),
+        ),
+    )
 
-    timestamps = [t for t in [cat_latest, var_latest] if t is not None]
-    latest = max(timestamps) if timestamps else None
-    timestamp = latest.isoformat() if latest else "None"
+    timestamps = [t for t in [cat_ts, var_ts] if t != "None"]
+    timestamp = max(timestamps) if timestamps else "None"
 
     return f"game:{game_id}:categories:{timestamp}"
 
@@ -193,21 +214,18 @@ def game_categories_cache_key(
 def game_levels_cache_key(
     game_id: str,
 ) -> str:
-    level_latest = Levels.objects.filter(
-        game_id=game_id,
-    ).aggregate(
-        latest=Max("updated_at"),
-    )["latest"]
+    level_ts = _cached_timestamp(
+        f"ts:game:levels:{game_id}",
+        Levels.objects.filter(game_id=game_id),
+    )
 
-    var_latest = Variables.objects.filter(
-        level__game_id=game_id,
-    ).aggregate(
-        latest=Max("updated_at"),
-    )["latest"]
+    var_ts = _cached_timestamp(
+        f"ts:game:levels:vars:{game_id}",
+        Variables.objects.filter(level__game_id=game_id),
+    )
 
-    timestamps = [t for t in [level_latest, var_latest] if t is not None]
-    latest = max(timestamps) if timestamps else None
-    timestamp = latest.isoformat() if latest else "None"
+    timestamps = [t for t in [level_ts, var_ts] if t != "None"]
+    timestamp = max(timestamps) if timestamps else "None"
 
     return f"game:{game_id}:levels:{timestamp}"
 
@@ -215,11 +233,10 @@ def game_levels_cache_key(
 def run_cache_key(
     run_id: str,
 ) -> str:
-    latest = Runs.objects.filter(id=run_id).aggregate(
-        latest=Max("updated_at"),
-    )["latest"]
-
-    timestamp = latest.isoformat() if latest else "None"
+    timestamp = _cached_timestamp(
+        f"ts:run:{run_id}",
+        Runs.objects.filter(id=run_id),
+    )
 
     return f"run:{run_id}:{timestamp}"
 
@@ -227,13 +244,107 @@ def run_cache_key(
 def guide_cache_key(
     guide_id: int,
 ) -> str:
-    latest = Guides.objects.filter(id=guide_id).aggregate(
-        latest=Max("updated_at"),
-    )["latest"]
-
-    timestamp = latest.isoformat() if latest else "None"
+    timestamp = _cached_timestamp(
+        f"ts:guide:{guide_id}",
+        Guides.objects.filter(id=guide_id),
+    )
 
     return f"guide:{guide_id}:{timestamp}"
+
+
+def lbs_runs_cache_key(
+    game_id: str,
+    category_id: str,
+    value_slugs: list[str] | None = None,
+) -> str:
+    timestamp = _cached_timestamp(
+        f"ts:lbs:runs:{game_id}:{category_id}",
+        Runs.objects.filter(
+            game_id=game_id,
+            category_id=category_id,
+            obsolete=False,
+            vid_status="verified",
+        ),
+    )
+
+    values_str = ",".join(sorted(value_slugs)) if value_slugs else "all"
+    raw = f"lbs:{game_id}:{category_id}:{values_str}:{timestamp}"
+    key = hashlib.md5(raw.encode()).hexdigest()
+
+    return f"lbs:runs:{key}:{timestamp[:10]}"
+
+
+def lbs_game_stats_cache_key(
+    game_id: str,
+) -> str:
+    timestamp = _cached_timestamp(
+        f"ts:lbs:stats:{game_id}",
+        Runs.objects.filter(
+            game_id=game_id,
+            obsolete=False,
+            vid_status="verified",
+        ),
+    )
+
+    return f"lbs:stats:{game_id}:{timestamp}"
+
+
+def lbs_game_recent_cache_key(
+    game_id: str,
+) -> str:
+    timestamp = _cached_timestamp(
+        f"ts:lbs:recent:{game_id}",
+        Runs.objects.filter(
+            game_id=game_id,
+            obsolete=False,
+            vid_status="verified",
+        ),
+    )
+
+    return f"lbs:recent:{game_id}:{timestamp}"
+
+
+def lbs_il_summary_cache_key(
+    game_id: str,
+    value_slugs: list[str] | None = None,
+) -> str:
+    timestamp = _cached_timestamp(
+        f"ts:lbs:il_summary:{game_id}",
+        Runs.objects.filter(
+            game_id=game_id,
+            runtype="il",
+            obsolete=False,
+            vid_status="verified",
+        ),
+    )
+
+    values_str = ",".join(sorted(value_slugs)) if value_slugs else ""
+
+    return f"lbs:il_summary:{game_id}:{values_str}:{timestamp}"
+
+
+def lbs_il_runs_cache_key(
+    game_id: str,
+    level_id: str,
+    category_id: str,
+    value_slugs: list[str] | None = None,
+) -> str:
+    timestamp = _cached_timestamp(
+        f"ts:lbs:il:{game_id}:{level_id}:{category_id}",
+        Runs.objects.filter(
+            game_id=game_id,
+            level_id=level_id,
+            category_id=category_id,
+            obsolete=False,
+            vid_status="verified",
+        ),
+    )
+
+    values_str = ",".join(sorted(value_slugs)) if value_slugs else "all"
+    raw = f"lbs:il:{game_id}:{level_id}:{category_id}:{values_str}:{timestamp}"
+    key = hashlib.md5(raw.encode()).hexdigest()
+
+    return f"lbs:il_runs:{key}:{timestamp[:10]}"
 
 
 def check_cache_query(
@@ -254,3 +365,49 @@ def check_cache_query(
     cache.set(cache_key, result, timeout=timeout)
 
     return result
+
+
+def navbar_cache_key() -> str:
+    """Cache key for the navbar endpoint, based on latest update across both models."""
+    nav_ts = _cached_timestamp(
+        "ts:navbar:nav",
+        NavItem.objects.all(),
+    )
+    social_ts = _cached_timestamp(
+        "ts:navbar:social",
+        SocialLink.objects.all(),
+    )
+
+    timestamps = [t for t in (nav_ts, social_ts) if t != "None"]
+    if timestamps:
+        timestamp = max(timestamps)
+    else:
+        timestamp = "empty"
+
+    return f"navbar:{timestamp}"
+
+
+def history_cache_key(
+    game_id: str,
+    category_id: str,
+    level_id: str | None = None,
+    value_slugs: list[str] | None = None,
+) -> str:
+    filters: dict[str, Any] = {
+        "game_id": game_id,
+        "category_id": category_id,
+        "vid_status": "verified",
+    }
+    if level_id is not None:
+        filters["level_id"] = level_id
+
+    timestamp = _cached_timestamp(
+        f"ts:history:{game_id}:{category_id}:{level_id}",
+        Runs.objects.filter(**filters),
+    )
+
+    values_str = ",".join(sorted(value_slugs)) if value_slugs else "all"
+    raw = f"history:{game_id}:{category_id}:{level_id}:{values_str}:{timestamp}"
+    key = hashlib.md5(raw.encode()).hexdigest()
+
+    return f"history:{key}:{timestamp[:10]}"

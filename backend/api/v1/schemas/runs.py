@@ -6,8 +6,8 @@ from pydantic import Field, field_validator, model_validator
 from api.v1.schemas.base import BaseEmbedSchema, BaseModel
 
 
-def _compute_subcategory(data: Any) -> str | None:
-    """Compute subcategory string from a Django Runs model instance.
+def compute_run_subcategory(data: Any) -> str | None:
+    """Compute subcategory display string from a run's prefetched RunVariableValues.
 
     Requires the queryset to have:
         .select_related("category", "level")
@@ -111,7 +111,8 @@ class RunBaseSchema(BaseEmbedSchema):
         place (int): Leaderboard position.
         subcategory (str | None): Human-readable subcategory description.
         times (RunTimesSchema): Nested timing data (RTA, LRT, IGT, primary).
-        video (str | None): Video URL.
+        video (str | None): YouTube/Twitch URL.
+        arch_video (str | None): Archived video URL.
         date (datetime | None): Submission date.
         v_date (datetime | None): Verification date.
         url (str): Speedrun.com URL.
@@ -152,7 +153,7 @@ class RunBaseSchema(BaseEmbedSchema):
                 **{f: getattr(data, f, None) for f in _TIME_FIELDS},
             )
         if hasattr(data, "runvariablevalues_set"):
-            data.subcategory = _compute_subcategory(data)
+            data.subcategory = compute_run_subcategory(data)
         return data
 
 

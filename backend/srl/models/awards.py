@@ -15,7 +15,7 @@ class Awards(models.Model):
     )
     image = ResizedImageField(
         size=[64, 64],
-        upload_to="srl/static/srl/imgs/awards",
+        upload_to="awards",
         verbose_name="Image",
         validators=[validate_image],
         null=True,

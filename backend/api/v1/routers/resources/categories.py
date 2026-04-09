@@ -27,11 +27,37 @@ from api.v1.utils import get_or_generate_id
 router = Router()
 
 
+def _filter_scope(
+    variables: list[Variables],
+    category: Categories,
+) -> list[Variables]:
+    """Filter variables by scope rules for a given category type."""
+    filtered = []
+    for var in variables:
+        if var.cat:
+            if var.scope == "single-level":
+                continue
+            if category.type == "per-game" and var.scope == "all-levels":
+                continue
+            if category.type == "per-level" and var.scope == "full-game":
+                continue
+            if var.cat.id is not None and var.cat.id != category.id:
+                continue
+            filtered.append(var)
+    return filtered
+
+
 def category_embeds(
     category: Categories,
     embed_fields: list[str],
+    all_variables: list[Variables] | None = None,
+    values_by_var: dict[str, list[VariableValues]] | None = None,
 ) -> dict:
-    """When requested in the `embed_fields` of a category instance, this will apply the embeds."""
+    """Apply embeds to a category instance.
+
+    When all_variables and values_by_var are provided (batch mode),
+    filters in Python to avoid per-category DB queries.
+    """
     embeds = {}
 
     if "game" in embed_fields:
@@ -49,13 +75,25 @@ def category_embeds(
                 "ipointsmax": category.game.ipointsmax,
             }
 
-    # If variables or values are declared, and depending on which is,
-    # additional context and metadata is added to the query.
     if "variables" in embed_fields or "values" in embed_fields:
-        variables = Variables.objects.filter(
-            game=category.game,
-            cat=category,
-        ).order_by("name")
+        if all_variables is not None:
+            variables = _filter_scope(all_variables, category)
+        else:
+            scope_exclude = Q(scope="single-level") | Q(
+                scope="all-levels" if category.type == "per-game" else "full-game"
+            )
+            variables = list(
+                Variables.objects.filter(
+                    game=category.game,
+                )
+                .filter(
+                    Q(cat=category) | Q(cat__isnull=True),
+                )
+                .exclude(
+                    scope_exclude,
+                )
+                .order_by("name")
+            )
 
         variables_data = []
         for var in variables:
@@ -68,7 +106,12 @@ def category_embeds(
             }
 
             if "values" in embed_fields:
-                values = VariableValues.objects.filter(var=var).order_by("name")
+                if values_by_var is not None:
+                    values = values_by_var.get(var.id, [])
+                else:
+                    values = list(
+                        VariableValues.objects.filter(var=var).order_by("name")
+                    )
                 var_data["values"] = [
                     {
                         "value": val.value,
@@ -83,9 +126,6 @@ def category_embeds(
 
             variables_data.append(var_data)
 
-        # If values are specified in the embed field, then it will embed
-        # the values' metadata to the request. Otherwise, it will return
-        # only basic IDs.
         embed_key = "values" if "values" in embed_fields else "variables"
         embeds[embed_key] = variables_data
 
@@ -100,18 +140,18 @@ def category_embeds(
         """Retrieves all categories within a `Games` object, including optional embedding and
     querying.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `game` (str | None): Filter by specific game ID or its slug.
     - `type` (str | None): Filter by category type (`per-game` or `per-level`).
     - `limit` (int | None): Results per page (default 50, max 100).
     - `offset` (int | None): Results to skip (default 0).
     - `embed` (list | None): Comma-separated list of resources to embed.
 
-    **Supported Embeds:**
+    Supported Embeds:
     - `variables`: Include metadata of the variables belonging to this category.
     - `values`: Include all metadata for each variable and its values.
 
-    **Examples:**
+    Examples:
     - `/categories/all` - Get all categories
     - `/categories/all?game=thps4` - Get all categories for THPS4.
     - `/categories/all?type=per-game&limit=20` - Get first 20 full-game categories.
@@ -123,9 +163,7 @@ def category_embeds(
 )
 def get_all_categories(
     request: HttpRequest,
-    game: Annotated[
-        str | None, Query, Field(description="Filter by game ID or slug")
-    ] = None,
+    game: Annotated[str, Query, Field(description="Filter by game ID or slug")],
     type: Annotated[
         CategoryTypeType | None, Query, Field(description="Filter by type")
     ] = None,
@@ -151,36 +189,55 @@ def get_all_categories(
         embed_fields = [field.strip() for field in embed.split(",") if field.strip()]
         invalid_embeds = validate_embeds("categories", embed_fields)
         if invalid_embeds:
-            return Status(400, ErrorResponse(
-                error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
-                details=None,
-            ))
+            return Status(
+                400,
+                ErrorResponse(
+                    error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
+                    details=None,
+                ),
+            )
 
     try:
-        if game:
-            queryset = Categories.objects.filter(
+        queryset = (
+            Categories.objects.filter(
                 Q(game__id__iexact=game) | Q(game__slug__iexact=game)
-            ).order_by("name")
-        else:
-            return Status(400, ErrorResponse(
-                error="Please provide the game's unique ID or slug.",
-                details=None,
-            ))
+            )
+            .select_related("game")
+            .order_by("name")
+        )
 
         if type:
             queryset = queryset.filter(type=type)
 
-        categories = queryset[offset : offset + limit]
+        categories = list(queryset[offset : offset + limit])
 
-        # For each of the categories, it will go through and add additional context
-        # if the embed option is provided. If not, it will provide basic information
-        # (e.g. the ID of the value), with additional information provided if declared.
+        all_variables = None
+        values_by_var = None
+        if categories and ("variables" in embed_fields or "values" in embed_fields):
+            game_obj = categories[0].game
+            all_variables = list(
+                Variables.objects.filter(game=game_obj).order_by("name")
+            )
+            if "values" in embed_fields:
+                var_ids = [v.id for v in all_variables]
+                all_values = VariableValues.objects.filter(
+                    var_id__in=var_ids,
+                ).order_by("name")
+                values_by_var: dict[str, list[VariableValues]] = {}
+                for val in all_values:
+                    values_by_var.setdefault(val.var_id, []).append(val)
+
         category_schemas = []
         for category in categories:
             category_data = CategorySchema.model_validate(category)
 
             if embed_fields:
-                embed_data = category_embeds(category, embed_fields)
+                embed_data = category_embeds(
+                    category,
+                    embed_fields,
+                    all_variables,
+                    values_by_var,
+                )
                 for field, data in embed_data.items():
                     setattr(category_data, field, data)
 
@@ -188,10 +245,13 @@ def get_all_categories(
 
         return Status(200, category_schemas)
     except Exception as e:
-        return Status(500, ErrorResponse(
-            error="Category Retrieval Failed",
-            details={"exception": str(e)},
-        ))
+        return Status(
+            500,
+            ErrorResponse(
+                error="Category Retrieval Failed",
+                details={"exception": str(e)},
+            ),
+        )
 
 
 @router.get(
@@ -201,16 +261,16 @@ def get_all_categories(
     description=dedent(
         """Retrieves a single category based upon its ID, including optional embedding.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `id` (str): Unique ID of the category being queried.
     - `embed` (list | None): Comma-separated list of resources to embed.
 
-    **Supported Embeds:**
+    Supported Embeds:
     - `game`: Includes the metadata of the game the category belongs to.
     - `variables`: Include metadata of the variables belonging to this category.
     - `values`: Include all metadata for each variable and its values.
 
-    **Examples:**
+    Examples:
     - `/categories/rklge08d` - Get category by ID.
     - `/categories/rklge08d?embed=game` - Get category with game info.
     - `/categories/rklge08d?embed=variables,values` - Get category with variables and values.
@@ -227,10 +287,13 @@ def get_category(
     ] = None,
 ) -> Status:
     if len(id) > 15:
-        return Status(400, ErrorResponse(
-            error="ID must be 15 characters or less",
-            details=None,
-        ))
+        return Status(
+            400,
+            ErrorResponse(
+                error="ID must be 15 characters or less",
+                details=None,
+            ),
+        )
 
     # Checks to see what embeds are being used versus what is allowed
     # via this endpoint. It will return an error to the client if they
@@ -240,18 +303,30 @@ def get_category(
         embed_fields = [field.strip() for field in embed.split(",") if field.strip()]
         invalid_embeds = validate_embeds("categories", embed_fields)
         if invalid_embeds:
-            return Status(400, ErrorResponse(
-                error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
-                details={"valid_embeds": ["game", "variables", "values"]},
-            ))
+            return Status(
+                400,
+                ErrorResponse(
+                    error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
+                    details={"valid_embeds": ["game", "variables", "values"]},
+                ),
+            )
 
     try:
-        category = Categories.objects.filter(id__iexact=id).first()
+        category = (
+            Categories.objects.select_related("game")
+            .filter(
+                id__iexact=id,
+            )
+            .first()
+        )
         if not category:
-            return Status(404, ErrorResponse(
-                error="Category ID Doesn't Exist",
-                details=None,
-            ))
+            return Status(
+                404,
+                ErrorResponse(
+                    error="Category ID Doesn't Exist",
+                    details=None,
+                ),
+            )
 
         category_data = CategorySchema.model_validate(category)
 
@@ -262,22 +337,25 @@ def get_category(
 
         return Status(200, category_data)
     except Exception as e:
-        return Status(500, ErrorResponse(
-            error="Category Retrieval Failure",
-            details={"exception": str(e)},
-        ))
+        return Status(
+            500,
+            ErrorResponse(
+                error="Category Retrieval Failure",
+                details={"exception": str(e)},
+            ),
+        )
 
 
 @router.post(
     "/",
-    response={200: CategorySchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={201: CategorySchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Create Category",
     description=dedent(
         """Creates a brand new category.
 
-    **REQUIRES MODERATOR ACCESS OR HIGHER.**
+    REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    **Request Body:**
+    Request Body:
     - `id` (str): Unique ID (usually based on SRC) of the category.
     - `name` (str): Category name (e.g., "Any%", "100%").
     - `slug` (str): URL-friendly version.
@@ -301,32 +379,41 @@ def create_category(
     try:
         game = Games.objects.filter(id=category_data.game_id).first()
         if not game:
-            return Status(404, ErrorResponse(
-                error="Game Doesn't Exist",
-                details=None,
-            ))
+            return Status(
+                404,
+                ErrorResponse(
+                    error="Game Doesn't Exist",
+                    details=None,
+                ),
+            )
 
         try:
             category_id = get_or_generate_id(
                 category_data.id,
                 lambda id: Categories.objects.filter(id=id).exists(),
             )
-        except ValueError as e:
-            return Status(400, ErrorResponse(
-                error="ID Already Exists",
-                details={"exception": str(e)},
-            ))
+        except ValueError:
+            return Status(
+                400,
+                ErrorResponse(
+                    error="ID Already Exists",
+                    details=None,
+                ),
+            )
 
         create_data = category_data.model_dump(exclude={"game_id"})
         create_data["id"] = category_id
         category = Categories.objects.create(game=game, **create_data)
 
-        return Status(200, CategorySchema.model_validate(category))
+        return Status(201, CategorySchema.model_validate(category))
     except Exception as e:
-        return Status(500, ErrorResponse(
-            error="Failed to create category",
-            details={"exception": str(e)},
-        ))
+        return Status(
+            500,
+            ErrorResponse(
+                error="Failed to create category",
+                details={"exception": str(e)},
+            ),
+        )
 
 
 @router.put(
@@ -336,12 +423,12 @@ def create_category(
     description=dedent(
         """Updates the category based on its unique ID.
 
-    **REQUIRES MODERATOR ACCESS OR HIGHER.**
+    REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `id` (str): Unique ID of the category being edited.
 
-    **Request Body:**
+    Request Body:
     - `name` (str | None): Category name (e.g., "Any%", "100%").
     - `slug` (str | None): URL-friendly version.
     - `type` (str | None): Whether this is per-game or per-level category.
@@ -363,21 +450,33 @@ def update_category(
     category_data: CategoryUpdateSchema,
 ) -> Status:
     try:
-        category = Categories.objects.filter(id__iexact=id).first()
+        category = (
+            Categories.objects.select_related("game")
+            .filter(
+                id__iexact=id,
+            )
+            .first()
+        )
         if not category:
-            return Status(404, ErrorResponse(
-                error="Category does not exist",
-                details=None,
-            ))
+            return Status(
+                404,
+                ErrorResponse(
+                    error="Category does not exist",
+                    details=None,
+                ),
+            )
 
         update_data = category_data.model_dump(exclude_unset=True)
         if "game_id" in update_data:
             game = Games.objects.filter(id=update_data["game_id"]).first()
             if not game:
-                return Status(400, ErrorResponse(
-                    error="Game does not exist",
-                    details=None,
-                ))
+                return Status(
+                    400,
+                    ErrorResponse(
+                        error="Game does not exist",
+                        details=None,
+                    ),
+                )
             category.game = game
             del update_data["game_id"]
 
@@ -387,10 +486,13 @@ def update_category(
         category.save()
         return Status(200, CategorySchema.model_validate(category))
     except Exception as e:
-        return Status(500, ErrorResponse(
-            error="Failed to update category",
-            details={"exception": str(e)},
-        ))
+        return Status(
+            500,
+            ErrorResponse(
+                error="Failed to update category",
+                details={"exception": str(e)},
+            ),
+        )
 
 
 @router.delete(
@@ -400,9 +502,9 @@ def update_category(
     description=dedent(
         """Deletes the selected category based on its ID.
 
-    **REQUIRES ADMIN ACCESS.**
+    REQUIRES ADMIN ACCESS.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `id` (str): Unique ID of the category being deleted.
     """
     ),
@@ -414,18 +516,30 @@ def delete_category(
     id: str,
 ) -> Status:
     try:
-        category = Categories.objects.filter(id__iexact=id).first()
+        category = (
+            Categories.objects.select_related("game")
+            .filter(
+                id__iexact=id,
+            )
+            .first()
+        )
         if not category:
-            return Status(404, ErrorResponse(
-                error="Category does not exist",
-                details=None,
-            ))
+            return Status(
+                404,
+                ErrorResponse(
+                    error="Category does not exist",
+                    details=None,
+                ),
+            )
 
         name = category.name
         category.delete()
         return Status(200, {"message": f"Category '{name}' deleted successfully"})
     except Exception as e:
-        return Status(500, ErrorResponse(
-            error="Failed to delete category",
-            details={"exception": str(e)},
-        ))
+        return Status(
+            500,
+            ErrorResponse(
+                error="Failed to delete category",
+                details={"exception": str(e)},
+            ),
+        )

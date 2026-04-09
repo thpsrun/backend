@@ -10,7 +10,7 @@ from django.db.models import Q
 
 from srl.models import Games, Runs
 from srl.utils import calculate_bonus, get_anniversary, get_streak_start_date
-from api.v1.routers.utils.query_utils import compute_run_subcategory
+from api.v1.schemas.runs import compute_run_subcategory
 
 
 class Command(BaseCommand):
@@ -193,7 +193,7 @@ class Command(BaseCommand):
 
             player_names = ", ".join(p.name for p in run.players.all()) or "Anonymous"
 
-            if verbose or True:
+            if verbose:
                 self.stdout.write(
                     f"[{game.slug.upper()}] {run_subcat}: {run.id} ({player_names}) -> "
                     f"streak started {streak_start}, {new_bonus} month(s) "

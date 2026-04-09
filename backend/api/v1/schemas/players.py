@@ -1,8 +1,36 @@
+from datetime import date
 from typing import Any
 
 from pydantic import Field, field_validator
 
 from api.v1.schemas.base import BaseEmbedSchema
+
+
+class PlayerSearchResultSchema(BaseEmbedSchema):
+    """Lightweight schema for player search/autocomplete results.
+
+    Attributes:
+        id (str): Player ID.
+        name (str): Player name on Speedrun.com.
+        nickname (str | None): Custom nickname override.
+        country_id (str | None): Country code ID.
+    """
+
+    id: str
+    name: str
+    nickname: str | None = None
+    country_id: str | None = None
+
+    @field_validator("country_id", mode="before")
+    @classmethod
+    def convert_country_to_id(cls, v: Any) -> str | None:
+        if v is None:
+            return None
+        if isinstance(v, str):
+            return v
+        if hasattr(v, "id"):
+            return v.id
+        return None
 
 
 class PlayerBaseSchema(BaseEmbedSchema):
@@ -19,7 +47,9 @@ class PlayerBaseSchema(BaseEmbedSchema):
         youtube (str | None): YouTube channel URL.
         twitter (str | None): Twitter profile URL.
         bluesky (str | None): Bluesky profile URL.
+        discord (str | None): Discord username.
         ex_stream (bool): Whether player is excluded from streaming features.
+        joined (date | None): Date of the player's first verified speedrun.
     """
 
     id: str = Field(..., max_length=15)
@@ -38,7 +68,11 @@ class PlayerBaseSchema(BaseEmbedSchema):
     youtube: str | None = None
     twitter: str | None = None
     bluesky: str | None = None
+    discord: str | None = None
     ex_stream: bool = Field(default=False, description="Exclude from streaming bots")
+    joined: date | None = Field(
+        default=None, description="Date of first verified speedrun"
+    )
 
 
 class CountrySchema(BaseEmbedSchema):
@@ -51,6 +85,20 @@ class CountrySchema(BaseEmbedSchema):
 
     id: str
     name: str
+
+
+class StatsSchema(BaseEmbedSchema):
+    """Simple schema for player stats.
+
+    Attributes:
+        total_runs (int): Number of runs (including obsolete) for a player.
+        fg_points (float | None): Number of points a player has for all full-game runs together.
+        il_points (float | None): Number of points a player has for all IL runs together.
+    """
+
+    total_runs: int
+    fg_points: float | None = 0
+    il_points: float | None = 0
 
 
 class AwardSchema(BaseEmbedSchema):
@@ -67,6 +115,20 @@ class AwardSchema(BaseEmbedSchema):
     image: str | None = None
 
 
+class ModeratedGameEmbedSchema(BaseEmbedSchema):
+    """Schema for games a player moderates.
+
+    Attributes:
+        id (str): Game ID.
+        name (str): Game name.
+        slug (str): Game slug/abbreviation.
+    """
+
+    id: str
+    name: str
+    slug: str
+
+
 class PlayerRunSchema(BaseEmbedSchema):
     """Schema for run data embedded in player responses.
 
@@ -78,7 +140,9 @@ class PlayerRunSchema(BaseEmbedSchema):
         place (int | None): Placement on leaderboard.
         time (str | None): Run time.
         date (str | None): Run date (ISO format).
-        video (str | None): Video URL.
+        url (str): URL to the run on SRC.
+        video (str | None): Twitch or YouTube video URL.
+        arch_video (str | None): Archived video URL.
     """
 
     id: str
@@ -88,7 +152,10 @@ class PlayerRunSchema(BaseEmbedSchema):
     place: int | None = None
     time: str | None = None
     date: str | None = None
+    url: str
     video: str | None = None
+    arch_video: str | None = None
+    obsolete: bool | None = None
 
 
 class PlayerSchema(PlayerBaseSchema):
@@ -104,6 +171,7 @@ class PlayerSchema(PlayerBaseSchema):
     country: CountrySchema | None = Field(
         None, description="Shows full information on the player's country."
     )
+    stats: StatsSchema | None = Field(None, description="Shows the player's points.")
     awards: list[AwardSchema] | None = Field(
         None, description="Shows full information on the player's awards."
     )
@@ -117,6 +185,10 @@ class PlayerSchema(PlayerBaseSchema):
     il: list[PlayerRunSchema] | None = Field(
         None, description="Shows all of the individual level runs from the player."
     )
+    moderated_games: list[ModeratedGameEmbedSchema] | None = Field(
+        None,
+        description="Games this player moderates. Null if not a moderator.",
+    )
 
     @field_validator("country", mode="before")
     @classmethod
@@ -127,7 +199,7 @@ class PlayerSchema(PlayerBaseSchema):
             return v
         return None
 
-    @field_validator("awards", "runs", mode="before")
+    @field_validator("awards", "runs", "moderated_games", mode="before")
     @classmethod
     def convert_manager_to_none(cls, v: Any) -> list[dict] | None:
         if v is None:
@@ -154,6 +226,7 @@ class PlayerCreateSchema(BaseEmbedSchema):
         youtube (str | None): YouTube channel URL.
         twitter (str | None): Twitter profile URL.
         bluesky (str | None): Bluesky profile URL.
+        discord (str | None): Discord username.
         ex_stream (bool): Whether to exclude from streaming features.
     """
 
@@ -174,6 +247,7 @@ class PlayerCreateSchema(BaseEmbedSchema):
     youtube: str | None = None
     twitter: str | None = None
     bluesky: str | None = None
+    discord: str | None = None
     ex_stream: bool = Field(default=False, description="Exclude from streaming bots")
 
 
@@ -191,6 +265,7 @@ class PlayerUpdateSchema(BaseEmbedSchema):
         youtube (str | None): Updated YouTube channel URL.
         twitter (str | None): Updated Twitter profile URL.
         bluesky (str | None): Updated Bluesky profile URL.
+        discord (str | None): Updated Discord username.
         ex_stream (bool | None): Updated streaming exclusion flag.
     """
 
@@ -204,4 +279,5 @@ class PlayerUpdateSchema(BaseEmbedSchema):
     youtube: str | None = None
     twitter: str | None = None
     bluesky: str | None = None
+    discord: str | None = None
     ex_stream: bool | None = None

@@ -6,7 +6,7 @@ import re
 from collections.abc import Callable
 
 from django.contrib.admin.models import ADDITION, CHANGE, DELETION, LogEntry
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from django.http import HttpRequest, HttpResponse
 from django.utils import timezone
@@ -14,6 +14,8 @@ from django.utils import timezone
 from api.models import RoleAPIKey
 
 logger = logging.getLogger(__name__)
+
+User = get_user_model()
 
 MAX_LOG_BODY_SIZE = 10000
 MAX_BODY_DISPLAY_LENGTH = 500

@@ -3,15 +3,21 @@ from textwrap import dedent
 from typing import Any
 
 import sentry_sdk
-from django.conf import settings
 from django.http import HttpRequest, HttpResponse
 from ninja import NinjaAPI, Redoc
 from ninja.errors import ValidationError
 
+from api.v1.routers.auth.me import router as me_router
+from api.v1.routers.auth.register import router as register_router
+from api.v1.routers.auth.submissions import router as submissions_router
+from api.v1.routers.auth.sync_logs import router as sync_logs_router
 from api.v1.routers.guides.guides import router as guides_router
 from api.v1.routers.guides.tags import router as tags_router
+from api.v1.routers.pages.history import router as history_router
 from api.v1.routers.pages.home import router as website_router
+from api.v1.routers.pages.lbs import router as lbs_page_router
 from api.v1.routers.pages.leaderboard import router as leaderboard_page_router
+from api.v1.routers.pages.navbar import router as navbar_router
 from api.v1.routers.resources.categories import router as categories_router
 from api.v1.routers.resources.games import router as games_router
 from api.v1.routers.resources.levels import router as levels_router
@@ -117,6 +123,10 @@ ninja_api: NinjaAPI = NinjaAPI(
                 "name": "Website",
                 "description": "Specific endpoints related to how the frontend operates.",
             },
+            {
+                "name": "Auth",
+                "description": "Specific endpoints for run verification and account authentication",
+            },
         ],
     },
 )
@@ -142,7 +152,7 @@ def validation_exception_handler(
         request,
         ValidationErrorResponse(
             error="Request validation failed",
-            validation_errors={"error": "exc.errors"},  # type: ignore
+            validation_errors=exc.errors,
         ).model_dump(),
         status=422,
     )
@@ -178,7 +188,6 @@ def global_exception_handler(
         api_key_header = request.headers.get("X-API-Key")
         if api_key_header:
             scope.set_tag("has_api_key", "true")
-            scope.set_tag("api_key_prefix", api_key_header[:8] + "...")
         else:
             scope.set_tag("has_api_key", "false")
 
@@ -194,19 +203,13 @@ def global_exception_handler(
         },
     )
 
-    if settings.DEBUG:
-        error_data = ErrorResponse(
-            error="An unexpected error occurred",
-            details={
-                "exception": str(exc),
-                "type": type(exc).__name__,
-            },
-        ).model_dump()
-    else:
-        error_data = ErrorResponse(
-            error="An unexpected error occurred",
-            details=None,
-        ).model_dump()
+    error_data = ErrorResponse(
+        error="An unexpected error occurred",
+        details={
+            "exception": str(exc),
+            "type": type(exc).__name__,
+        },
+    ).model_dump()
 
     return ninja_api.create_response(
         request,
@@ -250,4 +253,12 @@ ninja_api.add_router("/guides", guides_router, tags=["Guides"])
 ninja_api.add_router("/tags", tags_router, tags=["Tags"])
 
 ninja_api.add_router("/website", website_router, tags=["Website"])
+ninja_api.add_router("/website", lbs_page_router, tags=["Website"])
 ninja_api.add_router("/website", leaderboard_page_router, tags=["Website"])
+ninja_api.add_router("/website", navbar_router, tags=["Website"])
+ninja_api.add_router("", history_router, tags=["Website"])
+
+ninja_api.add_router("/auth", register_router, tags=["Auth"])
+ninja_api.add_router("/auth", me_router, tags=["Auth"])
+ninja_api.add_router("/auth", submissions_router, tags=["Auth"])
+ninja_api.add_router("/auth", sync_logs_router, tags=["Auth Admin"])

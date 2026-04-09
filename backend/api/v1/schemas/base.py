@@ -1,13 +1,13 @@
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
-from pydantic import BaseModel, Field, field_serializer
+from django.conf import settings
+from pydantic import BaseModel, Field, field_serializer, model_validator
 
 RunTypeType = Literal["main", "il"]
 RunStatusType = Literal["verified", "new", "rejected"]
 CategoryTypeType = Literal["per-level", "per-game"]
 VariableScopeType = Literal["global", "full-game", "all-levels", "single-level"]
-LeaderboardTimeType = Literal["realtime", "realtime_noloads", "ingame"]
 
 
 class ErrorResponse(BaseModel):
@@ -21,6 +21,17 @@ class ErrorResponse(BaseModel):
     error: str
     details: dict[str, Any] | None = None
 
+    _SENSITIVE_KEYS: set[str] = {"exception", "type"}
+
+    @model_validator(mode="after")
+    def strip_exception_details_in_production(self) -> Self:
+        if not settings.DEBUG and self.details:
+            for key in self._SENSITIVE_KEYS:
+                self.details.pop(key, None)
+            if not self.details:
+                self.details = None
+        return self
+
 
 class ValidationErrorResponse(BaseModel):
     """Validation error response schema for the API.
@@ -33,7 +44,7 @@ class ValidationErrorResponse(BaseModel):
     """
 
     error: str = Field(default="Validation failed")
-    validation_errors: dict[str, list[str]]
+    validation_errors: list[dict[str, Any]]
 
 
 class PaginatedResponse(BaseModel):
@@ -87,7 +98,7 @@ class SlugMixin(BaseModel):
     """
 
     name: str
-    slug: str = Field(..., description="URL-friendly slug", min_length=1, max_length=15)
+    slug: str = Field(..., description="URL-friendly slug", min_length=1, max_length=30)
 
 
 VALID_EMBEDS: dict[str, set[str]] = {
@@ -95,7 +106,7 @@ VALID_EMBEDS: dict[str, set[str]] = {
     "categories": {"game", "variables", "values"},
     "levels": {"game", "variables", "values"},
     "variables": {"game", "category", "level", "values"},
-    "players": {"country", "awards", "runs", "profile", "profile-obsolete"},
+    "players": {"country", "stats", "awards", "runs", "profile", "profile-obsolete"},
     "runs": {"game", "category", "level", "variables"},
     "guides": {"game", "tags"},
     "tags": set(),

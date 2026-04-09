@@ -2,91 +2,135 @@ from datetime import date as date_type
 from typing import Any
 
 from django.core.cache import caches
-from django.db.models import Q, QuerySet, Sum
+from django.db.models import Case, F, Q, QuerySet, Sum, When
 from django.db.models.functions import TruncDate
-from srl.models import RunPlayers, Runs
+from srl.models import Players, RunHistory, RunPlayers, Runs
 
 from api.v1.routers.utils import (
     main_pbs_cache_key,
     main_records_cache_key,
+    main_stats_cache_key,
     main_wrs_cache_key,
 )
-from api.v1.schemas.runs import PlayerRunEmbedSchema
+from api.v1.schemas.runs import PlayerRunEmbedSchema, compute_run_subcategory
 
 
-def compute_run_subcategory(
-    run: Runs,
-) -> str | None:
-    """Compute the subcategory display string from a run's prefetched RunVariableValues.
-
-    Requires the queryset to have:
-        .select_related("category", "level")
-        .prefetch_related("runvariablevalues_set__value")
-    """
-    level = getattr(run, "level", None)
-    category = getattr(run, "category", None)
-    if level:
-        base = getattr(level, "name", "") or ""
-    elif category:
-        base = getattr(category, "name", "") or ""
-    else:
-        base = ""
-
-    try:
-        rvvs = list(run.runvariablevalues_set.all())  # type: ignore
-        rvvs_sorted = sorted(rvvs, key=lambda x: x.variable_id)
-        values = [rvv.value.name for rvv in rvvs_sorted]
-    except Exception:
-        values = []
-
-    if values:
-        return f"{base} ({', '.join(values)})"
-    return base or None
-
-
-def player_data_export(
+def _export_players(
     run_players: "QuerySet[RunPlayers]",
-) -> list[dict[str, str | None]]:
-    players = [
-        {
+    country_detail: bool = True,
+) -> list[dict[str, Any]]:
+    """Export player list from a prefetched run_players queryset.
+
+    country_detail=True  -> country as ``{id, name}`` dict.
+    country_detail=False -> country as plain name string.
+    """
+    players: list[dict[str, Any]] = []
+    for rp in run_players:
+        entry: dict[str, Any] = {
             "name": rp.player.nickname if rp.player.nickname else rp.player.name,
-            "country": rp.player.countrycode.name if rp.player.countrycode else None,
         }
-        for rp in run_players
-    ]
+        if country_detail:
+            entry["country"] = (
+                {
+                    "id": rp.player.countrycode.id,
+                    "name": rp.player.countrycode.name,
+                }
+                if rp.player.countrycode
+                else None
+            )
+        else:
+            entry["country"] = (
+                rp.player.countrycode.name if rp.player.countrycode else None
+            )
+        players.append(entry)
 
     return players if players else [{"name": "Anonymous", "country": None}]
 
 
-def record_player_data_export(
-    run_players: "QuerySet[RunPlayers]",
-    run_url: str,
-    run_date: str | None,
+def _apply_value_slug_filters(
+    qs: QuerySet[Runs],
+    value_slugs: list[str] | None,
+) -> QuerySet[Runs]:
+    """Filter queryset by variable-value slugs and apply distinct()."""
+    if value_slugs:
+        for slug in value_slugs:
+            qs = qs.filter(runvariablevalues__value__slug=slug)
+        qs = qs.distinct()
+    return qs
+
+
+def _build_lbs_run_dict(run: Runs) -> dict[str, Any]:
+    """Build the slim run dict used across all leaderboard endpoints."""
+    return {
+        "id": run.id,
+        "place": run.place,
+        "points": run.points,
+        "date": run.date.isoformat() if run.date else None,
+        "video": run.video,
+        "arch_video": run.arch_video,
+        "url": run.url,
+        "level": run.level.slug if run.level else None,
+        "times": {"p_time": run.p_time},
+        "players": _export_players(
+            run.run_players.all(),  # type: ignore
+        ),
+    }
+
+
+def _build_leaderboard_rows(
+    rows: QuerySet,
 ) -> list[dict[str, Any]]:
+    """Build ranked leaderboard entries from an annotated values queryset."""
+    result: list[dict[str, Any]] = []
+    for i, row in enumerate(rows):
+        nickname = row["player__nickname"]
+        name = row["player__name"]
+        result.append(
+            {
+                "rank": i + 1,
+                "player_id": row["player_id"],
+                "player_name": nickname if nickname else name,
+                "player_url": row["player__url"],
+                "player_pfp": row["player__pfp"],
+                "total_points": row["total_points"] or 0,
+                "fg_points": row["fg_points"] or 0,
+                "il_points": row["il_points"] or 0,
+            }
+        )
+    return result
+
+
+def main_player_data_export(
+    run_players: "QuerySet[RunPlayers]",
+) -> list[dict[str, Any]]:
+    """Export player data for main page embeds (latest-wrs, latest-pbs, records)."""
     players = [
         {
-            "player": {
-                "name": rp.player.nickname if rp.player.nickname else rp.player.name,
-                "country": (
-                    rp.player.countrycode.name if rp.player.countrycode else None
-                ),
-            },
-            "url": run_url,
-            "date": run_date,
+            "name": rp.player.name,
+            "nickname": rp.player.nickname or None,
+            "country": (
+                {
+                    "id": rp.player.countrycode.id,
+                    "name": rp.player.countrycode.name,
+                }
+                if rp.player.countrycode
+                else None
+            ),
         }
         for rp in run_players
     ]
 
-    if not players:
-        players = [
+    return (
+        players
+        if players
+        else [
             {
-                "player": {"name": "Anonymous", "country": None},
-                "url": run_url,
-                "date": run_date,
+                "name": "Anonymous",
+                "nickname": None,
+                "country": None,
             }
         ]
-
-    return players
+    )
 
 
 def query_latest_runs(
@@ -115,17 +159,32 @@ def query_latest_runs(
 
     result = []
     for run in runs:
-        players_data = player_data_export(run.run_players.all())  # type: ignore
         result.append(
             {
                 "id": run.id,
-                "game": {"name": run.game.name},
-                "subcategory": compute_run_subcategory(run),
-                "players": players_data,
+                "game_slug": run.game.slug,
+                "category": {
+                    "name": run.category.name if run.category else None,
+                    "slug": run.category.slug if run.category else None,
+                },
+                "level": (
+                    {
+                        "name": run.level.name,
+                        "slug": run.level.slug,
+                    }
+                    if run.level
+                    else None
+                ),
+                "players": main_player_data_export(
+                    run.run_players.all(),  # type: ignore
+                ),
                 "time": run.p_time,
                 "date": run.v_date.isoformat() if run.v_date else None,
                 "video": run.video,
-                "url": run.url,
+                "value_slugs": [
+                    rvv.value.slug
+                    for rvv in run.runvariablevalues_set.all()  # type: ignore
+                ],
             }
         )
 
@@ -134,7 +193,7 @@ def query_latest_runs(
 
 def query_records() -> list[dict[str, Any]]:
     runs: list[Runs] = list(
-        Runs.objects.select_related("game", "category", "level")
+        Runs.objects.select_related("game", "category")
         .prefetch_related(
             "run_players__player__countrycode",
             "runvariablevalues_set__value",
@@ -149,52 +208,76 @@ def query_records() -> list[dict[str, Any]]:
         .exclude(
             runvariablevalues__value__appear_on_main=False,
         )
-        .order_by("category__name")
+        .order_by("game__release", "category__order", "category__name")
         .annotate(o_date=TruncDate("date"))
     )
 
-    grouped_runs: list[dict[str, Any]] = []
-    seen_records: set[tuple[str, str | None, str | None]] = set()
+    result: list[dict[str, Any]] = []
+    seen: set[tuple[str, ...]] = set()
 
     for run in runs:
-        subcat = compute_run_subcategory(run)
-        key = (run.game.slug, subcat, run.time)
-        if key not in seen_records:
-            grouped_runs.append(
-                {
-                    "game": {"name": run.game.name, "slug": run.game.slug},
-                    "game_release": run.game.release,
-                    "subcategory": subcat,
-                    "time": run.time,
-                    "players": [],
-                }
+        value_ids = tuple(
+            sorted(
+                rvv.value_id for rvv in run.runvariablevalues_set.all()  # type: ignore
             )
-            seen_records.add(key)  # type: ignore
+        )
+        key = (run.game.slug, run.category.slug, run.time, value_ids)
+        if key in seen:
+            continue
+        seen.add(key)
 
-        for record in grouped_runs:
-            if (
-                record["game"]["slug"] == run.game.slug
-                and record["subcategory"] == subcat
-                and record["time"] == run.time
-            ):
-                record["players"].extend(
-                    record_player_data_export(
-                        run.run_players.all(),  # type: ignore
-                        run.url,
-                        run.o_date.isoformat() if run.o_date else None,  # type: ignore
-                    )
+        result.append(
+            {
+                "id": run.id,
+                "game": {
+                    "name": run.game.name,
+                    "slug": run.game.slug,
+                },
+                "category": {
+                    "name": compute_run_subcategory(run),
+                    "slug": run.category.slug if run.category else None,
+                },
+                "players": main_player_data_export(
+                    run.run_players.all(),  # type: ignore
+                ),
+                "time": run.p_time,
+                "date": run.o_date.isoformat() if run.o_date else None,  # type: ignore
+                "video": run.video,
+                "value_slugs": [
+                    rvv.value.slug
+                    for rvv in run.runvariablevalues_set.all()  # type: ignore
+                ],
+            }
+        )
+
+    return result
+
+
+def query_stats() -> dict[str, Any]:
+    run_count = Runs.objects.only("id").all().count()
+    player_count = Players.objects.only("id").all().count()
+
+    total_time_secs = (
+        Runs.objects.aggregate(
+            total=Sum(
+                Case(
+                    When(
+                        category__defaulttime="realtime_noloads",
+                        then=F("timenl_secs"),
+                    ),
+                    When(category__defaulttime="ingame", then=F("timeigt_secs")),
+                    default=F("time_secs"),
                 )
-
-    run_list = sorted(
-        grouped_runs,
-        key=lambda x: x["game_release"],
-        reverse=False,
+            ),
+        )["total"]
+        or 0.0
     )
 
-    for record in run_list:
-        del record["game_release"]
-
-    return run_list
+    return {
+        "runs": run_count,
+        "players": player_count,
+        "total_time_secs": total_time_secs,
+    }
 
 
 def query_player_runs(
@@ -221,7 +304,10 @@ def query_player_runs(
     result = []
     for run in qs:
         data = PlayerRunEmbedSchema.model_validate(run).model_dump()
-        data["players"] = player_data_export(run.run_players.all())  # type: ignore
+        data["players"] = _export_players(
+            run.run_players.all(),  # type: ignore
+            country_detail=False,
+        )
         result.append(data)
 
     return result
@@ -249,24 +335,7 @@ def query_overall_leaderboard() -> list[dict[str, Any]]:
         .order_by("-total_points")
     )
 
-    result = []
-    for i, row in enumerate(rows):
-        nickname = row["player__nickname"]
-        name = row["player__name"]
-        result.append(
-            {
-                "rank": i + 1,
-                "player_id": row["player_id"],
-                "player_name": nickname if nickname else name,
-                "player_url": row["player__url"],
-                "player_pfp": row["player__pfp"],
-                "total_points": row["total_points"] or 0,
-                "fg_points": row["fg_points"] or 0,
-                "il_points": row["il_points"] or 0,
-            }
-        )
-
-    return result
+    return _build_leaderboard_rows(rows)
 
 
 def query_game_leaderboard(
@@ -299,24 +368,7 @@ def query_game_leaderboard(
         .order_by("-total_points")
     )
 
-    result = []
-    for i, row in enumerate(rows):
-        nickname = row["player__nickname"]
-        name = row["player__name"]
-        result.append(
-            {
-                "rank": i + 1,
-                "player_id": row["player_id"],
-                "player_name": nickname if nickname else name,
-                "player_url": row["player__url"],
-                "player_pfp": row["player__pfp"],
-                "total_points": row["total_points"] or 0,
-                "fg_points": row["fg_points"] or 0,
-                "il_points": row["il_points"] or 0,
-            }
-        )
-
-    return result
+    return _build_leaderboard_rows(rows)
 
 
 def query_thps4_oldest_runs(
@@ -378,12 +430,14 @@ def get_cached_embed(
         "latest-wrs": main_wrs_cache_key,
         "latest-pbs": main_pbs_cache_key,
         "records": main_records_cache_key,
+        "stats": main_stats_cache_key,
     }
 
     query_functions: dict[str, Any] = {
         "latest-wrs": lambda: query_latest_runs(wr=True),
         "latest-pbs": lambda: query_latest_runs(wr=False),
         "records": query_records,
+        "stats": query_stats,
     }
 
     cache = caches[cache_name]
@@ -394,6 +448,372 @@ def get_cached_embed(
         return cached
 
     result = query_functions[embed_type]()
-    cache.set(cache_key, result, timeout=604800)  # 7 days in seconds
+    cache.set(cache_key, result, timeout=30)
 
     return result
+
+
+def query_lbs_runs(
+    game_id: str,
+    category_id: str,
+    value_slugs: list[str] | None = None,
+    level_id: str | None = None,
+) -> list[dict[str, Any]]:
+    """Query leaderboard runs for a specific game + category, optionally filtered by level.
+
+    Returns slim run dicts with only frontend-required fields, built from
+    prefetched relations (no N+1 queries).
+
+    When level_id is provided, acts as an IL leaderboard query.
+    Optional value_slugs filters runs to only those matching ALL given variable value slugs.
+    """
+    filters: dict[str, Any] = {
+        "game_id": game_id,
+        "category_id": category_id,
+        "obsolete": False,
+        "vid_status": "verified",
+    }
+    if level_id:
+        filters["level_id"] = level_id
+
+    qs: QuerySet[Runs] = (
+        Runs.objects.filter(**filters)
+        .select_related("level")
+        .prefetch_related("run_players__player__countrycode")
+        .order_by("place", "date")
+    )
+
+    qs = _apply_value_slug_filters(qs, value_slugs)
+
+    return [_build_lbs_run_dict(run) for run in qs]
+
+
+def query_lbs_stats(
+    game_id: str,
+) -> dict[str, int | float]:
+    """Query game-wide run and player counts for the leaderboard stats embed."""
+    base = Runs.objects.filter(
+        game_id=game_id,
+        vid_status="verified",
+    )
+
+    main_count = base.filter(runtype="main").count()
+    il_count = base.filter(runtype="il").count()
+
+    player_count = (
+        RunPlayers.objects.filter(
+            run__game_id=game_id,
+            run__obsolete=False,
+            run__vid_status="verified",
+        )
+        .values("player_id")
+        .distinct()
+        .count()
+    )
+
+    total_time_secs = (
+        base.aggregate(
+            total=Sum(
+                Case(
+                    When(
+                        category__defaulttime="realtime_noloads",
+                        then=F("timenl_secs"),
+                    ),
+                    When(category__defaulttime="ingame", then=F("timeigt_secs")),
+                    default=F("time_secs"),
+                )
+            ),
+        )["total"]
+        or 0.0
+    )
+
+    return {
+        "main_count": main_count,
+        "il_count": il_count,
+        "player_count": player_count,
+        "total_time_secs": total_time_secs,
+    }
+
+
+def query_lbs_recent(
+    game_id: str,
+) -> list[dict[str, Any]]:
+    """Query the 5 most recently approved runs for a game."""
+    runs: QuerySet[Runs] = (
+        Runs.objects.filter(
+            game_id=game_id,
+            obsolete=False,
+            vid_status="verified",
+            v_date__isnull=False,
+        )
+        .select_related("category", "level")
+        .prefetch_related(
+            "run_players__player__countrycode",
+            "runvariablevalues_set__value",
+        )
+        .order_by("-v_date")[:5]
+    )
+
+    result = []
+    for run in runs:
+        first_rp = next(iter(run.run_players.all()), None)  # type: ignore
+        if first_rp:
+            player_name = (
+                first_rp.player.nickname
+                if first_rp.player.nickname
+                else first_rp.player.name
+            )
+            player_country = (
+                {
+                    "id": first_rp.player.countrycode.id,
+                    "name": first_rp.player.countrycode.name,
+                }
+                if first_rp.player.countrycode
+                else None
+            )
+        else:
+            player_name = "Anonymous"
+            player_country = None
+
+        value_slugs = [rvv.value.slug for rvv in run.runvariablevalues_set.all()]
+
+        result.append(
+            {
+                "runtype": run.runtype,
+                "category": run.category.id if run.category else None,
+                "level": run.level.name if run.level else None,
+                "subcategory": compute_run_subcategory(run),
+                "p_time": run.p_time,
+                "p_time_secs": run.p_time_secs,
+                "place": run.place,
+                "player_name": player_name,
+                "player_country": player_country,
+                "v_date": run.v_date.isoformat() if run.v_date else None,
+                "video": run.video or None,
+                "value_slugs": value_slugs if value_slugs else None,
+            }
+        )
+
+    return result
+
+
+def query_lbs_il_summary(
+    game_id: str,
+    value_slugs: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Query IL summary grid: top 5 runs per level+category combo.
+
+    Fetches all verified non-obsolete IL runs for a game, groups by level
+    then category in Python. Only level+category combos with actual runs
+    are included. Optionally filters by variable value slugs.
+    """
+    qs: QuerySet[Runs] = (
+        Runs.objects.filter(
+            game_id=game_id,
+            runtype="il",
+            obsolete=False,
+            vid_status="verified",
+        )
+        .select_related("category", "level")
+        .prefetch_related("run_players__player__countrycode")
+        .order_by("place", "date")
+    )
+
+    qs = _apply_value_slug_filters(qs, value_slugs)
+
+    # Group runs by (level_id, category_id)
+    grouped: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    level_info: dict[str, dict[str, Any]] = {}
+    category_info: dict[str, dict[str, Any]] = {}
+
+    for run in qs:
+        if not run.level or not run.category:
+            continue
+
+        level_id = run.level.id
+        cat_id = run.category.id
+        key = (level_id, cat_id)
+
+        if level_id not in level_info:
+            level_info[level_id] = {
+                "name": run.level.name,
+                "slug": run.level.slug,
+                "order": run.level.order,
+            }
+
+        if cat_id not in category_info:
+            category_info[cat_id] = {
+                "name": run.category.name,
+                "slug": run.category.slug,
+                "order": run.category.order,
+            }
+
+        if key not in grouped:
+            grouped[key] = []
+
+        if len(grouped[key]) >= 5:
+            continue
+
+        grouped[key].append(_build_lbs_run_dict(run))
+
+    # Build nested response grouped by level
+    levels_dict: dict[str, dict[str, Any]] = {}
+    for (level_id, cat_id), runs_list in grouped.items():
+        if level_id not in levels_dict:
+            info = level_info[level_id]
+            levels_dict[level_id] = {
+                "name": info["name"],
+                "slug": info["slug"],
+                "order": info["order"],
+                "categories": [],
+            }
+
+        cat_info = category_info[cat_id]
+        levels_dict[level_id]["categories"].append(
+            {
+                "name": cat_info["name"],
+                "slug": cat_info["slug"],
+                "order": cat_info["order"],
+                "runs": runs_list,
+            }
+        )
+
+    # Sort levels by order (0 sorts alphabetically as fallback), then categories within
+    for level_data in levels_dict.values():
+        level_data["categories"].sort(
+            key=lambda c: (c["order"] == 0, c["order"], c["name"]),
+        )
+        for cat in level_data["categories"]:
+            del cat["order"]
+
+    result = sorted(
+        levels_dict.values(),
+        key=lambda lv: (lv["order"] == 0, lv["order"], lv["name"]),
+    )
+
+    for level_data in result:
+        del level_data["order"]
+
+    return result
+
+
+def query_wr_history(
+    game_id: str,
+    category_id: str,
+    level_id: str | None = None,
+    value_slugs: list[str] | None = None,
+) -> dict[str, Any]:
+    """Build the WR history timeline for a category/level.
+
+    Queries RunHistory entries where points >= max_points (WR indicator),
+    ordered chronologically. WR entries always receive max_points (or above with
+    streak bonus); non-WR entries always receive less via points_formula.
+    Computes deltas between consecutive WR times.
+
+    Returns a dict with subcategory label and entries list, so the entire
+    response payload can be cached together.
+    """
+    from srl.models import Games  # noqa: PLC0415
+
+    game = Games.objects.only(
+        "pointsmax",
+        "ipointsmax",
+    ).get(id=game_id)
+
+    is_il = level_id is not None
+    max_points = game.ipointsmax if is_il else game.pointsmax
+
+    qs = (
+        RunHistory.objects.filter(
+            run__game_id=game_id,
+            run__category_id=category_id,
+            run__vid_status="verified",
+            points__gte=max_points,
+        )
+        .select_related(
+            "run__game",
+            "run__category",
+            "run__level",
+        )
+        .prefetch_related(
+            "run__run_players__player",
+            "run__runvariablevalues_set__value",
+        )
+    )
+
+    if level_id is not None:
+        qs = qs.filter(run__level_id=level_id)
+        qs = qs.filter(run__runtype="il")
+    else:
+        qs = qs.filter(run__runtype="main")
+
+    if value_slugs:
+        for slug in value_slugs:
+            qs = qs.filter(run__runvariablevalues__value__slug=slug)
+        qs = qs.distinct()
+
+    qs = qs.order_by("start_date")
+
+    seen_run_ids: set[str] = set()
+    wr_entries: list[tuple[Any, Runs]] = []
+    for entry in qs:
+        if entry.run.id not in seen_run_ids:
+            seen_run_ids.add(entry.run.id)
+            wr_entries.append((entry, entry.run))
+
+    results: list[dict[str, Any]] = []
+    prev_time: float | None = None
+
+    for history_entry, run in wr_entries:
+        if run.p_time_secs:
+            history_time = run.p_time or ""
+            history_time_secs = run.p_time_secs
+        else:
+            history_time = run.time or ""
+            history_time_secs = run.time_secs or 0.0
+
+        delta: float | None = None
+        if prev_time is not None and history_time_secs:
+            delta = round(history_time_secs - prev_time, 3)
+
+        players = []
+        for rp in sorted(run.run_players.all(), key=lambda rp: rp.order):
+            players.append(
+                {
+                    "name": rp.player.name,
+                    "nickname": rp.player.nickname or None,
+                }
+            )
+        if not players:
+            players = [{"name": "Anonymous", "nickname": None}]
+
+        results.append(
+            {
+                "run_id": run.id,
+                "players": players,
+                "history_time": history_time,
+                "history_time_secs": history_time_secs,
+                "delta": delta,
+                "video": run.video or None,
+                "arch_video": run.arch_video or None,
+                "start_date": history_entry.start_date.isoformat(),
+                "end_date": (
+                    history_entry.end_date.isoformat()
+                    if history_entry.end_date
+                    else None
+                ),
+            }
+        )
+
+        if history_time_secs:
+            prev_time = history_time_secs
+
+    subcategory: str | None = None
+    if wr_entries:
+        _, first_run = wr_entries[0]
+        subcategory = compute_run_subcategory(first_run)
+
+    return {
+        "subcategory": subcategory,
+        "entries": results,
+    }

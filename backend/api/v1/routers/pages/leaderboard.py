@@ -51,7 +51,6 @@ router = Router()
 def get_overall_leaderboard(
     request: HttpRequest,
 ) -> Status:
-    """Get series-wide points leaderboard across all games."""
     try:
         data = check_cache_query(
             overall_leaderboard_cache_key(),
@@ -76,15 +75,15 @@ def get_overall_leaderboard(
 
     Only non-obsolete, verified runs are counted toward point totals.
 
-    **THPS4 note:** The level "Zoo - Feed the Hippos" is automatically excluded
+    THPS4 note: The level "Zoo - Feed the Hippos" is automatically excluded
     from point calculations.
 
-    **Supported Embeds:**
+    Supported Embeds:
     - `oldest-runs` (THPS4 only): Adds an `oldest_runs` key to the response containing
       each runner's personal best sorted by longest-held time (days since the run was set).
       Returns -1 for days_held when the submission date is unknown.
 
-    **Examples:**
+    Examples:
     - `/website/game/thps4/pointslb` - THPS4 leaderboard
     - `/website/game/thps4/pointslb?embed=oldest-runs` - THPS4 leaderboard with oldest PBs
     - `/website/game/n2680o1p/pointslb` - Leaderboard by game ID
@@ -101,7 +100,6 @@ def get_game_leaderboard(
         Field(description="Optional: 'oldest-runs' for THPS4 oldest PBs embed"),
     ] = None,
 ) -> Status:
-    """Get per-game points leaderboard with optional oldest-runs embed for THPS4."""
     if len(game_id) > 15:
         return Status(400, ErrorResponse(
             error="ID must be 15 characters or less",

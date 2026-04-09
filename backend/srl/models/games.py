@@ -3,6 +3,7 @@ from django.db import models
 from django.utils.text import slugify
 
 from srl.models.platforms import Platforms
+from srl.models.players import Players
 
 
 class Games(models.Model):
@@ -61,6 +62,16 @@ class Games(models.Model):
         Platforms,
         verbose_name="Platforms",
     )
+    moderators = models.ManyToManyField(
+        Players,
+        related_name="moderated_games",
+        verbose_name="Moderators",
+        blank=True,
+        help_text=(
+            "Players who are moderators for this game on thps.run. "
+            "If a player is a moderator here but not on SRC, thps.run takes precedence."
+        ),
+    )
     pointsmax = models.PositiveSmallIntegerField(
         verbose_name="Full Game WR Point Maximum",
         default=settings.POINTS_MAX_FG,
@@ -84,6 +95,12 @@ class Games(models.Model):
             "runs. If you change this value, you will need to reset runs for this game "
             "from the admin panel."
         ),
+    )
+    rules = models.TextField(
+        max_length=5000,
+        verbose_name="Rules",
+        blank=True,
+        null=True,
     )
     created_at = models.DateTimeField(
         auto_now_add=True,

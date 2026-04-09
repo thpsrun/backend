@@ -11,13 +11,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 if os.getenv("SENTRY_ENABLED") == "True":
     sentry_sdk.init(
         dsn=os.getenv("SENTRY_DSN"),
-        send_default_pii=True,
-        traces_sample_rate=1.0,
+        send_default_pii=False,
+        traces_sample_rate=0.5,
     )
 
 SECRET_KEY = os.getenv("SECRET_KEY")
+SRC_ENCRYPTION_KEY = os.getenv("SRC_ENCRYPTION_KEY")
 
-ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS").split(",")  # type: ignore
+ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "").split(",")
 # ALLOWED_IPS = ["127.0.0.1"]
 
 INSTALLED_APPS = [
@@ -30,26 +31,40 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     # THIRD-PARTY
     "corsheaders",
+    "django.contrib.sites",
+    "allauth",
+    "allauth.account",
+    "allauth.socialaccount",
+    "allauth.socialaccount.providers.discord",
+    "allauth.socialaccount.providers.twitch",
+    "allauth.mfa",
+    "allauth.headless",
     "rest_framework_api_key",
     # LOCAL
+    "accounts",
     "srl",
     "api",
     "guides",
+    "nav",
 ]
+
+AUTH_USER_MODEL = "accounts.CustomUser"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "corsheaders.middleware.CorsMiddleware",
-    "django.middleware.common.CommonMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "allauth.account.middleware.AccountMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "api.middleware.APIActivityLogMiddleware",
 ]
 
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOWED_ORIGINS = [os.getenv("FRONTEND_URL", "http://localhost:3000")]
+CORS_ALLOW_CREDENTIALS = True
 
 ROOT_URLCONF = "website.urls"
 
@@ -71,6 +86,7 @@ TEMPLATES = [
 
 AUTHENTICATION_BACKENDS = [
     "django.contrib.auth.backends.ModelBackend",
+    "allauth.account.auth_backends.AuthenticationBackend",
 ]
 
 
@@ -78,7 +94,7 @@ WSGI_APPLICATION = "website.wsgi.application"
 
 if os.getenv("DEBUG_MODE") == "True":
     DEBUG = True
-    CSRF_TRUSTED_ORIGINS = ["http://localhost:8001"]
+    CSRF_TRUSTED_ORIGINS = ["http://localhost:8001", "http://localhost:3000"]
     INSTALLED_APPS.append("debug_toolbar")
     MIDDLEWARE.insert(0, "debug_toolbar.middleware.DebugToolbarMiddleware")
 else:
@@ -86,13 +102,15 @@ else:
     APPEND_SLASH = True
     MIDDLEWARE.insert(1, "whitenoise.middleware.WhiteNoiseMiddleware")
 
+    CSRF_TRUSTED_ORIGINS = [os.getenv("FRONTEND_URL", "")]
     CSRF_COOKIE_SECURE = True
     SESSION_COOKIE_SECURE = True
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = "Lax"
     SECURE_SSL_REDIRECT = True
-    SECURE_HSTS_SECONDS = 3600
+    SECURE_HSTS_SECONDS = 31536000
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
-    SECURE_SSL_HOST = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
     SECURE_BROWSER_XSS_FILTER = True
     X_FRAME_OPTIONS = "DENY"
@@ -157,6 +175,10 @@ USE_TZ = True
 STATIC_ROOT = os.path.join(BASE_DIR, "static")
 STATIC_URL = "/static/"
 
+# Media files (user-uploaded content)
+MEDIA_ROOT = os.path.join(BASE_DIR, "media")
+MEDIA_URL = "/media/"
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # CELERY SETTINGS
@@ -187,3 +209,55 @@ POINTS_MAX_CE = 50
 STREAK_BONUS_FG = 125
 STREAK_BONUS_IL = 31.25
 STREAK_MAX_MONTHS = 4
+
+# SITE
+SITE_ID = 1
+
+# ALLAUTH SETTINGS
+ACCOUNT_EMAIL_VERIFICATION = "none"
+ACCOUNT_LOGIN_METHODS = {"username", "email"}
+ACCOUNT_SIGNUP_FIELDS = ["email*", "username*", "password1*", "password2*"]
+MFA_TOTP_ISSUER = os.getenv("SITE_NAME", "THPS Speedrunning")
+
+# SOCIAL AUTH (Discord + Twitch - apps registered externally, credentials in .env)
+SOCIALACCOUNT_PROVIDERS = {
+    "discord": {
+        "SCOPE": ["identify", "email"],
+        "APP": {
+            "client_id": os.getenv("DISCORD_CLIENT_ID", ""),
+            "secret": os.getenv("DISCORD_CLIENT_SECRET", ""),
+        },
+    },
+    "twitch": {
+        "SCOPE": ["user:read:email"],
+        "APP": {
+            "client_id": os.getenv("TWITCH_CLIENT_ID", ""),
+            "secret": os.getenv("TWITCH_CLIENT_SECRET", ""),
+        },
+    },
+}
+
+SESSION_COOKIE_AGE = 60 * 60 * 24 * 7  # 7 days in seconds
+
+# ALLAUTH HEADLESS
+HEADLESS_ONLY = True
+HEADLESS_FRONTEND_URLS = {
+    "account_confirm_email": os.getenv("FRONTEND_URL", "http://localhost:3000")
+    + "/verify-email/{key}",
+    "account_reset_password_from_key": os.getenv(
+        "FRONTEND_URL", "http://localhost:3000"
+    )
+    + "/reset-password/{uidb36}/{key}",
+    "socialaccount_login_cancelled": os.getenv("FRONTEND_URL", "http://localhost:3000")
+    + "/login/cancelled/",
+    "socialaccount_login_error": os.getenv("FRONTEND_URL", "http://localhost:3000")
+    + "/login/error/",
+}
+
+# EMAIL (Resend via django-anymail TODO:)
+EMAIL_BACKEND = "anymail.backends.resend.EmailBackend"
+ANYMAIL = {
+    "RESEND_API_KEY": os.getenv("RESEND_API_KEY", ""),
+}
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "noreply@thpsspeedrunning.com")
+ACCOUNT_EMAIL_SUBJECT_PREFIX = "[THPS Speedrunning] "

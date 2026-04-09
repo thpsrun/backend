@@ -14,6 +14,9 @@ PLAYERS_GET = {
                         "youtube": "https://youtube.com/thepackle",
                         "twitter": "https://twitter.com/thepackle",
                         "bluesky": "https://bsky.app/profile/@thepackle.bsky.social",
+                        "discord": "discordusername",
+                        "ex_stream": False,
+                        "joined": "2025-08-15",
                         "country": {"id": "us", "name": "United States"},
                         "awards": [
                             {
@@ -32,6 +35,13 @@ PLAYERS_GET = {
                                 "time": "12:34.567",
                                 "date": "2025-08-15T10:30:00Z",
                                 "video": "https://youtube.com/watch?v=example",
+                            }
+                        ],
+                        "moderated_games": [
+                            {
+                                "id": "thps4",
+                                "name": "Tony Hawk's Pro Skater 4",
+                                "slug": "thps4",
                             }
                         ],
                     }
@@ -78,6 +88,9 @@ PLAYERS_POST = {
                         "youtube": "https://youtube.com/thepackle",
                         "twitter": "https://twitter.com/thepackle",
                         "bluesky": "https://bsky.app/profile/thepackle",
+                        "discord": "discordusername",
+                        "ex_stream": False,
+                        "joined": "2025-08-15",
                     }
                 }
             },
@@ -140,6 +153,11 @@ PLAYERS_POST = {
                             "example": "https://bsky.app/profile/thepackle",
                             "description": "BLUESKY URL",
                         },
+                        "discord": {
+                            "type": "string",
+                            "example": "discord.username",
+                            "description": "DISCORD USERNAME",
+                        },
                     },
                 },
                 "example": {
@@ -170,6 +188,8 @@ PLAYERS_PUT = {
                         "youtube": "https://youtube.com/thepackle",
                         "twitter": "https://twitter.com/thepackle",
                         "bluesky": "https://bsky.app/profile/@thepackle.bsky.social",
+                        "ex_stream": False,
+                        "joined": "2025-08-15",
                     }
                 }
             },
@@ -242,6 +262,11 @@ PLAYERS_PUT = {
                             "example": "https://bsky.app/profile/thepackle",
                             "description": "UPDATED BLUESKY URL",
                         },
+                        "discord": {
+                            "type": "string",
+                            "example": "discord.username",
+                            "description": "DISCORD USERNAME",
+                        },
                     },
                 },
                 "example": {"nickname": "NewNickname", "pronouns": "they/them"},
@@ -295,6 +320,8 @@ PLAYERS_ALL = {
                             "youtube": "https://youtube.com/thepackle",
                             "twitter": "https://twitter.com/thepackle",
                             "bluesky": "https://bsky.app/profile/@thepackle.bsky.social",
+                            "discord": "discordusername",
+                            "joined": "2023-03-12",
                         },
                         {
                             "id": "x81m29qk",
@@ -306,6 +333,8 @@ PLAYERS_ALL = {
                             "youtube": None,
                             "twitter": None,
                             "bluesky": None,
+                            "discord": None,
+                            "joined": "2023-03-11",
                         },
                     ]
                 }

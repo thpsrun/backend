@@ -78,4 +78,4 @@ class OldestRunEntrySchema(BaseEmbedSchema):
     place: int = Field(..., ge=1)
     time: str | None = None
     date: datetime | None = None
-    days_held: int = Field(..., ge=-1)
+    days_held: int = Field(..., ge=-1)  # -1 when submission date is unknown

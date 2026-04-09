@@ -134,6 +134,7 @@ backend/website/sqlite3.db
 backend/srl/static/srl/imgs/awards/
 backend/db.json
 backend/srl/static/pfp/*
+backend/media/
 backend/website/static/*
 
 backups/
@@ -147,6 +148,3 @@ npm/*
 pyproject.toml
 .pylintrc
 static/
-
-# Yeah, I use Claude to help a bit; fight me.
-.claude/

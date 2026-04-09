@@ -22,11 +22,32 @@ from api.v1.utils import get_or_generate_id
 router = Router()
 
 
+def _filter_level_variables(
+    variables: list[Variables],
+    level: Levels,
+) -> list[Variables]:
+    """Filter variables relevant to a specific level (single-level + all-levels)."""
+    filtered = []
+    for var in variables:
+        if var.level:
+            if var.scope == "single-level" and var.level.id == level.id:
+                filtered.append(var)
+            elif var.scope == "all-levels":
+                filtered.append(var)
+    return filtered
+
+
 def apply_level_embeds(
     level: Levels,
     embed_fields: list[str],
+    all_variables: list[Variables] | None = None,
+    values_by_var: dict[str, list[VariableValues]] | None = None,
 ) -> dict:
-    """When requested in the `embed_fields` of a level instance, this will apply the embeds."""
+    """Apply embeds to a level instance.
+
+    When all_variables and values_by_var are provided (batch mode),
+    filters in Python to avoid per-level DB queries.
+    """
     embeds = {}
 
     if "game" in embed_fields:
@@ -44,21 +65,27 @@ def apply_level_embeds(
                 "ipointsmax": level.game.ipointsmax,
             }
 
-    # If variables or values are declared, and depending on which is,
-    # additional context and metadata is added to the query.
     if "variables" in embed_fields or "values" in embed_fields:
-        variables = Variables.objects.filter(
-            game=level.game, level=level, scope="single-level"
-        ).order_by("name")
-
-        all_level_vars = Variables.objects.filter(
-            game=level.game, scope="all-levels"
-        ).order_by("name")
-
-        all_variables = list(variables) + list(all_level_vars)
+        if all_variables is not None:
+            level_vars = _filter_level_variables(all_variables, level)
+        else:
+            single_level = list(
+                Variables.objects.filter(
+                    game=level.game,
+                    level=level,
+                    scope="single-level",
+                ).order_by("name")
+            )
+            all_levels = list(
+                Variables.objects.filter(
+                    game=level.game,
+                    scope="all-levels",
+                ).order_by("name")
+            )
+            level_vars = single_level + all_levels
 
         variables_data = []
-        for var in all_variables:
+        for var in level_vars:
             var_data = {
                 "id": var.id,
                 "name": var.name,
@@ -68,7 +95,12 @@ def apply_level_embeds(
             }
 
             if "values" in embed_fields:
-                values = VariableValues.objects.filter(var=var).order_by("name")
+                if values_by_var is not None:
+                    values = values_by_var.get(var.id, [])
+                else:
+                    values = list(
+                        VariableValues.objects.filter(var=var).order_by("name")
+                    )
                 var_data["values"] = [
                     {
                         "value": val.value,
@@ -82,9 +114,6 @@ def apply_level_embeds(
 
             variables_data.append(var_data)
 
-        # If values are specified in the embed field, then it will embed
-        # the values' metadata to the request. Otherwise, it will return
-        # only basic IDs.
         embed_key = "values" if "values" in embed_fields else "variables"
         embeds[embed_key] = variables_data
 
@@ -98,18 +127,18 @@ def apply_level_embeds(
     description=dedent(
         """Retrieves all levels within a `Games` object, including optional embedding.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `game_id` (str | None): Filter by specific game ID or its slug.
     - `limit` (int | None): Results per page (default 50, max 100).
     - `offset` (int | None): Results to skip (default 0).
     - `embed` (list | None): Comma-separated list of resources to embed.
 
-    **Supported Embeds:**
+    Supported Embeds:
     - `game`: Includes the metadata of the game the level belongs to.
     - `variables`: Include metadata of the variables belonging to this level.
     - `values`: Include all metadata for each variable and its values.
 
-    **Examples:**
+    Examples:
     - `/levels/all` - Get all levels.
     - `/levels/all?game_id=thps4` - Get all levels for THPS4.
     - `/levels/all?game_id=thps4&embed=game` - Get THPS4 levels with game info.
@@ -146,39 +175,66 @@ def get_all_levels(
         embed_fields = [field.strip() for field in embed.split(",") if field.strip()]
         invalid_embeds = validate_embeds("levels", embed_fields)
         if invalid_embeds:
-            return Status(400, ErrorResponse(
-                error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
-                details=None,
-            ))
+            return Status(
+                400,
+                ErrorResponse(
+                    error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
+                    details=None,
+                ),
+            )
 
     try:
-        queryset = Levels.objects.all().order_by("name")
+        queryset = Levels.objects.select_related("game").order_by("name")
 
         if game_id:
             queryset = queryset.filter(game__id=game_id)
 
-        levels = queryset[offset : offset + limit]
+        levels = list(queryset[offset : offset + limit])
 
-        # For each of the levels, it will go through and add additional context
-        # if the embed option is provided. If not, it will provide basic information
-        # (e.g. the ID of the level), with additional information provided if declared.
+        all_variables = None
+        values_by_var = None
+        if levels and ("variables" in embed_fields or "values" in embed_fields):
+            game_obj = levels[0].game
+            all_variables = list(
+                Variables.objects.filter(
+                    game=game_obj,
+                    scope__in=["single-level", "all-levels"],
+                ).order_by("name")
+            )
+            if "values" in embed_fields:
+                var_ids = [v.id for v in all_variables]
+                all_values = VariableValues.objects.filter(
+                    var_id__in=var_ids,
+                ).order_by("name")
+                values_by_var: dict[str, list[VariableValues]] = {}
+                for val in all_values:
+                    values_by_var.setdefault(val.var_id, []).append(val)
+
         level_schemas = []
         for level in levels:
             level_data = LevelSchema.model_validate(level)
 
             if embed_fields:
-                embed_data = apply_level_embeds(level, embed_fields)
+                embed_data = apply_level_embeds(
+                    level,
+                    embed_fields,
+                    all_variables,
+                    values_by_var,
+                )
                 for field, data in embed_data.items():
                     setattr(level_data, field, data)
 
             level_schemas.append(level_data)
 
         return Status(200, level_schemas)
-    except Exception as e:
-        return Status(500, ErrorResponse(
-            error="Level Retrieval Failure",
-            details={"exception": str(e)},
-        ))
+    except Exception:
+        return Status(
+            500,
+            ErrorResponse(
+                error="Level Retrieval Failure",
+                details=None,
+            ),
+        )
 
 
 @router.get(
@@ -188,16 +244,16 @@ def get_all_levels(
     description=dedent(
         """Retrieve a single level based upon its ID, including optional embedding.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `id` (str): Unique ID of the level being queried.
     - `embed` (list | None): Comma-separated list of resources to embed.
 
-    **Supported Embeds:**
+    Supported Embeds:
     - `game`: Includes the metadata of the game the level belongs to
     - `variables`: Include metadata of the variables belonging to this level
     - `values`: Include all metadata for each variable and its values
 
-    **Examples:**
+    Examples:
     - `/levels/592pxj8d` - Get level by ID
     - `/levels/592pxj8d?embed=game` - Get level with game info
     - `/levels/592pxj8d?embed=variables,values` - Get level with variables and values
@@ -214,10 +270,13 @@ def get_level(
     ] = None,
 ) -> Status:
     if len(id) > 15:
-        return Status(400, ErrorResponse(
-            error="ID must be 15 characters or less",
-            details=None,
-        ))
+        return Status(
+            400,
+            ErrorResponse(
+                error="ID must be 15 characters or less",
+                details=None,
+            ),
+        )
 
     # Checks to see what embeds are being used versus what is allowed
     # via this endpoint. It will return an error to the client if they
@@ -227,18 +286,30 @@ def get_level(
         embed_fields = [field.strip() for field in embed.split(",") if field.strip()]
         invalid_embeds = validate_embeds("levels", embed_fields)
         if invalid_embeds:
-            return Status(400, ErrorResponse(
-                error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
-                details={"valid_embeds": ["game", "variables", "values"]},
-            ))
+            return Status(
+                400,
+                ErrorResponse(
+                    error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
+                    details={"valid_embeds": ["game", "variables", "values"]},
+                ),
+            )
 
     try:
-        level = Levels.objects.filter(id__iexact=id).first()
+        level = (
+            Levels.objects.select_related("game")
+            .filter(
+                id__iexact=id,
+            )
+            .first()
+        )
         if not level:
-            return Status(404, ErrorResponse(
-                error="Level ID does not exist",
-                details=None,
-            ))
+            return Status(
+                404,
+                ErrorResponse(
+                    error="Level ID does not exist",
+                    details=None,
+                ),
+            )
 
         level_data = LevelSchema.model_validate(level)
 
@@ -249,23 +320,26 @@ def get_level(
 
         return Status(200, level_data)
 
-    except Exception as e:
-        return Status(500, ErrorResponse(
-            error="Failed to retrieve level",
-            details={"exception": str(e)},
-        ))
+    except Exception:
+        return Status(
+            500,
+            ErrorResponse(
+                error="Failed to retrieve level",
+                details=None,
+            ),
+        )
 
 
 @router.post(
     "/",
-    response={200: LevelSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={201: LevelSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Create Level",
     description=dedent(
         """Creates a brand new level.
 
-    **REQUIRES MODERATOR ACCESS OR HIGHER.**
+    REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    **Request Body:**
+    Request Body:
     - `id` (str): Unique ID (usually based on SRC) of the level.
     - `name` (str): Level name (e.g., "Warehouse", "School").
     - `slug` (str): URL-friendly version.
@@ -289,33 +363,42 @@ def create_level(
     try:
         game = Games.objects.filter(id=level_data.game_id).first()
         if not game:
-            return Status(404, ErrorResponse(
-                error="Game does not exist",
-                details=None,
-            ))
+            return Status(
+                404,
+                ErrorResponse(
+                    error="Game does not exist",
+                    details=None,
+                ),
+            )
 
         try:
             level_id = get_or_generate_id(
                 level_data.id,
                 lambda id: Levels.objects.filter(id=id).exists(),
             )
-        except ValueError as e:
-            return Status(400, ErrorResponse(
-                error="ID Already Exists",
-                details={"exception": str(e)},
-            ))
+        except ValueError:
+            return Status(
+                400,
+                ErrorResponse(
+                    error="ID Already Exists",
+                    details=None,
+                ),
+            )
 
         create_data = level_data.model_dump(exclude={"game_id"})
         create_data["id"] = level_id
         level = Levels.objects.create(game=game, **create_data)
 
-        return Status(200, LevelSchema.model_validate(level))
+        return Status(201, LevelSchema.model_validate(level))
 
-    except Exception as e:
-        return Status(500, ErrorResponse(
-            error="Failed to create level",
-            details={"exception": str(e)},
-        ))
+    except Exception:
+        return Status(
+            500,
+            ErrorResponse(
+                error="Failed to create level",
+                details=None,
+            ),
+        )
 
 
 @router.put(
@@ -325,12 +408,12 @@ def create_level(
     description=dedent(
         """Updates the level based on its unique ID.
 
-    **REQUIRES MODERATOR ACCESS OR HIGHER.**
+    REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `id` (str): Unique ID of the level being edited.
 
-    **Request Body:**
+    Request Body:
     - `name` (str | None): Level name (e.g., "Warehouse", "School").
     - `slug` (str | None): URL-friendly version.
     - `type` (str | None): Whether this is per-game or per-level category.
@@ -351,21 +434,33 @@ def update_level(
     level_data: LevelUpdateSchema,
 ) -> Status:
     try:
-        level = Levels.objects.filter(id__iexact=id).first()
+        level = (
+            Levels.objects.select_related("game")
+            .filter(
+                id__iexact=id,
+            )
+            .first()
+        )
         if not level:
-            return Status(404, ErrorResponse(
-                error="Level does not exist",
-                details=None,
-            ))
+            return Status(
+                404,
+                ErrorResponse(
+                    error="Level does not exist",
+                    details=None,
+                ),
+            )
 
         update_data = level_data.model_dump(exclude_unset=True)
         if "game_id" in update_data:
             game = Games.objects.filter(id=update_data["game_id"]).first()
             if not game:
-                return Status(404, ErrorResponse(
-                    error="Game does not exist",
-                    details=None,
-                ))
+                return Status(
+                    404,
+                    ErrorResponse(
+                        error="Game does not exist",
+                        details=None,
+                    ),
+                )
             level.game = game
             del update_data["game_id"]
 
@@ -375,11 +470,14 @@ def update_level(
         level.save()
         return Status(200, LevelSchema.model_validate(level))
 
-    except Exception as e:
-        return Status(500, ErrorResponse(
-            error="Failed to update level",
-            details={"exception": str(e)},
-        ))
+    except Exception:
+        return Status(
+            500,
+            ErrorResponse(
+                error="Failed to update level",
+                details=None,
+            ),
+        )
 
 
 @router.delete(
@@ -389,9 +487,9 @@ def update_level(
     description=dedent(
         """Deletes the selected level by its ID.
 
-    **REQUIRES ADMIN ACCESS.**
+    REQUIRES ADMIN ACCESS.
 
-    **Supported Parameters:**
+    Supported Parameters:
     - `id` (str): Unique ID of the level being deleted.
     """
     ),
@@ -403,18 +501,30 @@ def delete_level(
     id: str,
 ) -> Status:
     try:
-        level = Levels.objects.filter(id__iexact=id).first()
+        level = (
+            Levels.objects.select_related("game")
+            .filter(
+                id__iexact=id,
+            )
+            .first()
+        )
         if not level:
-            return Status(404, ErrorResponse(
-                error="Level does not exist",
-                details=None,
-            ))
+            return Status(
+                404,
+                ErrorResponse(
+                    error="Level does not exist",
+                    details=None,
+                ),
+            )
 
         name = level.name
         level.delete()
         return Status(200, {"message": f"Level '{name}' deleted successfully"})
-    except Exception as e:
-        return Status(500, ErrorResponse(
-            error="Failed to delete level",
-            details={"exception": str(e)},
-        ))
+    except Exception:
+        return Status(
+            500,
+            ErrorResponse(
+                error="Failed to delete level",
+                details=None,
+            ),
+        )

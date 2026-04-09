@@ -3,6 +3,8 @@ from typing import Any, Callable
 
 from django.core.cache import caches
 
+_CACHE_MISS = object()
+
 
 def cache_response(
     timeout: int | None = 604800,
@@ -38,8 +40,8 @@ def cache_response(
 
             cache = caches[cache_name]
 
-            cached_response = cache.get(cache_key)
-            if cached_response is not None:
+            cached_response = cache.get(cache_key, _CACHE_MISS)
+            if cached_response is not _CACHE_MISS:
                 return cached_response
 
             response = function(
