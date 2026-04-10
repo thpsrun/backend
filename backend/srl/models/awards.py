@@ -1,7 +1,7 @@
 from django.db import models
 from django_resized import ResizedImageField
 
-from srl.models.base import validate_image
+from srl.models.base import validate_award_image
 
 
 class Awards(models.Model):
@@ -17,7 +17,7 @@ class Awards(models.Model):
         size=[64, 64],
         upload_to="awards",
         verbose_name="Image",
-        validators=[validate_image],
+        validators=[validate_award_image],
         null=True,
         blank=True,
         help_text=(

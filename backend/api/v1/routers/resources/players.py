@@ -92,6 +92,9 @@ def apply_player_embeds(
             embeds["country"] = {
                 "id": player.countrycode.id,
                 "name": player.countrycode.name,
+                "flag": (
+                    player.countrycode.flag.url if player.countrycode.flag else None
+                ),
             }
 
     if "awards" in embed_fields:

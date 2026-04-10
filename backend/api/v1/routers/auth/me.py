@@ -4,19 +4,8 @@ import os
 from textwrap import dedent
 
 import requests as http_requests
-from api.permissions import player_session_auth
-from api.rate_limiting import auth_rate_limit
-from api.v1.schemas.auth import (
-    CountryCodeResponse,
-    ModeratedGameSchema,
-    PfpUploadResponse,
-    PlayerProfileResponse,
-    PlayerUpdateRequest,
-    SRCKeyRequest,
-    SRCKeyStatusResponse,
-)
-from api.v1.schemas.base import ErrorResponse
 from django.conf import settings
+from django.core.files.base import ContentFile
 from django.db import transaction
 from django.http import HttpRequest
 from ninja import File, Router, Status
@@ -25,6 +14,20 @@ from ninja.responses import codes_4xx
 from PIL import Image
 from srl.encryption import encrypt_src_key
 from srl.models import CountryCodes, Players
+
+from api.permissions import player_session_auth
+from api.rate_limiting import auth_rate_limit
+from api.v1.schemas.auth import (
+    CountryCodeResponse,
+    ModeratedGameSchema,
+    PfpUploadResponse,
+    PlayerProfileResponse,
+    PlayerUpdateRequest,
+    ProfileBGUploadResponse,
+    SRCKeyRequest,
+    SRCKeyStatusResponse,
+)
+from api.v1.schemas.base import ErrorResponse
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +47,12 @@ def list_countries(
     request: HttpRequest,
 ) -> list[CountryCodeResponse]:
     return [
-        CountryCodeResponse(id=c.id, name=c.name) for c in CountryCodes.objects.all()
+        CountryCodeResponse(
+            id=c.id,
+            name=c.name,
+            flag=c.flag.url if c.flag else None,
+        )
+        for c in CountryCodes.objects.all()
     ]
 
 
@@ -68,6 +76,7 @@ def _build_profile_response(
         twitter=player.twitter,
         bluesky=player.bluesky,
         discord=player.discord,
+        therun_gg=player.user.therun_gg if player.user else None,
         pfp=player.pfp,
         ex_stream=player.ex_stream,
         claim_status=player.claim_status,
@@ -79,6 +88,11 @@ def _build_profile_response(
         gradient_1=player.user.gradient_1 if player.user else None,
         gradient_2=player.user.gradient_2 if player.user else None,
         gradient_3=player.user.gradient_3 if player.user else None,
+        profile_bg=(
+            player.user.profile_bg.url
+            if player.user and player.user.profile_bg
+            else None
+        ),
         joined=player.joined,
         moderated_games=[
             ModeratedGameSchema(id=g.id, name=g.name, slug=g.slug) for g in moderated
@@ -156,26 +170,25 @@ def update_me(
             setattr(player.user, field, getattr(body, field))
             user_update_fields.append(field)
 
-    if user_update_fields:
-        # Validate gradient sequential order against final user state
-        u = player.user
-        if u.gradient_2 is not None and u.gradient_1 is None:
-            return Status(
-                400,
-                ErrorResponse(
-                    error="gradient_2 requires gradient_1 to be set",
-                    details=None,
-                ),
-            )
-        if u.gradient_3 is not None and u.gradient_2 is None:
-            return Status(
-                400,
-                ErrorResponse(
-                    error="gradient_3 requires gradient_2 to be set",
-                    details=None,
-                ),
-            )
-        player.user.save(update_fields=user_update_fields)
+    if player.user:
+        if user_update_fields:
+            if player.user.gradient_2 is not None and player.user.gradient_1 is None:
+                return Status(
+                    400,
+                    ErrorResponse(
+                        error="gradient_2 requires gradient_1 to be set",
+                        details=None,
+                    ),
+                )
+            if player.user.gradient_3 is not None and player.user.gradient_2 is None:
+                return Status(
+                    400,
+                    ErrorResponse(
+                        error="gradient_3 requires gradient_2 to be set",
+                        details=None,
+                    ),
+                )
+            player.user.save(update_fields=user_update_fields)
 
     return Status(200, _build_profile_response(player))
 
@@ -256,6 +269,100 @@ def upload_pfp(
 
 
 @router.post(
+    "/me/profile-bg",
+    response={200: ProfileBGUploadResponse, codes_4xx: ErrorResponse},
+    summary="Upload Profile Background",
+    description=dedent(
+        """
+    Uploads a profile background image for the authenticated player's user account.
+    Accepts image files only (max 10 MB). Re-encodes to strip metadata.
+    """
+    ),
+    auth=player_session_auth,
+)
+def upload_profile_bg(
+    request: HttpRequest,
+    file: UploadedFile = File(...),  # type: ignore
+) -> Status:
+    player: Players = request.auth  # type: ignore
+
+    if not file.content_type or not file.content_type.startswith("image/"):
+        return Status(
+            400,
+            ErrorResponse(
+                error="Uploaded file must be an image",
+                details={"content_type": file.content_type},
+            ),
+        )
+
+    if not file.size or file.size > 10 * 1024 * 1024:
+        return Status(
+            400,
+            ErrorResponse(
+                error="Image exceeds maximum size of 10 MB",
+                details=None,
+            ),
+        )
+
+    raw: bytes = b"".join(file.chunks())
+
+    try:
+        with Image.open(io.BytesIO(raw)) as img:
+            rgb = img.convert("RGB")
+    except Exception as e:
+        return Status(
+            400,
+            ErrorResponse(
+                error="Uploaded file is not a valid image",
+                details={"exception": str(e)},
+            ),
+        )
+
+    buffer = io.BytesIO()
+    rgb.save(buffer, "JPEG", quality=85)
+    buffer.seek(0)
+
+    safe_id = "".join(c for c in player.id if c.isalnum() or c in "-_")
+    filename = f"{safe_id}.jpg"
+
+    if player.user:
+        if player.user.profile_bg:
+            player.user.profile_bg.delete(save=False)
+
+        player.user.profile_bg.save(
+            filename,
+            ContentFile(buffer.getvalue()),
+            save=True,
+        )
+
+        return Status(
+            200,
+            ProfileBGUploadResponse(profile_bg=player.user.profile_bg.url),
+        )
+
+    return Status(500, "There was an issue looking up that user.")
+
+
+@router.delete(
+    "/me/profile-bg",
+    response={200: ProfileBGUploadResponse, codes_4xx: ErrorResponse},
+    summary="Remove Profile Background",
+    description="Removes the authenticated player's profile background image.",
+    auth=player_session_auth,
+)
+def delete_profile_bg(
+    request: HttpRequest,
+) -> Status:
+    player: Players = request.auth  # type: ignore
+
+    if player.user:
+        if player.user.profile_bg:
+            player.user.profile_bg.delete(save=True)
+
+    return Status(200, ProfileBGUploadResponse(profile_bg=None))
+
+
+@router.post(
     "/me/src-key",
     response={200: SRCKeyStatusResponse, codes_4xx: ErrorResponse},
     summary="Store SRC API Key",
@@ -313,7 +420,7 @@ def set_src_key(
     try:
         src_data = src_response.json()
         src_user_id: str = src_data["data"]["id"]
-    except (KeyError, ValueError) as e:
+    except (KeyError, ValueError):
         return Status(
             400,
             ErrorResponse(
@@ -332,8 +439,9 @@ def set_src_key(
             ),
         )
 
-    player.user.encrypted_api_key = encrypt_src_key(body.src_api_key)
-    player.user.save(update_fields=["encrypted_api_key"])
+    if player.user:
+        player.user.encrypted_api_key = encrypt_src_key(body.src_api_key)
+        player.user.save(update_fields=["encrypted_api_key"])
 
     return Status(
         200,
@@ -432,6 +540,8 @@ def delete_me(
             player.moderated_games.clear()
 
             if user is not None:
+                if user.profile_bg:
+                    user.profile_bg.delete(save=False)
                 user.delete()
     except Exception as e:
         logger.exception("Failed to delete account for player %s", player.id)

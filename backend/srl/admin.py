@@ -288,7 +288,15 @@ class PlayersAdmin(admin.ModelAdmin):
 
 admin.site.register(Games, GameAdmin)
 admin.site.register(Awards, DefaultAdmin)
-admin.site.register(CountryCodes, DefaultAdmin)
+
+
+@admin.register(CountryCodes)
+class CountryCodesAdmin(admin.ModelAdmin):
+    list_display = ["name", "id", "flag"]
+    search_fields = ["name"]
+    fields = ["id", "name", "flag"]
+
+
 admin.site.register(Categories, CategoriesAdmin)
 admin.site.register(Levels, CategoriesAdmin)
 admin.site.register(Variables, DefaultAdmin)

@@ -1,5 +1,5 @@
 from srl.models.awards import Awards
-from srl.models.base import validate_image
+from srl.models.base import validate_award_image, validate_flag_image, validate_profile_bg
 from srl.models.categories import Categories
 from srl.models.country_codes import CountryCodes
 from srl.models.games import Games
@@ -33,5 +33,7 @@ __all__ = [
     "RunVariableValues",
     "SRCSyncTask",
     "NowStreaming",
-    "validate_image",
+    "validate_award_image",
+    "validate_flag_image",
+    "validate_profile_bg",
 ]

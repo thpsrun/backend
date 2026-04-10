@@ -4,7 +4,7 @@ import django.db.models.deletion
 import django_resized.forms
 from django.db import migrations, models
 
-import srl.models
+import srl.models.base
 
 
 class Migration(migrations.Migration):
@@ -45,7 +45,7 @@ class Migration(migrations.Migration):
                         scale=None,
                         size=[64, 64],
                         upload_to="srl/static/srl/imgs/awards",
-                        validators=[srl.models.validate_image],
+                        validators=[srl.models.base.validate_award_image],
                         verbose_name="Image",
                     ),
                 ),

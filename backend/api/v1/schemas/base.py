@@ -23,6 +23,9 @@ class ErrorResponse(BaseModel):
 
     _SENSITIVE_KEYS: set[str] = {"exception", "type"}
 
+    # This is an additional feature added that helps seamlessly keep exception errors in
+    # development, but strip them in production since `details` could provide sensitive
+    # data on the environment in some cases.
     @model_validator(mode="after")
     def strip_exception_details_in_production(self) -> Self:
         if not settings.DEBUG and self.details:

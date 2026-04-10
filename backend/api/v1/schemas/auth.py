@@ -8,6 +8,7 @@ from pydantic import EmailStr, Field, field_validator, model_validator
 class CountryCodeResponse(Schema):
     id: str
     name: str
+    flag: str | None = None
 
 
 class SRCKeyRequest(Schema):
@@ -92,6 +93,7 @@ class PlayerProfileResponse(Schema):
     twitter: str | None
     bluesky: str | None
     discord: str | None
+    therun_gg: str | None
     pfp: str | None
     claim_status: str
     username: str
@@ -103,12 +105,17 @@ class PlayerProfileResponse(Schema):
     gradient_1: str | None = None
     gradient_2: str | None = None
     gradient_3: str | None = None
+    profile_bg: str | None = None
     joined: date | None = None
     moderated_games: list[ModeratedGameSchema] = []
 
 
 class PfpUploadResponse(Schema):
     pfp: str
+
+
+class ProfileBGUploadResponse(Schema):
+    profile_bg: str | None
 
 
 HEX_COLOR_PATTERN = re.compile(r"^#[0-9A-Fa-f]{6}$")
@@ -124,6 +131,7 @@ class PlayerUpdateRequest(Schema):
     twitter: str | None = Field(None, max_length=200)
     bluesky: str | None = Field(None, max_length=200)
     discord: str | None = Field(None, max_length=32)
+    therun_gg: str | None = Field(None, max_length=30)
     ex_stream: bool | None = None
     bio: str | None = Field(None, max_length=1000)
     short_bio: str | None = Field(None, max_length=100)

@@ -81,10 +81,12 @@ class CountrySchema(BaseEmbedSchema):
     Attributes:
         id (str): Country code ID.
         name (str): Country name.
+        flag (str | None): Custom flag image URL.
     """
 
     id: str
     name: str
+    flag: str | None = None
 
 
 class StatsSchema(BaseEmbedSchema):

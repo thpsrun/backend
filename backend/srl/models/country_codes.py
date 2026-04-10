@@ -1,4 +1,7 @@
 from django.db import models
+from django_resized import ResizedImageField
+
+from srl.models.base import validate_flag_image
 
 
 class CountryCodes(models.Model):
@@ -14,6 +17,18 @@ class CountryCodes(models.Model):
     name = models.CharField(
         max_length=50,
         verbose_name="Country Name",
+    )
+    flag = ResizedImageField(
+        size=[72, 48],
+        upload_to="flags",
+        verbose_name="Custom Flag",
+        validators=[validate_flag_image],
+        null=True,
+        blank=True,
+        help_text=(
+            "Custom flag image for countries not in the frontend flag library. "
+            "Must have 1.5 aspect ratio (e.g. 72x48). Max 3MB."
+        ),
     )
     created_at = models.DateTimeField(
         auto_now_add=True,
