@@ -30,6 +30,46 @@ class ModeratedGameSchema(Schema):
     slug: str
 
 
+class CountryEmbed(Schema):
+    id: str
+    name: str
+    flag: str | None = None
+
+
+class PlayerEmbed(Schema):
+    username: str
+    name: str
+    nickname: str | None
+    pronouns: str | None
+    country: CountryEmbed | None
+    pfp: str | None
+    is_superuser: bool = False
+    ex_stream: bool = False
+
+
+class SocialsEmbed(Schema):
+    twitch: str | None = None
+    youtube: str | None = None
+    twitter: str | None = None
+    bluesky: str | None = None
+    discord: str | None = None
+    therun_gg: str | None = None
+
+
+class CustomizationsEmbed(Schema):
+    bio: str | None = None
+    short_bio: str | None = None
+    gradient_1: str | None = None
+    gradient_2: str | None = None
+    gradient_3: str | None = None
+    profile_bg: str | None = None
+
+
+class ModerationEmbed(Schema):
+    has_src_key: bool = False
+    moderated_games: list[ModeratedGameSchema] = []
+
+
 class RegisterRequest(Schema):
     src_api_key: str = Field(
         ...,
@@ -84,30 +124,12 @@ class RegisterResponse(Schema):
 
 class PlayerProfileResponse(Schema):
     player_id: str
-    name: str
-    nickname: str | None
-    pronouns: str | None
-    countrycode: str | None
-    twitch: str | None
-    youtube: str | None
-    twitter: str | None
-    bluesky: str | None
-    discord: str | None
-    therun_gg: str | None
-    pfp: str | None
     claim_status: str
-    username: str
-    is_superuser: bool = False
-    ex_stream: bool = False
-    has_src_key: bool = False
-    bio: str | None = None
-    short_bio: str | None = None
-    gradient_1: str | None = None
-    gradient_2: str | None = None
-    gradient_3: str | None = None
-    profile_bg: str | None = None
-    joined: date | None = None
-    moderated_games: list[ModeratedGameSchema] = []
+    joined: date | None
+    player: PlayerEmbed
+    socials: SocialsEmbed
+    customizations: CustomizationsEmbed
+    moderation: ModerationEmbed
 
 
 class PfpUploadResponse(Schema):
@@ -121,18 +143,38 @@ class ProfileBGUploadResponse(Schema):
 HEX_COLOR_PATTERN = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
 
-class PlayerUpdateRequest(Schema):
+class PlayerUpdateEmbed(Schema):
     name: str | None = Field(None, min_length=1, max_length=30)
     nickname: str | None = Field(None, max_length=30)
     pronouns: str | None = Field(None, max_length=50)
-    countrycode: str | None = None
+    country: str | None = None
+    ex_stream: bool | None = None
+
+
+class SocialsUpdateEmbed(Schema):
     twitch: str | None = Field(None, max_length=200)
     youtube: str | None = Field(None, max_length=200)
     twitter: str | None = Field(None, max_length=200)
     bluesky: str | None = Field(None, max_length=200)
-    discord: str | None = Field(None, max_length=32)
     therun_gg: str | None = Field(None, max_length=30)
-    ex_stream: bool | None = None
+
+    @field_validator("twitch", "youtube", "twitter", "bluesky", mode="before")
+    @classmethod
+    def validate_url(
+        cls,
+        v: str | None,
+    ) -> str | None:
+        if v is None:
+            return v
+        from urllib.parse import urlparse
+
+        parsed = urlparse(v)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            raise ValueError("Must be a valid http or https URL")
+        return v
+
+
+class CustomizationsUpdateEmbed(Schema):
     bio: str | None = Field(None, max_length=1000)
     short_bio: str | None = Field(None, max_length=100)
     gradient_1: str | None = Field(None, max_length=7)
@@ -151,17 +193,8 @@ class PlayerUpdateRequest(Schema):
             raise ValueError("Must be a valid hex color (#RRGGBB)")
         return v
 
-    @field_validator("twitch", "youtube", "twitter", "bluesky", mode="before")
-    @classmethod
-    def validate_url(
-        cls,
-        v: str | None,
-    ) -> str | None:
-        if v is None:
-            return v
-        from urllib.parse import urlparse
 
-        parsed = urlparse(v)
-        if parsed.scheme not in ("http", "https") or not parsed.netloc:
-            raise ValueError("Must be a valid http or https URL")
-        return v
+class PlayerUpdateRequest(Schema):
+    player: PlayerUpdateEmbed | None = None
+    socials: SocialsUpdateEmbed | None = None
+    customizations: CustomizationsUpdateEmbed | None = None

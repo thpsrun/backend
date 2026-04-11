@@ -73,7 +73,7 @@ class RoleBasedRateLimit:
 
         if api_key_header:
             try:
-                api_key_obj = RoleAPIKey.objects.get_from_key(api_key_header)
+                api_key_obj = RoleAPIKey.objects.get_from_key(api_key_header)  # type: ignore
                 if api_key_obj:
                     role = api_key_obj.role
                     identifier = f"key_{api_key_obj.id}"
@@ -140,7 +140,7 @@ def auth_rate_limit(
     """Per-IP rate limiter for auth endpoints. 5 requests per minute per IP.
 
     Stricter than the global API rate limiter to defend against brute-force
-    and player enumeration attacks on /verify-src and /register.
+    and player enumeration attacks on /register.
     """
 
     @wraps(func)

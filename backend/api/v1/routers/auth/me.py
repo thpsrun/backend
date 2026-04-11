@@ -1,31 +1,24 @@
-import io
 import logging
 import os
 from textwrap import dedent
 
-import requests as http_requests
 from django.conf import settings
-from django.core.files.base import ContentFile
 from django.db import transaction
 from django.http import HttpRequest
-from ninja import File, Router, Status
-from ninja.files import UploadedFile
+from ninja import Router, Status
 from ninja.responses import codes_4xx
-from PIL import Image
-from srl.encryption import encrypt_src_key
 from srl.models import CountryCodes, Players
 
 from api.permissions import player_session_auth
-from api.rate_limiting import auth_rate_limit
 from api.v1.schemas.auth import (
-    CountryCodeResponse,
+    CountryEmbed,
+    CustomizationsEmbed,
     ModeratedGameSchema,
-    PfpUploadResponse,
+    ModerationEmbed,
+    PlayerEmbed,
     PlayerProfileResponse,
     PlayerUpdateRequest,
-    ProfileBGUploadResponse,
-    SRCKeyRequest,
-    SRCKeyStatusResponse,
+    SocialsEmbed,
 )
 from api.v1.schemas.base import ErrorResponse
 
@@ -37,66 +30,64 @@ PFP_DIR: str = os.path.join(settings.MEDIA_ROOT, "pfp")
 os.makedirs(PFP_DIR, exist_ok=True)
 
 
-@router.get(
-    "/countries",
-    response=list[CountryCodeResponse],
-    summary="List Country Codes",
-    description="Returns all available country codes sorted alphabetically by name.",
-)
-def list_countries(
-    request: HttpRequest,
-) -> list[CountryCodeResponse]:
-    return [
-        CountryCodeResponse(
-            id=c.id,
-            name=c.name,
-            flag=c.flag.url if c.flag else None,
-        )
-        for c in CountryCodes.objects.all()
-    ]
-
-
 def _build_profile_response(
     player: Players,
 ) -> PlayerProfileResponse:
+    user = player.user
     moderated = list(player.moderated_games.all())
 
-    has_src_key = False
-    if player.user:
-        has_src_key = player.user.encrypted_api_key is not None
+    country_embed: CountryEmbed | None = None
+    if player.countrycode:
+        country_embed = CountryEmbed(
+            id=player.countrycode.id,
+            name=player.countrycode.name,
+            flag=player.countrycode.flag.url if player.countrycode.flag else None,
+        )
 
-    return PlayerProfileResponse(
-        player_id=player.id,
+    player_embed = PlayerEmbed(
+        username=user.username if user else "",
         name=player.name,
         nickname=player.nickname,
         pronouns=player.pronouns,
-        countrycode=player.countrycode.id if player.countrycode else None,
+        country=country_embed,
+        pfp=player.pfp,
+        is_superuser=user.is_superuser if user else False,
+        ex_stream=player.ex_stream,
+    )
+
+    socials_embed = SocialsEmbed(
         twitch=player.twitch,
         youtube=player.youtube,
         twitter=player.twitter,
         bluesky=player.bluesky,
         discord=player.discord,
-        therun_gg=player.user.therun_gg if player.user else None,
-        pfp=player.pfp,
-        ex_stream=player.ex_stream,
-        claim_status=player.claim_status,
-        username=player.user.username if player.user else "",
-        is_superuser=player.user.is_superuser if player.user else False,
-        has_src_key=has_src_key,
-        bio=player.user.bio if player.user else None,
-        short_bio=player.user.short_bio if player.user else None,
-        gradient_1=player.user.gradient_1 if player.user else None,
-        gradient_2=player.user.gradient_2 if player.user else None,
-        gradient_3=player.user.gradient_3 if player.user else None,
-        profile_bg=(
-            player.user.profile_bg.url
-            if player.user and player.user.profile_bg
-            else None
-        ),
-        joined=player.joined,
+        therun_gg=user.therun_gg if user else None,
+    )
+
+    customizations_embed = CustomizationsEmbed(
+        bio=user.bio if user else None,
+        short_bio=user.short_bio if user else None,
+        gradient_1=user.gradient_1 if user else None,
+        gradient_2=user.gradient_2 if user else None,
+        gradient_3=user.gradient_3 if user else None,
+        profile_bg=(user.profile_bg.url if user and user.profile_bg else None),
+    )
+
+    moderation_embed = ModerationEmbed(
+        has_src_key=bool(user.encrypted_api_key) if user else False,
         moderated_games=[
             ModeratedGameSchema(id=g.id, name=g.name, slug=g.slug) for g in moderated
         ],
+    )
+
+    return PlayerProfileResponse(
+        player_id=player.id,
+        claim_status=player.claim_status,
+        joined=player.joined,
+        player=player_embed,
+        socials=socials_embed,
+        customizations=customizations_embed,
+        moderation=moderation_embed,
     )
 
 
@@ -131,358 +122,78 @@ def update_me(
 ) -> Status:
     player: Players = request.auth  # type: ignore
 
-    update_fields: list[str] = []
+    player_update_fields: list[str] = []
+    user_update_fields: list[str] = []
 
-    for field in (
-        "name",
-        "nickname",
-        "pronouns",
-        "twitch",
-        "youtube",
-        "twitter",
-        "bluesky",
-        "discord",
-        "ex_stream",
-    ):
-        if field in body.model_fields_set:
-            setattr(player, field, getattr(body, field))
-            update_fields.append(field)
+    if body.player is not None:
+        player_fields = body.player.model_fields_set
+        for field in ("name", "nickname", "pronouns", "ex_stream"):
+            if field in player_fields:
+                setattr(player, field, getattr(body.player, field))
+                player_update_fields.append(field)
 
-    if "countrycode" in body.model_fields_set:
-        country = CountryCodes.objects.filter(id=body.countrycode).first()
-        if country is None:
+        if "country" in player_fields:
+            if body.player.country is None:
+                player.countrycode = None
+            else:
+                country = CountryCodes.objects.filter(id=body.player.country).first()
+                if country is None:
+                    return Status(
+                        400,
+                        ErrorResponse(
+                            error="Invalid country code",
+                            details={"country": body.player.country},
+                        ),
+                    )
+                player.countrycode = country
+            player_update_fields.append("countrycode")
+
+    if body.socials is not None:
+        socials_fields = body.socials.model_fields_set
+        for field in ("twitch", "youtube", "twitter", "bluesky"):
+            if field in socials_fields:
+                setattr(player, field, getattr(body.socials, field))
+                player_update_fields.append(field)
+        if "therun_gg" in socials_fields and player.user:
+            player.user.therun_gg = body.socials.therun_gg
+            user_update_fields.append("therun_gg")
+
+    if body.customizations is not None and player.user:
+        custom_fields = body.customizations.model_fields_set
+        for field in (
+            "bio",
+            "short_bio",
+            "gradient_1",
+            "gradient_2",
+            "gradient_3",
+        ):
+            if field in custom_fields:
+                setattr(player.user, field, getattr(body.customizations, field))
+                user_update_fields.append(field)
+
+        if player.user.gradient_2 is not None and player.user.gradient_1 is None:
             return Status(
                 400,
                 ErrorResponse(
-                    error="Invalid country code",
-                    details={"countrycode": body.countrycode},
+                    error="gradient_2 requires gradient_1 to be set",
+                    details=None,
                 ),
             )
-        player.countrycode = country
-        update_fields.append("countrycode")
+        if player.user.gradient_3 is not None and player.user.gradient_2 is None:
+            return Status(
+                400,
+                ErrorResponse(
+                    error="gradient_3 requires gradient_2 to be set",
+                    details=None,
+                ),
+            )
 
-    if update_fields:
-        player.save(update_fields=update_fields)
-
-    user_update_fields: list[str] = []
-    for field in ("bio", "short_bio", "gradient_1", "gradient_2", "gradient_3"):
-        if field in body.model_fields_set:
-            setattr(player.user, field, getattr(body, field))
-            user_update_fields.append(field)
-
-    if player.user:
-        if user_update_fields:
-            if player.user.gradient_2 is not None and player.user.gradient_1 is None:
-                return Status(
-                    400,
-                    ErrorResponse(
-                        error="gradient_2 requires gradient_1 to be set",
-                        details=None,
-                    ),
-                )
-            if player.user.gradient_3 is not None and player.user.gradient_2 is None:
-                return Status(
-                    400,
-                    ErrorResponse(
-                        error="gradient_3 requires gradient_2 to be set",
-                        details=None,
-                    ),
-                )
-            player.user.save(update_fields=user_update_fields)
+    if player_update_fields:
+        player.save(update_fields=player_update_fields)
+    if user_update_fields and player.user:
+        player.user.save(update_fields=user_update_fields)
 
     return Status(200, _build_profile_response(player))
-
-
-@router.post(
-    "/me/pfp",
-    response={200: PfpUploadResponse, codes_4xx: ErrorResponse},
-    summary="Upload Profile Picture",
-    description=dedent(
-        """
-    Uploads a new profile picture for the authenticated player.
-    Accepts image files only (max 5 MB). Saves to static/pfp/`playerid`.jpg.
-    """
-    ),
-    auth=player_session_auth,
-)
-def upload_pfp(
-    request: HttpRequest,
-    file: UploadedFile = File(...),  # type: ignore
-) -> Status:
-    player: Players = request.auth  # type: ignore
-
-    if not file.content_type or not file.content_type.startswith("image/"):
-        return Status(
-            400,
-            ErrorResponse(
-                error="Uploaded file must be an image",
-                details={"content_type": file.content_type},
-            ),
-        )
-
-    if not file.size or file.size > 5 * 1024 * 1024:
-        return Status(
-            400,
-            ErrorResponse(
-                error="Image exceeds maximum size of 5 MB",
-                details=None,
-            ),
-        )
-
-    # Takes the full content and re-encodes with Pillow to strip the file of extra metadata and crap
-    raw: bytes = b"".join(file.chunks())
-
-    try:
-        with Image.open(io.BytesIO(raw)) as img:
-            rgb = img.convert("RGB")
-    except Exception as e:
-        return Status(
-            400,
-            ErrorResponse(
-                error="Uploaded file is not a valid image",
-                details={"exception": str(e)},
-            ),
-        )
-
-    safe_id = "".join(c for c in player.id if c.isalnum() or c in "-_")
-    file_path = os.path.join(PFP_DIR, f"{safe_id}.jpg")
-    temp_path = f"{file_path}.tmp"
-
-    try:
-        rgb.save(temp_path, "JPEG", quality=85)
-        os.replace(temp_path, file_path)
-    except OSError:
-        logger.exception("Failed to write pfp for player %s", player.id)
-        return Status(
-            500,
-            ErrorResponse(
-                error="Failed to save profile picture",
-                details=None,
-            ),
-        )
-
-    pfp_url = f"{settings.MEDIA_URL}pfp/{player.id}.jpg"
-    player.pfp = pfp_url
-    player.save(update_fields=["pfp"])
-
-    return Status(200, PfpUploadResponse(pfp=pfp_url))
-
-
-@router.post(
-    "/me/profile-bg",
-    response={200: ProfileBGUploadResponse, codes_4xx: ErrorResponse},
-    summary="Upload Profile Background",
-    description=dedent(
-        """
-    Uploads a profile background image for the authenticated player's user account.
-    Accepts image files only (max 10 MB). Re-encodes to strip metadata.
-    """
-    ),
-    auth=player_session_auth,
-)
-def upload_profile_bg(
-    request: HttpRequest,
-    file: UploadedFile = File(...),  # type: ignore
-) -> Status:
-    player: Players = request.auth  # type: ignore
-
-    if not file.content_type or not file.content_type.startswith("image/"):
-        return Status(
-            400,
-            ErrorResponse(
-                error="Uploaded file must be an image",
-                details={"content_type": file.content_type},
-            ),
-        )
-
-    if not file.size or file.size > 10 * 1024 * 1024:
-        return Status(
-            400,
-            ErrorResponse(
-                error="Image exceeds maximum size of 10 MB",
-                details=None,
-            ),
-        )
-
-    raw: bytes = b"".join(file.chunks())
-
-    try:
-        with Image.open(io.BytesIO(raw)) as img:
-            rgb = img.convert("RGB")
-    except Exception as e:
-        return Status(
-            400,
-            ErrorResponse(
-                error="Uploaded file is not a valid image",
-                details={"exception": str(e)},
-            ),
-        )
-
-    buffer = io.BytesIO()
-    rgb.save(buffer, "JPEG", quality=85)
-    buffer.seek(0)
-
-    safe_id = "".join(c for c in player.id if c.isalnum() or c in "-_")
-    filename = f"{safe_id}.jpg"
-
-    if player.user:
-        if player.user.profile_bg:
-            player.user.profile_bg.delete(save=False)
-
-        player.user.profile_bg.save(
-            filename,
-            ContentFile(buffer.getvalue()),
-            save=True,
-        )
-
-        return Status(
-            200,
-            ProfileBGUploadResponse(profile_bg=player.user.profile_bg.url),
-        )
-
-    return Status(500, "There was an issue looking up that user.")
-
-
-@router.delete(
-    "/me/profile-bg",
-    response={200: ProfileBGUploadResponse, codes_4xx: ErrorResponse},
-    summary="Remove Profile Background",
-    description="Removes the authenticated player's profile background image.",
-    auth=player_session_auth,
-)
-def delete_profile_bg(
-    request: HttpRequest,
-) -> Status:
-    player: Players = request.auth  # type: ignore
-
-    if player.user:
-        if player.user.profile_bg:
-            player.user.profile_bg.delete(save=True)
-
-    return Status(200, ProfileBGUploadResponse(profile_bg=None))
-
-
-@router.post(
-    "/me/src-key",
-    response={200: SRCKeyStatusResponse, codes_4xx: ErrorResponse},
-    summary="Store SRC API Key",
-    description=dedent(
-        """
-    Stores an encrypted Speedrun.com API key for the authenticated player.
-    Only available to players who are moderators of at least one game.
-    The key is verified against the SRC API to confirm it belongs to the
-    authenticated player before storage.
-    """
-    ),
-    auth=player_session_auth,
-)
-@auth_rate_limit
-def set_src_key(
-    request: HttpRequest,
-    body: SRCKeyRequest,
-) -> Status:
-    player: Players = request.auth  # type: ignore
-
-    if not player.moderated_games.exists():
-        return Status(
-            403,
-            ErrorResponse(
-                error="Only moderators can store an SRC API key",
-                details=None,
-            ),
-        )
-
-    # Verify the SRC API key by calling the SRC profile endpoint
-    try:
-        src_response = http_requests.get(
-            "https://www.speedrun.com/api/v1/profile",
-            headers={"X-API-Key": body.src_api_key},
-            timeout=10,
-        )
-    except http_requests.RequestException:
-        return Status(
-            400,
-            ErrorResponse(
-                error="Failed to contact Speedrun.com API",
-                details=None,
-            ),
-        )
-
-    if src_response.status_code != 200:
-        return Status(
-            400,
-            ErrorResponse(
-                error="Invalid or expired SRC API key",
-                details=None,
-            ),
-        )
-
-    try:
-        src_data = src_response.json()
-        src_user_id: str = src_data["data"]["id"]
-    except (KeyError, ValueError):
-        return Status(
-            400,
-            ErrorResponse(
-                error="Unexpected response from Speedrun.com API",
-                details=None,
-            ),
-        )
-
-    # Ensure the API key belongs to the authenticated player
-    if src_user_id != player.id:
-        return Status(
-            403,
-            ErrorResponse(
-                error="This SRC API key does not belong to your account",
-                details=None,
-            ),
-        )
-
-    if player.user:
-        player.user.encrypted_api_key = encrypt_src_key(body.src_api_key)
-        player.user.save(update_fields=["encrypted_api_key"])
-
-    return Status(
-        200,
-        SRCKeyStatusResponse(
-            has_src_key=True,
-            message="SRC API key stored successfully",
-        ),
-    )
-
-
-@router.delete(
-    "/me/src-key",
-    response={204: None, codes_4xx: ErrorResponse},
-    summary="Remove SRC API Key",
-    description=dedent(
-        """
-    Removes the stored SRC API key for the authenticated player.
-    After removal, the player will not be able to approve runs until
-    they re-submit their key.
-    """
-    ),
-    auth=player_session_auth,
-)
-def delete_src_key(
-    request: HttpRequest,
-) -> Status:
-    player: Players = request.auth  # type: ignore
-
-    if not player.user or not player.user.encrypted_api_key:
-        return Status(
-            404,
-            ErrorResponse(
-                error="No SRC API key found",
-                details=None,
-            ),
-        )
-
-    player.user.encrypted_api_key = None
-    player.user.save(update_fields=["encrypted_api_key"])
-
-    return Status(204, None)
 
 
 @router.delete(

@@ -8,7 +8,10 @@ from ninja import NinjaAPI, Redoc
 from ninja.errors import ValidationError
 
 from api.v1.routers.auth.me import router as me_router
+from api.v1.routers.auth.pfp import router as pfp_router
+from api.v1.routers.auth.profile_bg import router as profile_bg_router
 from api.v1.routers.auth.register import router as register_router
+from api.v1.routers.auth.src_key import router as src_key_router
 from api.v1.routers.auth.submissions import router as submissions_router
 from api.v1.routers.auth.sync_logs import router as sync_logs_router
 from api.v1.routers.guides.guides import router as guides_router
@@ -19,6 +22,7 @@ from api.v1.routers.pages.lbs import router as lbs_page_router
 from api.v1.routers.pages.leaderboard import router as leaderboard_page_router
 from api.v1.routers.pages.navbar import router as navbar_router
 from api.v1.routers.resources.categories import router as categories_router
+from api.v1.routers.resources.countries import router as countries_router
 from api.v1.routers.resources.games import router as games_router
 from api.v1.routers.resources.levels import router as levels_router
 from api.v1.routers.resources.platforms import router as platforms_router
@@ -124,8 +128,36 @@ ninja_api: NinjaAPI = NinjaAPI(
                 "description": "Specific endpoints related to how the frontend operates.",
             },
             {
-                "name": "Auth",
-                "description": "Specific endpoints for run verification and account authentication",
+                "name": "Reference",
+                "description": "Static reference data lookups that do not require authentication.",
+            },
+            {
+                "name": "Auth - Account",
+                "description": "Account registration endpoints.",
+            },
+            {
+                "name": "Auth - Profile",
+                "description": "Read, update, and delete the authenticated player's profile.",
+            },
+            {
+                "name": "Auth - Profile Picture",
+                "description": "Upload the authenticated player's profile picture.",
+            },
+            {
+                "name": "Auth - Profile Background",
+                "description": "Upload and remove the authenticated player's profile background.",
+            },
+            {
+                "name": "Auth - SRC API Key",
+                "description": "Store and remove the authenticated player's Speedrun.com API key.",
+            },
+            {
+                "name": "Auth - Submissions",
+                "description": "Run submission and moderation workflows.",
+            },
+            {
+                "name": "Auth - Sync Logs",
+                "description": "Administrative sync log endpoints.",
             },
         ],
     },
@@ -258,7 +290,12 @@ ninja_api.add_router("/website", leaderboard_page_router, tags=["Website"])
 ninja_api.add_router("/website", navbar_router, tags=["Website"])
 ninja_api.add_router("", history_router, tags=["Website"])
 
-ninja_api.add_router("/auth", register_router, tags=["Auth"])
-ninja_api.add_router("/auth", me_router, tags=["Auth"])
-ninja_api.add_router("/auth", submissions_router, tags=["Auth"])
-ninja_api.add_router("/auth", sync_logs_router, tags=["Auth Admin"])
+ninja_api.add_router("/countries", countries_router, tags=["Reference"])
+
+ninja_api.add_router("/auth", register_router, tags=["Auth - Account"])
+ninja_api.add_router("/auth", me_router, tags=["Auth - Profile"])
+ninja_api.add_router("/auth", pfp_router, tags=["Auth - Profile Picture"])
+ninja_api.add_router("/auth", profile_bg_router, tags=["Auth - Profile Background"])
+ninja_api.add_router("/auth", src_key_router, tags=["Auth - SRC API Key"])
+ninja_api.add_router("/auth", submissions_router, tags=["Auth - Submissions"])
+ninja_api.add_router("/auth", sync_logs_router, tags=["Auth - Sync Logs"])
