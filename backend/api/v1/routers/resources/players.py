@@ -12,6 +12,7 @@ from api.permissions import admin_auth, moderator_auth, public_auth
 from api.v1.docs.players import PLAYERS_DELETE, PLAYERS_GET, PLAYERS_POST, PLAYERS_PUT
 from api.v1.schemas.base import ErrorResponse, validate_embeds
 from api.v1.schemas.players import (
+    AwardSchema,
     CountrySchema,
     ModeratedGameEmbedSchema,
     PlayerCreateSchema,
@@ -97,22 +98,22 @@ def apply_player_embeds(
 
     if "country" in embed_fields:
         if player.countrycode:
-            embeds["player"]["country"] = {
-                "id": player.countrycode.id,
-                "name": player.countrycode.name,
-                "flag": (
+            embeds["player"]["country"] = CountrySchema(
+                id=player.countrycode.id,
+                name=player.countrycode.name,
+                flag=(
                     player.countrycode.flag.url if player.countrycode.flag else None
                 ),
-            }
+            )
 
     if "awards" in embed_fields:
         awards = player.awards.all().order_by("name")
         embeds["stats"]["awards"] = [
-            {
-                "name": award.name,
-                "description": award.description,
-                "image": award.image.url if award.image else None,
-            }
+            AwardSchema(
+                name=award.name,
+                description=award.description,
+                image=award.image.url if award.image else None,
+            )
             for award in awards
         ]
 
@@ -316,8 +317,7 @@ def get_player(
             gradient_1=gradients["gradient_1"] if gradients else None,
             gradient_2=gradients["gradient_2"] if gradients else None,
             gradient_3=gradients["gradient_3"] if gradients else None,
-            bio=user.bio if user else None,
-            short_bio=user.short_bio if user else None,
+            tagline=user.short_bio if user else None,
             profile_bg=(user.profile_bg.url if user and user.profile_bg else None),
         )
 
@@ -582,8 +582,7 @@ def update_player(
                     gradient_1=gradients["gradient_1"] if gradients else None,
                     gradient_2=gradients["gradient_2"] if gradients else None,
                     gradient_3=gradients["gradient_3"] if gradients else None,
-                    bio=user.bio if user else None,
-                    short_bio=user.short_bio if user else None,
+                    tagline=user.short_bio if user else None,
                     profile_bg=(
                         user.profile_bg.url if user and user.profile_bg else None
                     ),

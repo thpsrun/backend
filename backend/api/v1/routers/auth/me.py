@@ -65,8 +65,7 @@ def _build_profile_response(
     )
 
     customizations_embed = CustomizationsEmbed(
-        bio=user.bio if user else None,
-        short_bio=user.short_bio if user else None,
+        tagline=user.short_bio if user else None,
         gradient_1=user.gradient_1 if user else None,
         gradient_2=user.gradient_2 if user else None,
         gradient_3=user.gradient_3 if user else None,
@@ -161,8 +160,6 @@ def update_me(
     if body.customizations is not None and player.user:
         custom_fields = body.customizations.model_fields_set
         for field in (
-            "bio",
-            "short_bio",
             "gradient_1",
             "gradient_2",
             "gradient_3",
@@ -170,6 +167,10 @@ def update_me(
             if field in custom_fields:
                 setattr(player.user, field, getattr(body.customizations, field))
                 user_update_fields.append(field)
+
+        if "tagline" in custom_fields:
+            player.user.short_bio = body.customizations.tagline
+            user_update_fields.append("short_bio")
 
         if player.user.gradient_2 is not None and player.user.gradient_1 is None:
             return Status(

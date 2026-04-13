@@ -23,7 +23,6 @@ router = Router()
     summary="Store SRC API Key",
     description=(
         "Stores an encrypted Speedrun.com API key for the authenticated player. "
-        "Only available to players who are moderators of at least one game. "
         "The key is verified against the SRC API to confirm it belongs to the "
         "authenticated player before storage."
     ),
@@ -35,15 +34,6 @@ def set_src_key(
     body: SRCKeyRequest,
 ) -> Status:
     player: Players = request.auth  # type: ignore
-
-    if not player.moderated_games.exists():
-        return Status(
-            403,
-            ErrorResponse(
-                error="Only moderators can store an SRC API key",
-                details=None,
-            ),
-        )
 
     try:
         src_response = http_requests.get(

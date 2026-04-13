@@ -147,8 +147,7 @@ class PlayerCustomizationsEmbed(BaseEmbedSchema):
     gradient_1: str | None = None
     gradient_2: str | None = None
     gradient_3: str | None = None
-    bio: str | None = None
-    short_bio: str | None = None
+    tagline: str | None = None
     profile_bg: str | None = None
 
 

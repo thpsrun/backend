@@ -31,8 +31,7 @@ PLAYERS_GET = {
                             "gradient_1": "#ff0044",
                             "gradient_2": "#00aaff",
                             "gradient_3": None,
-                            "bio": "I run Tony Hawk games fast.",
-                            "short_bio": "THPS speedrunner",
+                            "tagline": "THPS speedrunner",
                             "profile_bg": None,
                         },
                         "stats": {
@@ -144,8 +143,7 @@ PLAYERS_POST = {
                             "gradient_1": None,
                             "gradient_2": None,
                             "gradient_3": None,
-                            "bio": None,
-                            "short_bio": None,
+                            "tagline": None,
                             "profile_bg": None,
                         },
                         "stats": {
@@ -309,8 +307,7 @@ PLAYERS_PUT = {
                             "gradient_1": None,
                             "gradient_2": None,
                             "gradient_3": None,
-                            "bio": None,
-                            "short_bio": None,
+                            "tagline": None,
                             "profile_bg": None,
                         },
                         "stats": {
@@ -501,8 +498,7 @@ PLAYERS_ALL = {
                                 "gradient_1": None,
                                 "gradient_2": None,
                                 "gradient_3": None,
-                                "bio": None,
-                                "short_bio": None,
+                                "tagline": None,
                                 "profile_bg": None,
                             },
                             "stats": {

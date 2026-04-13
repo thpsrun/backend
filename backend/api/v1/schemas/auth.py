@@ -57,8 +57,7 @@ class SocialsEmbed(Schema):
 
 
 class CustomizationsEmbed(Schema):
-    bio: str | None = None
-    short_bio: str | None = None
+    tagline: str | None = None
     gradient_1: str | None = None
     gradient_2: str | None = None
     gradient_3: str | None = None
@@ -163,7 +162,6 @@ class SocialsUpdateEmbed(Schema):
         "youtube",
         "twitter",
         "bluesky",
-        "therun_gg",
         mode="before",
     )
     @classmethod
@@ -182,8 +180,7 @@ class SocialsUpdateEmbed(Schema):
 
 
 class CustomizationsUpdateEmbed(Schema):
-    bio: str | None = Field(None, max_length=1000)
-    short_bio: str | None = Field(None, max_length=100)
+    tagline: str | None = Field(None, max_length=100)
     gradient_1: str | None = Field(None, max_length=7)
     gradient_2: str | None = Field(None, max_length=7)
     gradient_3: str | None = Field(None, max_length=7)
