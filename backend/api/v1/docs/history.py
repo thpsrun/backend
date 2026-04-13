@@ -16,6 +16,11 @@ HISTORY_FG_GET = {
                                     {
                                         "name": "ThePackle",
                                         "nickname": None,
+                                        "gradients": {
+                                            "gradient_1": "#ff0044",
+                                            "gradient_2": "#00aaff",
+                                            "gradient_3": None,
+                                        },
                                     }
                                 ],
                                 "history_time": "0:18:32.000",
@@ -32,6 +37,7 @@ HISTORY_FG_GET = {
                                     {
                                         "name": "SpeedRunner42",
                                         "nickname": "SR42",
+                                        "gradients": None,
                                     }
                                 ],
                                 "history_time": "0:18:30.500",
@@ -108,6 +114,7 @@ HISTORY_IL_GET = {
                                     {
                                         "name": "ILKing",
                                         "nickname": None,
+                                        "gradients": None,
                                     }
                                 ],
                                 "history_time": "0:01:42.310",

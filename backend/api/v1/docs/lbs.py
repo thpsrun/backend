@@ -22,6 +22,11 @@ LBS_FG_GET = {
                                             "id": "us",
                                             "name": "United States",
                                         },
+                                        "gradients": {
+                                            "gradient_1": "#ff0044",
+                                            "gradient_2": "#00aaff",
+                                            "gradient_3": None,
+                                        },
                                     }
                                 ],
                             }
@@ -42,6 +47,11 @@ LBS_FG_GET = {
                                 "place": 3,
                                 "player_name": "ThePackle",
                                 "player_country": "United States",
+                                "gradients": {
+                                    "gradient_1": "#ff0044",
+                                    "gradient_2": "#00aaff",
+                                    "gradient_3": None,
+                                },
                                 "v_date": "2025-08-16T10:30:00",
                             }
                         ],
@@ -155,6 +165,11 @@ LBS_IL_SUMMARY_GET = {
                                 "place": 1,
                                 "player_name": "ThePackle",
                                 "player_country": "United States",
+                                "gradients": {
+                                    "gradient_1": "#ff0044",
+                                    "gradient_2": "#00aaff",
+                                    "gradient_3": None,
+                                },
                                 "v_date": "2025-01-16T10:30:00",
                             }
                         ],
@@ -220,6 +235,11 @@ LBS_IL_DETAIL_GET = {
                                             "id": "us",
                                             "name": "United States",
                                         },
+                                        "gradients": {
+                                            "gradient_1": "#ff0044",
+                                            "gradient_2": "#00aaff",
+                                            "gradient_3": None,
+                                        },
                                     }
                                 ],
                             }
@@ -240,6 +260,11 @@ LBS_IL_DETAIL_GET = {
                                 "place": 1,
                                 "player_name": "ThePackle",
                                 "player_country": "United States",
+                                "gradients": {
+                                    "gradient_1": "#ff0044",
+                                    "gradient_2": "#00aaff",
+                                    "gradient_3": None,
+                                },
                                 "v_date": "2025-01-16T10:30:00",
                             }
                         ],

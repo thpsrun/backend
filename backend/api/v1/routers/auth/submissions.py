@@ -1,21 +1,6 @@
 import logging
 
 import requests as http_requests
-from api.permissions import player_session_auth
-from api.rate_limiting import auth_rate_limit
-from api.v1.schemas.base import ErrorResponse
-from api.v1.schemas.submissions import (
-    ChangePlayersRequest,
-    ChangePlayersResponse,
-    ModerationGameGroup,
-    RunSubmitResponse,
-    RunSubmitSchema,
-    SubmissionHubResponse,
-    SubmissionRunSchema,
-    SyncStatusSchema,
-    VerifyRejectRequest,
-    VerifyRejectResponse,
-)
 from django.db import transaction
 from django.http import HttpRequest
 from ninja import Router, Status
@@ -32,6 +17,23 @@ from srl.models.variables import Variables
 from srl.tasks import sync_src_action
 from srl.time_parser import parse_time
 from srl.utils import convert_time
+
+from api.permissions import player_session_auth
+from api.rate_limiting import auth_rate_limit
+from api.v1.schemas.base import ErrorResponse
+from api.v1.schemas.players import extract_gradients
+from api.v1.schemas.submissions import (
+    ChangePlayersRequest,
+    ChangePlayersResponse,
+    ModerationGameGroup,
+    RunSubmitResponse,
+    RunSubmitSchema,
+    SubmissionHubResponse,
+    SubmissionRunSchema,
+    SyncStatusSchema,
+    VerifyRejectRequest,
+    VerifyRejectResponse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -56,9 +58,9 @@ def _get_sync_statuses(
 
     result: dict[str, list[SyncStatusSchema]] = {}
     for task in sync_tasks:
-        if task.run_id not in result:
-            result[task.run_id] = []
-        result[task.run_id].append(
+        if task.run.id not in result:
+            result[task.run.id] = []
+        result[task.run.id].append(
             SyncStatusSchema(
                 action=task.action,
                 status=task.status,
@@ -78,10 +80,9 @@ def _build_run_players(run: Runs) -> list[dict]:
             "id": rp.player.id,
             "name": rp.player.name,
             "countrycode": (
-                rp.player.countrycode.id
-                if rp.player.countrycode
-                else None
+                rp.player.countrycode.id if rp.player.countrycode else None
             ),
+            "gradients": extract_gradients(rp.player),
         }
         for rp in rps
     ]
@@ -133,9 +134,7 @@ def _build_src_run_payload(
     if "realtime" in time_secs:
         run_data["times"]["realtime"] = time_secs["realtime"]
     if "realtime_noloads" in time_secs:
-        run_data["times"]["realtime_noloads"] = (
-            time_secs["realtime_noloads"]
-        )
+        run_data["times"]["realtime_noloads"] = time_secs["realtime_noloads"]
     if "ingame" in time_secs:
         run_data["times"]["ingame"] = time_secs["ingame"]
 
@@ -174,6 +173,7 @@ def get_submissions(
         .select_related("game", "category", "level")
         .prefetch_related(
             "run_players__player__countrycode",
+            "run_players__player__user",
             "runvariablevalues_set__value",
         )
         .order_by("-date")
@@ -194,6 +194,7 @@ def get_submissions(
             .select_related("game", "category", "level")
             .prefetch_related(
                 "run_players__player__countrycode",
+                "run_players__player__user",
                 "runvariablevalues_set__value",
             )
             .order_by("game__name", "-date")
@@ -260,26 +261,19 @@ def update_run_status(
         return Status(
             403,
             ErrorResponse(
-                error=(
-                    "No SRC API key stored. "
-                    "Add one at /auth/me/src-key."
-                ),
+                error=("No SRC API key stored. " "Add one at /auth/me/src-key."),
                 details=None,
             ),
         )
 
-    run = (
-        Runs.objects.filter(id=run_id)
-        .select_related("game")
-        .first()
-    )
+    run = Runs.objects.filter(id=run_id).select_related("game").first()
     if not run:
         return Status(
             404,
             ErrorResponse(error="Run not found.", details=None),
         )
 
-    if not player.moderated_games.filter(id=run.game_id).exists():
+    if not player.moderated_games.filter(id=run.game.id).exists():
         return Status(
             403,
             ErrorResponse(
@@ -306,7 +300,6 @@ def update_run_status(
             ),
         )
 
-    # Update local DB immediately (optimistic)
     run.vid_status = body.status
     run.approver = player
     run.save(update_fields=["vid_status", "approver"])
@@ -314,7 +307,6 @@ def update_run_status(
     if body.status == "verified":
         recalculate_run(run)
 
-    # Build SRC API payload and queue sync task
     src_payload: dict = {"status": {"status": body.status}}
     if body.status == "rejected" and body.reason:
         src_payload["status"]["reason"] = body.reason
@@ -332,9 +324,7 @@ def update_run_status(
     )
     sync_src_action.delay(sync_task.id)
 
-    action_word = (
-        "verified" if body.status == "verified" else "rejected"
-    )
+    action_word = "verified" if body.status == "verified" else "rejected"
     return Status(
         200,
         VerifyRejectResponse(
@@ -372,26 +362,19 @@ def update_run_players(
         return Status(
             403,
             ErrorResponse(
-                error=(
-                    "No SRC API key stored. "
-                    "Add one at /auth/me/src-key."
-                ),
+                error=("No SRC API key stored. " "Add one at /auth/me/src-key."),
                 details=None,
             ),
         )
 
-    run = (
-        Runs.objects.filter(id=run_id)
-        .select_related("game")
-        .first()
-    )
+    run = Runs.objects.filter(id=run_id).select_related("game").first()
     if not run:
         return Status(
             404,
             ErrorResponse(error="Run not found.", details=None),
         )
 
-    if not player.moderated_games.filter(id=run.game_id).exists():
+    if not player.moderated_games.filter(id=run.game.id).exists():
         return Status(
             403,
             ErrorResponse(
@@ -400,7 +383,6 @@ def update_run_players(
             ),
         )
 
-    # Resolve player names to DB records before making changes
     resolved_players: list[tuple[str, Players | None, str]] = []
     for p in body.players:
         if p.rel == "user":
@@ -409,10 +391,7 @@ def update_run_players(
                 return Status(
                     400,
                     ErrorResponse(
-                        error=(
-                            f"Player '{p.name}' not found "
-                            f"in the database."
-                        ),
+                        error=(f"Player '{p.name}' not found " f"in the database."),
                         details=None,
                     ),
                 )
@@ -434,7 +413,6 @@ def update_run_players(
         else:
             resolved_players.append(("guest", None, p.name))
 
-    # Update local RunPlayers immediately
     with transaction.atomic():
         RunPlayers.objects.filter(run=run).delete()
         for idx, (rel, player_obj, _) in enumerate(
@@ -448,7 +426,6 @@ def update_run_players(
                     order=idx,
                 )
 
-    # Build SRC API payload and queue sync task
     src_players = []
     for rel, player_obj, name in resolved_players:
         if rel == "user" and player_obj:
@@ -499,15 +476,11 @@ def submit_run(
     """Submit a run to SRC and create a local record on success."""
     player: Players = request.auth  # type: ignore
 
-    # --- 1. Verify SRC API key exists ---
     if not player.user or not player.user.encrypted_api_key:
         return Status(
             400,
             ErrorResponse(
-                error=(
-                    "No SRC API key configured. "
-                    "Add one in profile settings."
-                ),
+                error=("No SRC API key configured. " "Add one in profile settings."),
                 details=None,
             ),
         )
@@ -529,7 +502,6 @@ def submit_run(
             ),
         )
 
-    # --- 2. Validate game/category/level locally ---
     try:
         game = Games.objects.get(id=body.game_id)
     except Games.DoesNotExist:
@@ -543,16 +515,14 @@ def submit_run(
 
     try:
         category = Categories.objects.get(
-            id=body.category_id, game=game,
+            id=body.category_id,
+            game=game,
         )
     except Categories.DoesNotExist:
         return Status(
             422,
             ErrorResponse(
-                error=(
-                    "Category not found for game: "
-                    f"{body.category_id}"
-                ),
+                error=("Category not found for game: " f"{body.category_id}"),
                 details=None,
             ),
         )
@@ -565,15 +535,11 @@ def submit_run(
             return Status(
                 422,
                 ErrorResponse(
-                    error=(
-                        "Level not found for game: "
-                        f"{body.level_id}"
-                    ),
+                    error=("Level not found for game: " f"{body.level_id}"),
                     details=None,
                 ),
             )
 
-    # --- 3. Validate players ---
     user_player_map: dict[str, Players] = {}
     for p in body.players:
         if p.rel == "user":
@@ -590,7 +556,6 @@ def submit_run(
                     ),
                 )
 
-    # --- 4. Validate variable values ---
     if body.variable_values:
         for var_id, val_id in body.variable_values.items():
             try:
@@ -605,7 +570,8 @@ def submit_run(
                 )
             try:
                 VariableValues.objects.get(
-                    value=val_id, var_id=var_id,
+                    value=val_id,
+                    var_id=var_id,
                 )
             except VariableValues.DoesNotExist:
                 return Status(
@@ -619,7 +585,6 @@ def submit_run(
                     ),
                 )
 
-    # --- 5. Parse times ---
     time_secs: dict[str, float] = {}
     time_display: dict[str, str] = {}
     time_seconds: dict[str, float] = {}
@@ -637,8 +602,7 @@ def submit_run(
                     422,
                     ErrorResponse(
                         error=(
-                            f"Invalid time format for "
-                            f"{str_field}: {raw_value!r}"
+                            f"Invalid time format for " f"{str_field}: {raw_value!r}"
                         ),
                         details=None,
                     ),
@@ -647,7 +611,6 @@ def submit_run(
             time_display[str_field] = convert_time(parsed)
             time_seconds[secs_field] = parsed
 
-    # --- 6. Build SRC payload and call SRC ---
     src_payload = _build_src_run_payload(body, time_secs)
 
     try:
@@ -669,10 +632,7 @@ def submit_run(
         return Status(
             503,
             ErrorResponse(
-                error=(
-                    "SRC is currently unavailable (timeout). "
-                    "Try again later."
-                ),
+                error=("SRC is currently unavailable (timeout). " "Try again later."),
                 details=None,
             ),
         )
@@ -700,10 +660,7 @@ def submit_run(
         return Status(
             429,
             ErrorResponse(
-                error=(
-                    "SRC is rate limiting requests. "
-                    "Try again in a few minutes."
-                ),
+                error=("SRC is rate limiting requests. " "Try again in a few minutes."),
                 details=None,
             ),
         )
@@ -711,10 +668,7 @@ def submit_run(
         return Status(
             503,
             ErrorResponse(
-                error=(
-                    "SRC is currently unavailable. "
-                    "Try again later."
-                ),
+                error=("SRC is currently unavailable. " "Try again later."),
                 details=None,
             ),
         )
@@ -722,15 +676,11 @@ def submit_run(
         return Status(
             400,
             ErrorResponse(
-                error=(
-                    "Unexpected SRC response "
-                    f"({src_response.status_code})."
-                ),
+                error=("Unexpected SRC response " f"({src_response.status_code})."),
                 details=None,
             ),
         )
 
-    # --- 7. Extract SRC run ID ---
     try:
         src_data = src_response.json()
         src_run_id = src_data["data"]["id"]
@@ -751,11 +701,8 @@ def submit_run(
             ),
         )
 
-    # --- 8. Create local record ---
     runtype = "il" if level else "main"
-    src_run_url = (
-        f"https://www.speedrun.com/run/{src_run_id}"
-    )
+    src_run_url = f"https://www.speedrun.com/run/{src_run_id}"
 
     with transaction.atomic():
         run = Runs.objects.create(
@@ -787,9 +734,7 @@ def submit_run(
                 )
 
         if body.variable_values:
-            for var_id, val_id in (
-                body.variable_values.items()
-            ):
+            for var_id, val_id in body.variable_values.items():
                 RunVariableValues.objects.create(
                     run=run,
                     variable_id=var_id,
@@ -803,8 +748,7 @@ def submit_run(
             src_url=src_run_url,
             vid_status="new",
             message=(
-                "Run submitted to SRC and saved locally. "
-                "Pending verification."
+                "Run submitted to SRC and saved locally. " "Pending verification."
             ),
         ),
     )

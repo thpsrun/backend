@@ -3,6 +3,7 @@ from datetime import datetime
 from pydantic import Field
 
 from api.v1.schemas.base import BaseEmbedSchema
+from api.v1.schemas.players import GradientsEmbed
 
 
 class PointLeaderboardEntrySchema(BaseEmbedSchema):
@@ -17,6 +18,7 @@ class PointLeaderboardEntrySchema(BaseEmbedSchema):
         total_points (int): Combined full-game + individual level points.
         fg_points (int): Full-game category points only.
         il_points (int): Individual level points only.
+        gradients (GradientsEmbed | None): Player gradient colors, if claimed.
     """
 
     rank: int
@@ -27,6 +29,7 @@ class PointLeaderboardEntrySchema(BaseEmbedSchema):
     total_points: int = Field(..., ge=0)
     fg_points: int = Field(..., ge=0)
     il_points: int = Field(..., ge=0)
+    gradients: GradientsEmbed | None = None
 
 
 class GameLeaderboardEntrySchema(BaseEmbedSchema):
@@ -41,6 +44,7 @@ class GameLeaderboardEntrySchema(BaseEmbedSchema):
         total_points (int): Combined full-game + individual level points for this game.
         fg_points (int): Full-game category points for this game only.
         il_points (int): Individual level points for this game only.
+        gradients (GradientsEmbed | None): Player gradient colors, if claimed.
     """
 
     rank: int
@@ -51,6 +55,7 @@ class GameLeaderboardEntrySchema(BaseEmbedSchema):
     total_points: int = Field(..., ge=0)
     fg_points: int = Field(..., ge=0)
     il_points: int = Field(..., ge=0)
+    gradients: GradientsEmbed | None = None
 
 
 class OldestRunEntrySchema(BaseEmbedSchema):

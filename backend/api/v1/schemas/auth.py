@@ -158,7 +158,14 @@ class SocialsUpdateEmbed(Schema):
     bluesky: str | None = Field(None, max_length=200)
     therun_gg: str | None = Field(None, max_length=30)
 
-    @field_validator("twitch", "youtube", "twitter", "bluesky", mode="before")
+    @field_validator(
+        "twitch",
+        "youtube",
+        "twitter",
+        "bluesky",
+        "therun_gg",
+        mode="before",
+    )
     @classmethod
     def validate_url(
         cls,

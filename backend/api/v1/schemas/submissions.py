@@ -196,14 +196,10 @@ class RunSubmitSchema(Schema):
             "youtu.be",
             "m.youtube.com",
         }
-        if (
-            parsed.scheme not in ("http", "https")
-            or parsed.netloc not in allowed_hosts
-        ):
-            raise ValueError(
-                "Video must be a YouTube URL"
-            )
+        if parsed.scheme not in ("http", "https") or parsed.netloc not in allowed_hosts:
+            raise ValueError("Video must be a YouTube URL")
         return v
+
     comment: str | None = Field(
         default=None,
         max_length=2000,
@@ -243,9 +239,6 @@ class RunSubmitResponse(Schema):
     src_url: str
     vid_status: str
     message: str
-
-
-# --- Superuser sync log schemas ---
 
 
 class SyncLogRunSchema(Schema):

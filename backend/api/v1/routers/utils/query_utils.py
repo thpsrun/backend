@@ -12,6 +12,7 @@ from api.v1.routers.utils import (
     main_stats_cache_key,
     main_wrs_cache_key,
 )
+from api.v1.schemas.players import extract_gradients
 from api.v1.schemas.runs import PlayerRunEmbedSchema, compute_run_subcategory
 
 
@@ -42,9 +43,14 @@ def _export_players(
             entry["country"] = (
                 rp.player.countrycode.name if rp.player.countrycode else None
             )
+        entry["gradients"] = extract_gradients(rp.player)
         players.append(entry)
 
-    return players if players else [{"name": "Anonymous", "country": None}]
+    return (
+        players
+        if players
+        else [{"name": "Anonymous", "country": None, "gradients": None}]
+    )
 
 
 def _apply_value_slug_filters(
@@ -85,6 +91,20 @@ def _build_leaderboard_rows(
     for i, row in enumerate(rows):
         nickname = row["player__nickname"]
         name = row["player__name"]
+
+        g1 = row.get("player__user__gradient_1")
+        g2 = row.get("player__user__gradient_2")
+        g3 = row.get("player__user__gradient_3")
+        gradients = (
+            {
+                "gradient_1": g1,
+                "gradient_2": g2,
+                "gradient_3": g3,
+            }
+            if (g1 or g2 or g3)
+            else None
+        )
+
         result.append(
             {
                 "rank": i + 1,
@@ -95,6 +115,7 @@ def _build_leaderboard_rows(
                 "total_points": row["total_points"] or 0,
                 "fg_points": row["fg_points"] or 0,
                 "il_points": row["il_points"] or 0,
+                "gradients": gradients,
             }
         )
     return result
@@ -116,6 +137,7 @@ def main_player_data_export(
                 if rp.player.countrycode
                 else None
             ),
+            "gradients": extract_gradients(rp.player),
         }
         for rp in run_players
     ]
@@ -128,6 +150,7 @@ def main_player_data_export(
                 "name": "Anonymous",
                 "nickname": None,
                 "country": None,
+                "gradients": None,
             }
         ]
     )
@@ -151,6 +174,7 @@ def query_latest_runs(
         Runs.objects.select_related("game", "category", "level")
         .prefetch_related(
             "run_players__player__countrycode",
+            "run_players__player__user",
             "runvariablevalues_set__value",
         )
         .filter(**filters)
@@ -196,6 +220,7 @@ def query_records() -> list[dict[str, Any]]:
         Runs.objects.select_related("game", "category")
         .prefetch_related(
             "run_players__player__countrycode",
+            "run_players__player__user",
             "runvariablevalues_set__value",
         )
         .filter(
@@ -288,6 +313,7 @@ def query_player_runs(
         Runs.objects.select_related("game", "category", "level")
         .prefetch_related(
             "run_players__player__countrycode",
+            "run_players__player__user",
             "runvariablevalues_set__value",
         )
         .filter(
@@ -325,6 +351,9 @@ def query_overall_leaderboard() -> list[dict[str, Any]]:
             "player__nickname",
             "player__url",
             "player__pfp",
+            "player__user__gradient_1",
+            "player__user__gradient_2",
+            "player__user__gradient_3",
         )
         .annotate(
             total_points=Sum("run__points"),
@@ -358,6 +387,9 @@ def query_game_leaderboard(
             "player__nickname",
             "player__url",
             "player__pfp",
+            "player__user__gradient_1",
+            "player__user__gradient_2",
+            "player__user__gradient_3",
         )
         .annotate(
             total_points=Sum("run__points"),
@@ -479,7 +511,10 @@ def query_lbs_runs(
     qs: QuerySet[Runs] = (
         Runs.objects.filter(**filters)
         .select_related("level")
-        .prefetch_related("run_players__player__countrycode")
+        .prefetch_related(
+            "run_players__player__countrycode",
+            "run_players__player__user",
+        )
         .order_by("place", "date")
     )
 
@@ -549,6 +584,7 @@ def query_lbs_recent(
         .select_related("category", "level")
         .prefetch_related(
             "run_players__player__countrycode",
+            "run_players__player__user",
             "runvariablevalues_set__value",
         )
         .order_by("-v_date")[:5]
@@ -571,9 +607,11 @@ def query_lbs_recent(
                 if first_rp.player.countrycode
                 else None
             )
+            gradients = extract_gradients(first_rp.player)
         else:
             player_name = "Anonymous"
             player_country = None
+            gradients = None
 
         value_slugs = [rvv.value.slug for rvv in run.runvariablevalues_set.all()]
 
@@ -588,6 +626,7 @@ def query_lbs_recent(
                 "place": run.place,
                 "player_name": player_name,
                 "player_country": player_country,
+                "gradients": gradients,
                 "v_date": run.v_date.isoformat() if run.v_date else None,
                 "video": run.video or None,
                 "value_slugs": value_slugs if value_slugs else None,
@@ -615,13 +654,15 @@ def query_lbs_il_summary(
             vid_status="verified",
         )
         .select_related("category", "level")
-        .prefetch_related("run_players__player__countrycode")
+        .prefetch_related(
+            "run_players__player__countrycode",
+            "run_players__player__user",
+        )
         .order_by("place", "date")
     )
 
     qs = _apply_value_slug_filters(qs, value_slugs)
 
-    # Group runs by (level_id, category_id)
     grouped: dict[tuple[str, str], list[dict[str, Any]]] = {}
     level_info: dict[str, dict[str, Any]] = {}
     category_info: dict[str, dict[str, Any]] = {}
@@ -656,7 +697,6 @@ def query_lbs_il_summary(
 
         grouped[key].append(_build_lbs_run_dict(run))
 
-    # Build nested response grouped by level
     levels_dict: dict[str, dict[str, Any]] = {}
     for (level_id, cat_id), runs_list in grouped.items():
         if level_id not in levels_dict:
@@ -678,7 +718,6 @@ def query_lbs_il_summary(
             }
         )
 
-    # Sort levels by order (0 sorts alphabetically as fallback), then categories within
     for level_data in levels_dict.values():
         level_data["categories"].sort(
             key=lambda c: (c["order"] == 0, c["order"], c["name"]),
@@ -737,6 +776,7 @@ def query_wr_history(
         )
         .prefetch_related(
             "run__run_players__player",
+            "run__run_players__player__user",
             "run__runvariablevalues_set__value",
         )
     )
@@ -782,10 +822,11 @@ def query_wr_history(
                 {
                     "name": rp.player.name,
                     "nickname": rp.player.nickname or None,
+                    "gradients": extract_gradients(rp.player),
                 }
             )
         if not players:
-            players = [{"name": "Anonymous", "nickname": None}]
+            players = [{"name": "Anonymous", "nickname": None, "gradients": None}]
 
         results.append(
             {

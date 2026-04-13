@@ -6,6 +6,7 @@ from celery import shared_task
 from django.core.management import call_command
 from django.db import transaction
 from django.db.models import Min
+
 from srl.leaderboard.recalculation import (
     build_game_metadata,
     clear_leaderboard_history,
@@ -91,8 +92,6 @@ def build_streaks_task() -> None:
     call_command("build_streaks")
 
 
-# --- SRC Sync Tasks ---
-
 logger = logging.getLogger(__name__)
 
 SRC_API_BASE = "https://www.speedrun.com/api/v1"
@@ -136,8 +135,7 @@ def sync_src_action(
             update_fields=["status", "last_error", "updated_at"],
         )
         sentry_sdk.capture_message(
-            f"SRC sync failed: no valid API key for "
-            f"sync task {sync_task_id}",
+            f"SRC sync failed: no valid API key for " f"sync task {sync_task_id}",
             level="error",
         )
         return
@@ -151,8 +149,7 @@ def sync_src_action(
             update_fields=["status", "last_error", "updated_at"],
         )
         sentry_sdk.capture_message(
-            f"SRC sync failed: no valid API key for "
-            f"sync task {sync_task_id}",
+            f"SRC sync failed: no valid API key for " f"sync task {sync_task_id}",
             level="error",
         )
         return
@@ -192,8 +189,7 @@ def sync_src_action(
     if response.status_code in (400, 401, 403, 404):
         sync_task.status = SRCSyncTask.Status.FAILED
         sync_task.last_error = (
-            f"SRC returned {response.status_code}: "
-            f"{response.text[:500]}"
+            f"SRC returned {response.status_code}: " f"{response.text[:500]}"
         )
         sync_task.save(
             update_fields=[
@@ -214,16 +210,14 @@ def sync_src_action(
     if response.status_code in (420, 503):
         _handle_retryable_failure(
             sync_task,
-            f"SRC returned {response.status_code}: "
-            f"{response.text[:200]}",
+            f"SRC returned {response.status_code}: " f"{response.text[:200]}",
         )
         return
 
     if response.status_code not in (200, 204):
         _handle_retryable_failure(
             sync_task,
-            f"Unexpected status {response.status_code}: "
-            f"{response.text[:200]}",
+            f"Unexpected status {response.status_code}: " f"{response.text[:200]}",
         )
         return
 
@@ -250,7 +244,7 @@ def _handle_retryable_failure(
     sync_task: "SRCSyncTask",
     error_msg: str,
 ) -> None:
-    """Handle a retryable SRC API failure.
+    """Handles attempts to retry the SRC API.
 
     Re-queues the task with exponential backoff if under max_attempts.
     After max_attempts, marks as failed and reports to Sentry.

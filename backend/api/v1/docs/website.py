@@ -21,6 +21,11 @@ MAIN_PAGE_GET = {
                                             "id": "us",
                                             "name": "United States",
                                         },
+                                        "gradients": {
+                                            "gradient_1": "#ff0044",
+                                            "gradient_2": "#00aaff",
+                                            "gradient_3": None,
+                                        },
                                     }
                                 ],
                                 "time": "12:34.567",
@@ -45,6 +50,7 @@ MAIN_PAGE_GET = {
                                             "id": "ca",
                                             "name": "Canada",
                                         },
+                                        "gradients": None,
                                     }
                                 ],
                                 "time": "25:43.123",
@@ -71,6 +77,11 @@ MAIN_PAGE_GET = {
                                         "country": {
                                             "id": "us",
                                             "name": "United States",
+                                        },
+                                        "gradients": {
+                                            "gradient_1": "#ff0044",
+                                            "gradient_2": "#00aaff",
+                                            "gradient_3": None,
                                         },
                                     }
                                 ],
