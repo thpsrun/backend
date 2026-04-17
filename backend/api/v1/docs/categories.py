@@ -61,13 +61,6 @@ CATEGORIES_GET = {
             "schema": {"type": "string", "maxLength": 15},
             "description": "Category ID",
         },
-        {
-            "name": "embed",
-            "in": "query",
-            "example": "game,variables,values",
-            "schema": {"type": "string"},
-            "description": "Comma-separated embeds: game, variables, values",
-        },
     ],
 }
 
@@ -299,41 +292,4 @@ CATEGORIES_ALL = {
         429: {"description": "Rate limit exceeded, calm your horses."},
         500: {"description": "Server Error. Error is logged."},
     },
-    "parameters": [
-        {
-            "name": "game_id",
-            "in": "query",
-            "example": "thps4",
-            "schema": {"type": "string"},
-            "description": "Filter by game ID",
-        },
-        {
-            "name": "type",
-            "in": "query",
-            "example": "per-game",
-            "schema": {"type": "string", "pattern": "^(per-game|per-level)$"},
-            "description": "Filter by category type",
-        },
-        {
-            "name": "embed",
-            "in": "query",
-            "example": "game,variables",
-            "schema": {"type": "string"},
-            "description": "Comma-separated embeds",
-        },
-        {
-            "name": "limit",
-            "in": "query",
-            "example": 50,
-            "schema": {"type": "integer", "minimum": 1, "maximum": 100},
-            "description": "Results per page (default 50, max 100)",
-        },
-        {
-            "name": "offset",
-            "in": "query",
-            "example": 0,
-            "schema": {"type": "integer", "minimum": 0},
-            "description": "Results to skip (default 0)",
-        },
-    ],
 }

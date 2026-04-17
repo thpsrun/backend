@@ -1,11 +1,9 @@
 from datetime import datetime, timedelta
-from textwrap import dedent
 from typing import Annotated, Any
 
 from django.http import HttpRequest
 from ninja import Query, Router, Status
 from ninja.responses import codes_4xx
-from pydantic import Field
 from srl.models import Games, NowStreaming, Players
 
 from api.permissions import moderator_auth, public_auth
@@ -50,32 +48,30 @@ def get_mock_streaming_data() -> list[dict[str, Any]]:
     "/live",
     response={200: list[StreamSchema], codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Get Live Streamers",
-    description=dedent(
-        """
-    Get list of currently live streamers playing speedrun games.
+    description="""\
+Get list of currently live streamers playing speedrun games.
 
-    Supported Parameters:
-    - `game_id`: Filter by specific game being streamed
-    - `platform`: Filter by streaming platform (twitch, youtube, etc.)
-    - `min_viewers`: Minimum viewer count
-    - `limit`: Maximum results to return (default 20, max 50)
+Supported Parameters:
+- `game_id`: Filter by specific game being streamed
+- `platform`: Filter by streaming platform (twitch, youtube, etc.)
+- `min_viewers`: Minimum viewer count
+- `limit`: Maximum results to return (default 20, max 50)
 
-    Examples:
-    - `/streams/live` - All live streamers
-    - `/streams/live?game_id=thps4` - Streamers playing THPS4
-    - `/streams/live?min_viewers=100` - Streamers with 100+ viewers
+Examples:
+- `/streams/live` - All live streamers
+- `/streams/live?game_id=thps4` - Streamers playing THPS4
+- `/streams/live?min_viewers=100` - Streamers with 100+ viewers
 
-    Note: This endpoint provides mock data for demonstration.
-    In production, integrate with actual streaming platform APIs.
-    """
-    ),
+Note: This endpoint provides mock data for demonstration.
+In production, integrate with actual streaming platform APIs.
+""",
     auth=public_auth,
     openapi_extra=STREAMS_LIVE,
 )
 def get_live_streams(
     request: HttpRequest,
-    game_id: Annotated[str | None, Query, Field(description="Filter by game")] = None,
-    limit: Annotated[int, Query, Field(ge=1, le=50, description="Max results")] = 20,
+    game_id: Annotated[str | None, Query(description="Filter by game")] = None,
+    limit: Annotated[int, Query(ge=1, le=50, description="Max results")] = 20,
 ) -> Status:
     try:
         # TODO: DELETE BEFORE PROD.
@@ -109,19 +105,18 @@ def get_live_streams(
     "/",
     response={201: StreamSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Create Stream",
-    description=dedent(
-        """Creates a new stream record for a player.
+    description="""\
+Creates a new stream record for a player.
 
-    REQUIRES MODERATOR ACCESS OR HIGHER.
+REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    Request Body:
-    - `player_id` (str): Player ID who is streaming.
-    - `game_id` (str | None): Game ID being played.
-    - `title` (str): Stream title.
-    - `offline_ct` (int): Offline counter (minutes since last seen).
-    - `stream_time` (datetime | None): Stream start time (ISO format).
-    """
-    ),
+Request Body:
+- `player_id` (str): Player ID who is streaming.
+- `game_id` (str | None): Game ID being played.
+- `title` (str): Stream title.
+- `offline_ct` (int): Offline counter (minutes since last seen).
+- `stream_time` (datetime | None): Stream start time (ISO format).
+""",
     auth=moderator_auth,
     openapi_extra=STREAMS_POST,
 )
@@ -175,21 +170,20 @@ def create_stream(
     "/{player_id}",
     response={200: StreamSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Update Stream",
-    description=dedent(
-        """Updates the stream for a specific player.
+    description="""\
+Updates the stream for a specific player.
 
-    REQUIRES MODERATOR ACCESS OR HIGHER.
+REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    Supported Parameters:
-    - `player_id` (str): Unique ID of the player whose stream is being updated.
+Supported Parameters:
+- `player_id` (str): Unique ID of the player whose stream is being updated.
 
-    Request Body:
-    - `game_id` (str | None): Updated game ID being played.
-    - `title` (str | None): Updated stream title.
-    - `offline_ct` (int | None): Updated offline counter (minutes since last seen).
-    - `stream_time` (datetime | None): Updated stream start time (ISO format).
-    """
-    ),
+Request Body:
+- `game_id` (str | None): Updated game ID being played.
+- `title` (str | None): Updated stream title.
+- `offline_ct` (int | None): Updated offline counter (minutes since last seen).
+- `stream_time` (datetime | None): Updated stream start time (ISO format).
+""",
     auth=moderator_auth,
     openapi_extra=STREAMS_PUT,
 )
@@ -246,15 +240,14 @@ def update_stream(
     "/{player_id}",
     response={200: dict[str, str], codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Delete Stream",
-    description=dedent(
-        """Deletes the stream for a specific player.
+    description="""\
+Deletes the stream for a specific player.
 
-    REQUIRES MODERATOR ACCESS OR HIGHER.
+REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    Supported Parameters:
-    - `player_id` (str): Unique ID of the player whose stream is being deleted.
-    """
-    ),
+Supported Parameters:
+- `player_id` (str): Unique ID of the player whose stream is being deleted.
+""",
     auth=moderator_auth,
     openapi_extra=STREAMS_DELETE,
 )

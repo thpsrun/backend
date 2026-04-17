@@ -1,11 +1,9 @@
-from textwrap import dedent
 from typing import Annotated
 
 from django.db.models import Q
 from django.http import HttpRequest
 from ninja import Query, Router, Status
 from ninja.responses import codes_4xx
-from pydantic import Field
 from srl.models import Platforms
 
 from api.permissions import admin_auth, moderator_auth, public_auth
@@ -31,19 +29,18 @@ router = Router()
     "/all",
     response={200: list[PlatformSchema], 500: ErrorResponse},
     summary="Get All Platforms",
-    description=dedent(
-        """Retrieve all platforms within the `Platforms` object, ordered by name.
+    description="""\
+Retrieve all platforms within the `Platforms` object, ordered by name.
 
-    Supported Parameters:
-    - `limit` (int | None): Results per page (default 50, max 100)
-    - `offset`(int | None): Results to skip (default 0)
+Supported Parameters:
+- `limit` (int | None): Results per page (default 50, max 100)
+- `offset`(int | None): Results to skip (default 0)
 
-    Examples:
-    - `/platforms/all` - Get all platforms
-    - `/platforms/all?limit=20` - Get first 20 platforms
-    - `/platforms/all?limit=10&offset=10` - Get platforms 11-20
-    """
-    ),
+Examples:
+- `/platforms/all` - Get all platforms
+- `/platforms/all?limit=20` - Get first 20 platforms
+- `/platforms/all?limit=10&offset=10` - Get platforms 11-20
+""",
     auth=public_auth,
     openapi_extra=PLATFORMS_ALL,
 )
@@ -51,14 +48,13 @@ def get_all_platforms(
     request: HttpRequest,
     limit: Annotated[
         int,
-        Query,
-        Field(
+        Query(
             ge=1,
             le=100,
             description="Maximum number of returned objects (default 50, less than 100)",
         ),
     ] = 50,
-    offset: Annotated[int, Query, Field(ge=0, description="Offset from 0")] = 0,
+    offset: Annotated[int, Query(ge=0, description="Offset from 0")] = 0,
 ) -> Status:
     try:
         platforms = Platforms.objects.all().order_by("name")[offset : offset + limit]
@@ -74,17 +70,16 @@ def get_all_platforms(
     "/{id}",
     response={200: PlatformSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Get Platform by ID",
-    description=dedent(
-        """Retrieve a single platform by its ID or its slug.
+    description="""\
+Retrieve a single platform by its ID or its slug.
 
-    Supported Parameters:
-    - `id` (str): Unique ID of the platform being queried.
+Supported Parameters:
+- `id` (str): Unique ID of the platform being queried.
 
-    Examples:
-    - `/platforms/8gej2n3z` - Get platform by ID
-    - `/platforms/pc` - Get platform by slug
-    """
-    ),
+Examples:
+- `/platforms/8gej2n3z` - Get platform by ID
+- `/platforms/pc` - Get platform by slug
+""",
     auth=public_auth,
     openapi_extra=PLATFORMS_GET,
 )
@@ -121,17 +116,16 @@ def get_platform(
     "/",
     response={201: PlatformSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Create Platform",
-    description=dedent(
-        """Creates a brand new platform.
+    description="""\
+Creates a brand new platform.
 
-    REQUIRES MODERATOR ACCESS OR HIGHER.
+REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    Request Body:
-    - `id` (str): Unique ID (usually based on SRC) of the platform being created.
-    - `name` (str): Platform name (e.g., "PlayStation 2") being created.
-    - `slug` (str): URL-friendly version (e.g., "playstation-2").
-    """
-    ),
+Request Body:
+- `id` (str): Unique ID (usually based on SRC) of the platform being created.
+- `name` (str): Platform name (e.g., "PlayStation 2") being created.
+- `slug` (str): URL-friendly version (e.g., "playstation-2").
+""",
     auth=moderator_auth,
     openapi_extra=PLATFORMS_POST,
 )
@@ -167,19 +161,18 @@ def create_platform(
     "/{id}",
     response={200: PlatformSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Update Platform",
-    description=dedent(
-        """Updates the platform based on its unique ID.
+    description="""\
+Updates the platform based on its unique ID.
 
-    REQUIRES MODERATOR ACCESS OR HIGHER.
+REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    Supported Parameters:
-    - `id (str): Unique ID (usually based on SRC) of the platform.
+Supported Parameters:
+- `id (str): Unique ID (usually based on SRC) of the platform.
 
-    Request Body:
-    - `name` (str | None): Platform name (e.g., "PlayStation 2") being created.
-    - `slug` (str | None): URL-friendly version (e.g., "playstation-2").
-    """
-    ),
+Request Body:
+- `name` (str | None): Platform name (e.g., "PlayStation 2") being created.
+- `slug` (str | None): URL-friendly version (e.g., "playstation-2").
+""",
     auth=moderator_auth,
     openapi_extra=PLATFORMS_PUT,
 )
@@ -214,15 +207,14 @@ def update_platform(
     "/{id}",
     response={200: dict[str, str], codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Delete Platform",
-    description=dedent(
-        """Deletes the selected platform based on its ID.
+    description="""\
+Deletes the selected platform based on its ID.
 
-    REQUIRES ADMIN ACCESS.
+REQUIRES ADMIN ACCESS.
 
-    Supported Parameters:
-    - `id (str): Unique ID (usually based on SRC) of the platform being deleted.
-    """
-    ),
+Supported Parameters:
+- `id (str): Unique ID (usually based on SRC) of the platform being deleted.
+""",
     auth=admin_auth,
     openapi_extra=PLATFORMS_DELETE,
 )

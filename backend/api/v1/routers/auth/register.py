@@ -1,5 +1,3 @@
-from textwrap import dedent
-
 import requests as http_requests
 from django.contrib.auth import login
 from django.contrib.auth import get_user_model
@@ -25,13 +23,11 @@ router = Router()
     "/register",
     response={201: RegisterResponse, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Register Account",
-    description=dedent(
-        """
-    Verifies the caller's Speedrun.com identity via their SRC API key,
-    creates a Django user, links it to the matching player, and logs the user in.
-    If save_key is true, the API key is encrypted and stored for future use.
-    """
-    ),
+    description="""\
+Verifies the caller's Speedrun.com identity via their SRC API key,
+creates a Django user, links it to the matching player, and logs the user in.
+If save_key is true, the API key is encrypted and stored for future use.
+""",
     auth=None,
 )
 @auth_rate_limit

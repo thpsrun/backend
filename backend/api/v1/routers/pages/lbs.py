@@ -1,11 +1,9 @@
-from textwrap import dedent
 from typing import Annotated, Any
 
 from django.db.models import Q
 from django.http import HttpRequest
 from ninja import Query, Router, Status
 from ninja.responses import codes_4xx
-from pydantic import Field
 from srl.models import Categories, Games, Levels
 
 from api.permissions import public_auth
@@ -92,22 +90,20 @@ def _resolve_game(
     "/lbs/{game_slug}/category/{category_slug}",
     response={200: dict[str, Any], codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Get Full-Game Category Leaderboard",
-    description=dedent(
-        """
-    Get the leaderboard for a specific full-game category, optionally filtered by
-    variable value slugs (subcategory). Returns all verified, non-obsolete runs with
-    full run metadata and embedded player data.
+    description="""\
+Get the leaderboard for a specific full-game category, optionally filtered by
+variable value slugs (subcategory). Returns all verified, non-obsolete runs with
+full run metadata and embedded player data.
 
-    Supported Embeds:
-    - `stats`: Game-wide run counts (full-game vs IL) and unique player count.
-    - `recent`: 5 most recently approved runs across the entire game.
+Supported Embeds:
+- `stats`: Game-wide run counts (full-game vs IL) and unique player count.
+- `recent`: 5 most recently approved runs across the entire game.
 
-    Examples:
-    - `/website/lbs/thug1/category/any` - All Any% runs for THUG1
-    - `/website/lbs/thug1/category/any?values=beginner` - Any% Beginner runs
-    - `/website/lbs/thps4/category/any?embed=stats,recent` - With game-wide metadata
-    """
-    ),
+Examples:
+- `/website/lbs/thug1/category/any` - All Any% runs for THUG1
+- `/website/lbs/thug1/category/any?values=beginner` - Any% Beginner runs
+- `/website/lbs/thps4/category/any?embed=stats,recent` - With game-wide metadata
+""",
     auth=public_auth,
     openapi_extra=LBS_FG_GET,
 )
@@ -117,13 +113,17 @@ def get_category_leaderboard(
     category_slug: str,
     values: Annotated[
         str | None,
-        Query,
-        Field(description="Comma-separated variable value slugs"),
+        Query(
+            description="Comma-separated variable value slugs",
+            examples=["beginner"],
+        ),
     ] = None,
     embed: Annotated[
         str | None,
-        Query,
-        Field(description="Comma-separated embeds: stats, recent"),
+        Query(
+            description="Comma-separated embeds: stats, recent",
+            examples=["stats,recent"],
+        ),
     ] = None,
 ) -> Status:
     game, error, code = _resolve_game(game_slug)
@@ -215,24 +215,22 @@ def get_category_leaderboard(
     "/lbs/{game_slug}/levels",
     response={200: dict[str, Any], codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Get IL Summary Grid",
-    description=dedent(
-        """
-    Get the Individual Level summary grid for a game. Returns the top 5 runs for
-    each level+category combination, grouped by level then category.
+    description="""\
+Get the Individual Level summary grid for a game. Returns the top 5 runs for
+each level+category combination, grouped by level then category.
 
-    Only level+category combos with actual runs are included. Optionally filter
-    by variable value slugs to narrow results to a specific subcategory.
+Only level+category combos with actual runs are included. Optionally filter
+by variable value slugs to narrow results to a specific subcategory.
 
-    Supported Embeds:
-    - `stats`: Game-wide run counts (full-game vs IL) and unique player count.
-    - `recent`: 5 most recently approved runs across the entire game.
+Supported Embeds:
+- `stats`: Game-wide run counts (full-game vs IL) and unique player count.
+- `recent`: 5 most recently approved runs across the entire game.
 
-    Examples:
-    - `/website/lbs/thug1/levels` - IL summary grid for THUG
-    - `/website/lbs/thug1/levels?values=normal` - Filtered to Normal difficulty
-    - `/website/lbs/thug1/levels?embed=stats,recent` - With game-wide metadata
-    """
-    ),
+Examples:
+- `/website/lbs/thug1/levels` - IL summary grid for THUG
+- `/website/lbs/thug1/levels?values=normal` - Filtered to Normal difficulty
+- `/website/lbs/thug1/levels?embed=stats,recent` - With game-wide metadata
+""",
     auth=public_auth,
     openapi_extra=LBS_IL_SUMMARY_GET,
 )
@@ -241,13 +239,17 @@ def get_il_summary(
     game_slug: str,
     values: Annotated[
         str | None,
-        Query,
-        Field(description="Comma-separated variable value slugs"),
+        Query(
+            description="Comma-separated variable value slugs",
+            examples=["normal"],
+        ),
     ] = None,
     embed: Annotated[
         str | None,
-        Query,
-        Field(description="Comma-separated embeds: stats, recent"),
+        Query(
+            description="Comma-separated embeds: stats, recent",
+            examples=["stats,recent"],
+        ),
     ] = None,
 ) -> Status:
     game, error, code = _resolve_game(game_slug)
@@ -300,21 +302,19 @@ def get_il_summary(
     "/lbs/{game_slug}/level/{level_slug}/{category_slug}",
     response={200: dict[str, Any], codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Get IL Category Leaderboard",
-    description=dedent(
-        """
-    Get the full leaderboard for a specific level + IL category combination,
-    optionally filtered by variable value slugs (subcategory).
+    description="""\
+Get the full leaderboard for a specific level + IL category combination,
+optionally filtered by variable value slugs (subcategory).
 
-    Supported Embeds:
-    - `stats`: Game-wide run counts (full-game vs IL) and unique player count.
-    - `recent`: 5 most recently approved runs across the entire game.
+Supported Embeds:
+- `stats`: Game-wide run counts (full-game vs IL) and unique player count.
+- `recent`: 5 most recently approved runs across the entire game.
 
-    Examples:
-    - `/website/lbs/thug1/level/foundry/any` - Foundry Any% for THUG
-    - `/website/lbs/thug1/level/foundry/any?values=beginner` - Filtered
-    - `/website/lbs/thps4/level/manhattan/any?embed=stats` - With stats
-    """
-    ),
+Examples:
+- `/website/lbs/thug1/level/foundry/any` - Foundry Any% for THUG
+- `/website/lbs/thug1/level/foundry/any?values=beginner` - Filtered
+- `/website/lbs/thps4/level/manhattan/any?embed=stats` - With stats
+""",
     auth=public_auth,
     openapi_extra=LBS_IL_DETAIL_GET,
 )
@@ -325,13 +325,17 @@ def get_il_leaderboard(
     category_slug: str,
     values: Annotated[
         str | None,
-        Query,
-        Field(description="Comma-separated variable value slugs"),
+        Query(
+            description="Comma-separated variable value slugs",
+            examples=["beginner"],
+        ),
     ] = None,
     embed: Annotated[
         str | None,
-        Query,
-        Field(description="Comma-separated embeds: stats, recent"),
+        Query(
+            description="Comma-separated embeds: stats, recent",
+            examples=["stats,recent"],
+        ),
     ] = None,
 ) -> Status:
     game, error, code = _resolve_game(game_slug)

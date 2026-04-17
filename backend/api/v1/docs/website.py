@@ -101,16 +101,6 @@ MAIN_PAGE_GET = {
         429: {"description": "Rate limit exceeded, calm your horses."},
         500: {"description": "Server Error. Error is logged."},
     },
-    "parameters": [
-        {
-            "name": "embed",
-            "in": "query",
-            "required": True,
-            "example": "latest-wrs,latest-pbs,records",
-            "schema": {"type": "string"},
-            "description": "Comma-separated embed types: latest-wrs, latest-pbs, records",
-        },
-    ],
 }
 
 GAME_CATEGORIES_GET = {

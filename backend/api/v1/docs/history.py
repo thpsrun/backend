@@ -82,16 +82,6 @@ HISTORY_FG_GET = {
                 "all-goals-and-golds)."
             ),
         },
-        {
-            "name": "values",
-            "in": "query",
-            "example": "beginner",
-            "schema": {"type": "string"},
-            "description": (
-                "Comma-separated variable value slugs to filter by "
-                "subcategory. Order does not matter."
-            ),
-        },
     ],
 }
 
@@ -162,16 +152,6 @@ HISTORY_IL_GET = {
             "example": "agg",
             "schema": {"type": "string", "maxLength": 50},
             "description": "IL category slug (e.g. any, agg).",
-        },
-        {
-            "name": "values",
-            "in": "query",
-            "example": "console,igt",
-            "schema": {"type": "string"},
-            "description": (
-                "Comma-separated variable value slugs to filter by "
-                "subcategory. Order does not matter."
-            ),
         },
     ],
 }

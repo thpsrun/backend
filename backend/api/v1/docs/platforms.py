@@ -154,20 +154,4 @@ PLATFORMS_ALL = {
         429: {"description": "Rate limit exceeded, calm your horses."},
         500: {"description": "Server Error. Error is logged."},
     },
-    "parameters": [
-        {
-            "name": "limit",
-            "in": "query",
-            "example": 50,
-            "schema": {"type": "integer", "minimum": 1, "maximum": 100},
-            "description": "Results per page (default 50, max 100)",
-        },
-        {
-            "name": "offset",
-            "in": "query",
-            "example": 0,
-            "schema": {"type": "integer", "minimum": 0},
-            "description": "Results to skip (default 0)",
-        },
-    ],
 }

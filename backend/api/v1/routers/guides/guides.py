@@ -1,4 +1,3 @@
-from textwrap import dedent
 from typing import Annotated
 
 from django.db import transaction
@@ -7,7 +6,6 @@ from django.http import HttpRequest
 from guides.models import Guides, Tags
 from ninja import Query, Router, Status
 from ninja.responses import codes_4xx
-from pydantic import Field
 from srl.models.games import Games
 
 from api.permissions import admin_auth, moderator_auth, public_auth
@@ -35,28 +33,27 @@ router = Router()
     "/all",
     response={200: list[GuideListSchema], codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="List All Guides",
-    description=dedent(
-        """Gets all guides within the database, with optional querying and embeds.
+    description="""\
+Gets all guides within the database, with optional querying and embeds.
 
-    Query Parameters:
-    - `game` (str | None): Filter guides based on the game's slug or ID.
-    - `tag` (str | None): Filter guides based on the tag's slug or ID.
-    - `embed` (list | None): Comma-separated list of resources to embed.
+Query Parameters:
+- `game` (str | None): Filter guides based on the game's slug or ID.
+- `tag` (str | None): Filter guides based on the tag's slug or ID.
+- `embed` (list | None): Comma-separated list of resources to embed.
 
-    Supported Embeds:
-    - `game`: Includes the metadata of the game the tag belongs to.
-    - `tags`: Include metadata of the tags belonging to this guide.
-    """
-    ),
+Supported Embeds:
+- `game`: Includes the metadata of the game the tag belongs to.
+- `tags`: Include metadata of the tags belonging to this guide.
+""",
     auth=public_auth,
     openapi_extra=GUIDES_ALL,
 )
 def list_guides(
     request: HttpRequest,
-    game: Annotated[str | None, Query, Field(description="Filter by game slug")] = None,
-    tag: Annotated[str | None, Query, Field(description="Filter by tag slug")] = None,
+    game: Annotated[str | None, Query(description="Filter by game slug")] = None,
+    tag: Annotated[str | None, Query(description="Filter by tag slug")] = None,
     embed: Annotated[
-        str | None, Query, Field(description="Comma-separated embeds (game,tags)")
+        str | None, Query(description="Comma-separated embeds (game,tags)")
     ] = None,
 ) -> Status:
     embed_list = []
@@ -105,18 +102,17 @@ def list_guides(
     "/{slug}",
     response={200: GuideSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Get Guide by Slug",
-    description=dedent(
-        """Get a specific guide by its slug.
+    description="""\
+Get a specific guide by its slug.
 
-    Supported Parameters:
-    - `slug` (str): Simplified, URL friendly name of the guide.
-    - `embed` (list | None): Comma-separated list of resources to embed.
+Supported Parameters:
+- `slug` (str): Simplified, URL friendly name of the guide.
+- `embed` (list | None): Comma-separated list of resources to embed.
 
-    Supported Embeds:
-    - `game`: Includes the metadata of the game the tag belongs to.
-    - `tags`: Include metadata of the tags belonging to this guide.
-    """
-    ),
+Supported Embeds:
+- `game`: Includes the metadata of the game the tag belongs to.
+- `tags`: Include metadata of the tags belonging to this guide.
+""",
     auth=public_auth,
     openapi_extra=GUIDES_GET,
 )
@@ -124,7 +120,7 @@ def get_guide(
     request: HttpRequest,
     slug: str,
     embed: Annotated[
-        str | None, Query, Field(description="Comma-separated embeds (game,tags)")
+        str | None, Query(description="Comma-separated embeds (game,tags)")
     ] = None,
 ) -> Status:
     embed_list = []
@@ -157,19 +153,18 @@ def get_guide(
     "/",
     response={200: GuideSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Create New Guide",
-    description=dedent(
-        """Creates a brand new guide.
+    description="""\
+Creates a brand new guide.
 
-    REQUIRES CONTRIBUTOR ACCESS OR HIGHER.
+REQUIRES CONTRIBUTOR ACCESS OR HIGHER.
 
-    Request Body:
-    - `title` (str): Name of the guide.
-    - `game_id` (str): Unique game ID or slug of the game this is associated with.
-    - `tag_ids` (list | None): List of tag IDs or their slug.
-    - `short_description` (str): Brief description of the guide (limit 500 characters).
-    - `content` (str): Full guide content (markdown supported).
-    """
-    ),
+Request Body:
+- `title` (str): Name of the guide.
+- `game_id` (str): Unique game ID or slug of the game this is associated with.
+- `tag_ids` (list | None): List of tag IDs or their slug.
+- `short_description` (str): Brief description of the guide (limit 500 characters).
+- `content` (str): Full guide content (markdown supported).
+""",
     auth=moderator_auth,
     openapi_extra=GUIDES_POST,
 )
@@ -233,19 +228,18 @@ def create_guide(
     "/{slug}",
     response={200: GuideSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Update Guide",
-    description=dedent(
-        """Modifies an existing guide.
+    description="""\
+Modifies an existing guide.
 
-    REQUIRES CONTRIBUTOR ACCESS OR HIGHER.
+REQUIRES CONTRIBUTOR ACCESS OR HIGHER.
 
-    Request Body:
-    - `title` (str | None): Name of the guide.
-    - `game_id` (str | None): Unique game ID or slug of the game this is associated with.
-    - `tag_ids` (list | None): List of tag IDs or their slug.
-    - `short_description` (str | None): Brief description of the guide (limit 500 characters).
-    - `content` (str | None): Full guide content (markdown supported).
-    """
-    ),
+Request Body:
+- `title` (str | None): Name of the guide.
+- `game_id` (str | None): Unique game ID or slug of the game this is associated with.
+- `tag_ids` (list | None): List of tag IDs or their slug.
+- `short_description` (str | None): Brief description of the guide (limit 500 characters).
+- `content` (str | None): Full guide content (markdown supported).
+""",
     auth=moderator_auth,
     openapi_extra=GUIDES_PUT,
 )
@@ -330,15 +324,14 @@ def update_guide(
     "/{slug}",
     response={200: dict[str, str], codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Delete Guide",
-    description=dedent(
-        """Deletes an existing guide.
+    description="""\
+Deletes an existing guide.
 
-    REQUIRES ADMIN ACCESS OR HIGHER.
+REQUIRES ADMIN ACCESS OR HIGHER.
 
-    Supported Parameters:
-    - `slug` (str): Simplified, URL friendly name of the guide.
-    """
-    ),
+Supported Parameters:
+- `slug` (str): Simplified, URL friendly name of the guide.
+""",
     auth=admin_auth,
     openapi_extra=GUIDES_DELETE,
 )

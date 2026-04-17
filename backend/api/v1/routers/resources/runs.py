@@ -1,4 +1,3 @@
-from textwrap import dedent
 from typing import Annotated
 
 from django.db import transaction
@@ -6,7 +5,6 @@ from django.db.models import Q
 from django.http import HttpRequest
 from ninja import Query, Router, Status
 from ninja.responses import codes_4xx
-from pydantic import Field
 from srl.leaderboard.trigger import recalculate_run
 from srl.models import (
     Categories,
@@ -165,70 +163,67 @@ def apply_run_embeds(
     "/all",
     response={200: list[RunSchema], codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Get All Runs",
-    description=dedent(
-        """Retrieve runs with extensive filtering and search capabilities.
+    description="""\
+Retrieve runs with extensive filtering and search capabilities.
 
-    Supported Parameters:
-    - `game_id` (str | None): Filter by specific game ID or slug
-    - `category_id` (str | None): Filter by specific category ID
-    - `level_id` (str | None): Filter by specific level ID (for IL runs)
-    - `player_id` (str | None): Filter by specific player ID
-    - `runtype` (str | None): Filter by run type (`main` or `il`)
-    - `place` (int | None): Filter by leaderboard position
-    - `status` (str | None): Filter by verification status (`verified`, `new`, or `rejected`)
-    - `search`: Search in category name, level name, or variable value names
-    - `embed`: Comma-separated list of resources to embed
-    - `limit`: Results per page (default 50, max 100)
-    - `offset`: Results to skip (default 0)
+Supported Parameters:
+- `game_id` (str | None): Filter by specific game ID or slug
+- `category_id` (str | None): Filter by specific category ID
+- `level_id` (str | None): Filter by specific level ID (for IL runs)
+- `player_id` (str | None): Filter by specific player ID
+- `runtype` (str | None): Filter by run type (`main` or `il`)
+- `place` (int | None): Filter by leaderboard position
+- `status` (str | None): Filter by verification status (`verified`, `new`, or `rejected`)
+- `search`: Search in category name, level name, or variable value names
+- `embed`: Comma-separated list of resources to embed
+- `limit`: Results per page (default 50, max 100)
+- `offset`: Results to skip (default 0)
 
-    Examples:
-    - `/runs/all?game_id=thps4` - All runs for THPS4
-    - `/runs/all?game_id=thps4&category_id=any&place=1` - THPS4 Any% world records
-    - `/runs/all?player_id=v8lponvj&runtype=main` - Player's full-game runs
-    - `/runs/all?search=normal&place=1&status=verified` - Verified WRs with "normal" in cat/level.
-    - `/runs/all?game_id=thps4&level_id=alcatraz&embed=player,game` - Alcatraz ILs with embeds
-    """
-    ),
+Examples:
+- `/runs/all?game_id=thps4` - All runs for THPS4
+- `/runs/all?game_id=thps4&category_id=any&place=1` - THPS4 Any% world records
+- `/runs/all?player_id=v8lponvj&runtype=main` - Player's full-game runs
+- `/runs/all?search=normal&place=1&status=verified` - Verified WRs with "normal" in cat/level.
+- `/runs/all?game_id=thps4&level_id=alcatraz&embed=player,game` - Alcatraz ILs with embeds
+""",
     auth=public_auth,
     openapi_extra=RUNS_ALL,
 )
 def get_all_runs(
     request: HttpRequest,
-    game_id: Annotated[str | None, Query, Field(description="Filter by game")] = None,
+    game_id: Annotated[str | None, Query(description="Filter by game")] = None,
     category_id: Annotated[
-        str | None, Query, Field(description="Filter by category")
+        str | None, Query(description="Filter by category")
     ] = None,
-    level_id: Annotated[str | None, Query, Field(description="Filter by level")] = None,
+    level_id: Annotated[str | None, Query(description="Filter by level")] = None,
     player_id: Annotated[
-        str | None, Query, Field(description="Filter by player")
+        str | None, Query(description="Filter by player")
     ] = None,
     runtype: Annotated[
-        RunTypeType | None, Query, Field(description="Filter by type")
+        RunTypeType | None, Query(description="Filter by type")
     ] = None,
     place: Annotated[
-        int | None, Query, Field(ge=1, description="Filter by place")
+        int | None, Query(ge=1, description="Filter by place")
     ] = None,
     status: Annotated[
-        RunStatusType | None, Query, Field(description="Filter by status")
+        RunStatusType | None, Query(description="Filter by status")
     ] = None,
     search: Annotated[
         str | None,
-        Query,
-        Field(description="Search category/level/variable value names"),
+        Query(description="Search category/level/variable value names"),
     ] = None,
     embed: Annotated[
-        str | None, Query, Field(description="Comma-separated embeds")
+        str | None, Query(description="Comma-separated embeds")
     ] = None,
     limit: Annotated[
         int,
-        Query,
-        Field(
+        Query(
             ge=1,
             le=100,
             description="Maximum number of returned objects (default 50, less than 100)",
         ),
     ] = 50,
-    offset: Annotated[int, Query, Field(ge=0, description="Offset from 0")] = 0,
+    offset: Annotated[int, Query(ge=0, description="Offset from 0")] = 0,
 ) -> Status:
     embed_fields = []
     if embed:
@@ -308,28 +303,27 @@ def get_all_runs(
     "/{id}",
     response={200: RunSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Get Run by ID",
-    description=dedent(
-        """Retrieve a single run by its ID with full details and optional embeds.
+    description="""\
+Retrieve a single run by its ID with full details and optional embeds.
 
-    Supported Parameters:
-    - `id` (str): Unique ID of the run being queried.
-    - `embed` (list | None): Comma-separated list of resources to embed.
+Supported Parameters:
+- `id` (str): Unique ID of the run being queried.
+- `embed` (list | None): Comma-separated list of resources to embed.
 
-    Response Fields:
-    - `players`: Array of all players who participated in this run (always included).
+Response Fields:
+- `players`: Array of all players who participated in this run (always included).
 
-    Supported Embeds:
-    - `game`: Includes the metadata of the game related to the run queried.
-    - `category`: Includes the metadata of the category related to the run queried.
-    - `level`: Include the metadata of the level related to the run queried (if an IL run).
-    - `variables`: Include the metadata of the variables and values related to the run.
+Supported Embeds:
+- `game`: Includes the metadata of the game related to the run queried.
+- `category`: Includes the metadata of the category related to the run queried.
+- `level`: Include the metadata of the level related to the run queried (if an IL run).
+- `variables`: Include the metadata of the variables and values related to the run.
 
-    Examples:
-    - `/runs/y8dwozoj` - Basic run data with players.
-    - `/runs/y8dwozoj?embed=game` - Include game metadata.
-    - `/runs/y8dwozoj?embed=game,category,variables` - Full run details with embeds.
-    """
-    ),
+Examples:
+- `/runs/y8dwozoj` - Basic run data with players.
+- `/runs/y8dwozoj?embed=game` - Include game metadata.
+- `/runs/y8dwozoj?embed=game,category,variables` - Full run details with embeds.
+""",
     auth=public_auth,
     openapi_extra=RUNS_GET,
 )
@@ -337,7 +331,7 @@ def get_run(
     request: HttpRequest,
     id: str,
     embed: Annotated[
-        str | None, Query, Field(description="Comma-separated embeds")
+        str | None, Query(description="Comma-separated embeds")
     ] = None,
 ) -> Status:
     if len(id) > 15:
@@ -415,43 +409,42 @@ def get_run(
     "/",
     response={201: RunSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Create Run",
-    description=dedent(
-        """Create a new speedrun record with full validation.
+    description="""\
+Create a new speedrun record with full validation.
 
-    REQUIRES MODERATOR ACCESS OR HIGHER.
+REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    Complex Validation:
-    - Game/category/level relationships must be valid.
-    - Players must exist if specified.
-    - Variable values must match variable constraints.
-    - Run type must match category type.
+Complex Validation:
+- Game/category/level relationships must be valid.
+- Players must exist if specified.
+- Variable values must match variable constraints.
+- Run type must match category type.
 
-    Request Body:
-    - `game_id` (str): Game ID the run belongs to.
-    - `category_id` (str | None): Category ID the run belongs to.
-    - `level_id` (str | None): Level ID (for IL runs).
-    - `player_ids` (list[str] | None): List of player IDs in order of participation.
-    - `runtype` (str): Run type (`main` or `il`).
-    - `place` (int): Leaderboard position.
-    - `time` (str | None): Formatted time string (e.g., "1:23.456").
-    - `time_secs` (float | None): Time in seconds (for sorting/calculations).
-    - `video` (str | None): Video URL.
-    - `date` (datetime | None): Submission date (ISO format).
-    - `v_date` (datetime | None): Verification date (ISO format).
-    - `url` (str): Speedrun.com URL.
-    - `variable_values` (dict[str, str] | None): Variable value selections as key-value pairs.
+Request Body:
+- `game_id` (str): Game ID the run belongs to.
+- `category_id` (str | None): Category ID the run belongs to.
+- `level_id` (str | None): Level ID (for IL runs).
+- `player_ids` (list[str] | None): List of player IDs in order of participation.
+- `runtype` (str): Run type (`main` or `il`).
+- `place` (int): Leaderboard position.
+- `time` (str | None): Formatted time string (e.g., "1:23.456").
+- `time_secs` (float | None): Time in seconds (for sorting/calculations).
+- `video` (str | None): Video URL.
+- `date` (datetime | None): Submission date (ISO format).
+- `v_date` (datetime | None): Verification date (ISO format).
+- `url` (str): Speedrun.com URL.
+- `variable_values` (dict[str, str] | None): Variable value selections as key-value pairs.
 
-    Variable Values Format:
-    ```json
-    {
-        "variable_values": {
-            "variable_id_1": "value_id_1",
-            "variable_id_2": "value_id_2"
-        }
+Variable Values Format:
+```json
+{
+    "variable_values": {
+        "variable_id_1": "value_id_1",
+        "variable_id_2": "value_id_2"
     }
-    ```
-    """
-    ),
+}
+```
+""",
     auth=moderator_auth,
     openapi_extra=RUNS_POST,
 )
@@ -632,31 +625,30 @@ def create_run(
     "/{id}",
     response={200: RunSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Update Run",
-    description=dedent(
-        """Updates the run based on its unique ID.
+    description="""\
+Updates the run based on its unique ID.
 
-    REQUIRES MODERATOR ACCESS OR HIGHER.
+REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    Supported Parameters:
-    - `id` (str): Unique ID of the run being edited.
+Supported Parameters:
+- `id` (str): Unique ID of the run being edited.
 
-    Request Body:
-    - `game_id` (str | None): Updated game ID.
-    - `category_id` (str | None): Updated category ID.
-    - `level_id` (str | None): Updated level ID (for IL runs).
-    - `player_ids` (list[str] | None): Updated list of player IDs in order of participation.
-    - `runtype` (str | None): Updated run type (`main` or `il`).
-    - `place` (int | None): Updated leaderboard position.
-    - `time` (str | None): Updated formatted time string (e.g., "1:23.456").
-    - `time_secs` (float | None): Updated time in seconds (for sorting/calculations).
-    - `video` (str | None): Updated video URL.
-    - `date` (datetime | None): Updated submission date (ISO format).
-    - `v_date` (datetime | None): Updated verification date (ISO format).
-    - `url` (str | None): Updated Speedrun.com URL.
-    - `variable_values` (dict[str, str] | None): Updated variable value selections as key-value
-        pairs.
-    """
-    ),
+Request Body:
+- `game_id` (str | None): Updated game ID.
+- `category_id` (str | None): Updated category ID.
+- `level_id` (str | None): Updated level ID (for IL runs).
+- `player_ids` (list[str] | None): Updated list of player IDs in order of participation.
+- `runtype` (str | None): Updated run type (`main` or `il`).
+- `place` (int | None): Updated leaderboard position.
+- `time` (str | None): Updated formatted time string (e.g., "1:23.456").
+- `time_secs` (float | None): Updated time in seconds (for sorting/calculations).
+- `video` (str | None): Updated video URL.
+- `date` (datetime | None): Updated submission date (ISO format).
+- `v_date` (datetime | None): Updated verification date (ISO format).
+- `url` (str | None): Updated Speedrun.com URL.
+- `variable_values` (dict[str, str] | None): Updated variable value selections as key-value
+    pairs.
+""",
     auth=moderator_auth,
     openapi_extra=RUNS_PUT,
 )
@@ -842,16 +834,14 @@ def update_run(
     "/{id}",
     response={200: dict[str, str], codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Delete Run",
-    description=dedent(
-        """
-    Deletes the selected run by its ID.
+    description="""\
+Deletes the selected run by its ID.
 
-    REQUIRES ADMIN ACCESS.
+REQUIRES ADMIN ACCESS.
 
-    Supported Parameters:
-    - `id` (str): Unique ID of the run being deleted.
-    """
-    ),
+Supported Parameters:
+- `id` (str): Unique ID of the run being deleted.
+""",
     auth=admin_auth,
     openapi_extra=RUNS_DELETE,
 )

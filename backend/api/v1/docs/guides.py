@@ -26,18 +26,6 @@ GUIDES_ALL = {
     },
     "parameters": [
         {
-            "name": "game",
-            "in": "query",
-            "example": "thps34",
-            "schema": {"pattern": "^[a-z0-9-]+$"},
-        },
-        {
-            "name": "tags",
-            "in": "query",
-            "example": "tricks",
-            "schema": {"pattern": "^[a-z0-9-]+$"},
-        },
-        {
             "name": "embed",
             "in": "embed",
             "example": "game",

@@ -1,11 +1,9 @@
-from textwrap import dedent
 from typing import Annotated
 
 from django.db.models import Q
 from django.http import HttpRequest
 from ninja import Query, Router, Status
 from ninja.responses import codes_4xx
-from pydantic import Field
 from srl.models import Categories, Games, Variables, VariableValues
 
 from api.permissions import admin_auth, moderator_auth, public_auth
@@ -136,50 +134,48 @@ def category_embeds(
     "/all",
     response={200: list[CategorySchema], codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Get All Categories",
-    description=dedent(
-        """Retrieves all categories within a `Games` object, including optional embedding and
-    querying.
+    description="""\
+Retrieves all categories within a `Games` object, including optional embedding and
+querying.
 
-    Supported Parameters:
-    - `game` (str | None): Filter by specific game ID or its slug.
-    - `type` (str | None): Filter by category type (`per-game` or `per-level`).
-    - `limit` (int | None): Results per page (default 50, max 100).
-    - `offset` (int | None): Results to skip (default 0).
-    - `embed` (list | None): Comma-separated list of resources to embed.
+Supported Parameters:
+- `game` (str | None): Filter by specific game ID or its slug.
+- `type` (str | None): Filter by category type (`per-game` or `per-level`).
+- `limit` (int | None): Results per page (default 50, max 100).
+- `offset` (int | None): Results to skip (default 0).
+- `embed` (list | None): Comma-separated list of resources to embed.
 
-    Supported Embeds:
-    - `variables`: Include metadata of the variables belonging to this category.
-    - `values`: Include all metadata for each variable and its values.
+Supported Embeds:
+- `variables`: Include metadata of the variables belonging to this category.
+- `values`: Include all metadata for each variable and its values.
 
-    Examples:
-    - `/categories/all` - Get all categories
-    - `/categories/all?game=thps4` - Get all categories for THPS4.
-    - `/categories/all?type=per-game&limit=20` - Get first 20 full-game categories.
-    - `/categories/all?game=thps4&embed=variables` - Get THPS4 categories with variables.
-    """
-    ),
+Examples:
+- `/categories/all` - Get all categories
+- `/categories/all?game=thps4` - Get all categories for THPS4.
+- `/categories/all?type=per-game&limit=20` - Get first 20 full-game categories.
+- `/categories/all?game=thps4&embed=variables` - Get THPS4 categories with variables.
+""",
     auth=public_auth,
     openapi_extra=CATEGORIES_ALL,
 )
 def get_all_categories(
     request: HttpRequest,
-    game: Annotated[str, Query, Field(description="Filter by game ID or slug")],
+    game: Annotated[str, Query(description="Filter by game ID or slug")],
     type: Annotated[
-        CategoryTypeType | None, Query, Field(description="Filter by type")
+        CategoryTypeType | None, Query(description="Filter by type")
     ] = None,
     embed: Annotated[
-        str | None, Query, Field(description="Comma-separated embeds")
+        str | None, Query(description="Comma-separated embeds")
     ] = None,
     limit: Annotated[
         int,
-        Query,
-        Field(
+        Query(
             ge=1,
             le=100,
             description="Maximum number of returned objects (default 50, less than 100)",
         ),
     ] = 50,
-    offset: Annotated[int, Query, Field(ge=0, description="Offset from 0")] = 0,
+    offset: Annotated[int, Query(ge=0, description="Offset from 0")] = 0,
 ) -> Status:
     # Checks to see what embeds are being used versus what is allowed
     # via this endpoint. It will return an error to the client if they
@@ -258,24 +254,23 @@ def get_all_categories(
     "/{id}",
     response={200: CategorySchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Get Category by ID",
-    description=dedent(
-        """Retrieves a single category based upon its ID, including optional embedding.
+    description="""\
+Retrieves a single category based upon its ID, including optional embedding.
 
-    Supported Parameters:
-    - `id` (str): Unique ID of the category being queried.
-    - `embed` (list | None): Comma-separated list of resources to embed.
+Supported Parameters:
+- `id` (str): Unique ID of the category being queried.
+- `embed` (list | None): Comma-separated list of resources to embed.
 
-    Supported Embeds:
-    - `game`: Includes the metadata of the game the category belongs to.
-    - `variables`: Include metadata of the variables belonging to this category.
-    - `values`: Include all metadata for each variable and its values.
+Supported Embeds:
+- `game`: Includes the metadata of the game the category belongs to.
+- `variables`: Include metadata of the variables belonging to this category.
+- `values`: Include all metadata for each variable and its values.
 
-    Examples:
-    - `/categories/rklge08d` - Get category by ID.
-    - `/categories/rklge08d?embed=game` - Get category with game info.
-    - `/categories/rklge08d?embed=variables,values` - Get category with variables and values.
-    """
-    ),
+Examples:
+- `/categories/rklge08d` - Get category by ID.
+- `/categories/rklge08d?embed=game` - Get category with game info.
+- `/categories/rklge08d?embed=variables,values` - Get category with variables and values.
+""",
     auth=public_auth,
     openapi_extra=CATEGORIES_GET,
 )
@@ -283,7 +278,7 @@ def get_category(
     request: HttpRequest,
     id: str,
     embed: Annotated[
-        str | None, Query, Field(description="Comma-separated embeds")
+        str | None, Query(description="Comma-separated embeds")
     ] = None,
 ) -> Status:
     if len(id) > 15:
@@ -350,25 +345,24 @@ def get_category(
     "/",
     response={201: CategorySchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Create Category",
-    description=dedent(
-        """Creates a brand new category.
+    description="""\
+Creates a brand new category.
 
-    REQUIRES MODERATOR ACCESS OR HIGHER.
+REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    Request Body:
-    - `id` (str): Unique ID (usually based on SRC) of the category.
-    - `name` (str): Category name (e.g., "Any%", "100%").
-    - `slug` (str): URL-friendly version.
-    - `type` (str): Whether this is per-game or per-level category.
-    - `url` (str): Link to category on Speedrun.com.
-    - `rules` (str | None): Category-specific rules text.
-    - `appear_on_main` (bool): Whether to show on main page.
-    - `archive` (bool): Whether category is hidden from listings.
-    - `game` (str): Game this category belongs to.
-    - `variables` (list[dict]): Associated variables to the category.
-    - `values` (list[dict]): Associated values to the category.
-    """
-    ),
+Request Body:
+- `id` (str): Unique ID (usually based on SRC) of the category.
+- `name` (str): Category name (e.g., "Any%", "100%").
+- `slug` (str): URL-friendly version.
+- `type` (str): Whether this is per-game or per-level category.
+- `url` (str): Link to category on Speedrun.com.
+- `rules` (str | None): Category-specific rules text.
+- `appear_on_main` (bool): Whether to show on main page.
+- `archive` (bool): Whether category is hidden from listings.
+- `game` (str): Game this category belongs to.
+- `variables` (list[dict]): Associated variables to the category.
+- `values` (list[dict]): Associated values to the category.
+""",
     auth=moderator_auth,
     openapi_extra=CATEGORIES_POST,
 )
@@ -420,27 +414,26 @@ def create_category(
     "/{id}",
     response={200: CategorySchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Update Category",
-    description=dedent(
-        """Updates the category based on its unique ID.
+    description="""\
+Updates the category based on its unique ID.
 
-    REQUIRES MODERATOR ACCESS OR HIGHER.
+REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    Supported Parameters:
-    - `id` (str): Unique ID of the category being edited.
+Supported Parameters:
+- `id` (str): Unique ID of the category being edited.
 
-    Request Body:
-    - `name` (str | None): Category name (e.g., "Any%", "100%").
-    - `slug` (str | None): URL-friendly version.
-    - `type` (str | None): Whether this is per-game or per-level category.
-    - `url` (str | None): Link to category on Speedrun.com.
-    - `rules` (str | None): Category-specific rules text.
-    - `appear_on_main` (bool | None): Whether to show on main page.
-    - `archive` (bool | None): Whether category is hidden from listings.
-    - `game` (str | None): Game this category belongs to.
-    - `variables` (list[dict] | None): Associated variables to the category.
-    - `values` (list[dict] | None): Associated values to the category.
-    """
-    ),
+Request Body:
+- `name` (str | None): Category name (e.g., "Any%", "100%").
+- `slug` (str | None): URL-friendly version.
+- `type` (str | None): Whether this is per-game or per-level category.
+- `url` (str | None): Link to category on Speedrun.com.
+- `rules` (str | None): Category-specific rules text.
+- `appear_on_main` (bool | None): Whether to show on main page.
+- `archive` (bool | None): Whether category is hidden from listings.
+- `game` (str | None): Game this category belongs to.
+- `variables` (list[dict] | None): Associated variables to the category.
+- `values` (list[dict] | None): Associated values to the category.
+""",
     auth=moderator_auth,
     openapi_extra=CATEGORIES_PUT,
 )
@@ -499,15 +492,14 @@ def update_category(
     "/{id}",
     response={200: dict[str, str], codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Delete Category",
-    description=dedent(
-        """Deletes the selected category based on its ID.
+    description="""\
+Deletes the selected category based on its ID.
 
-    REQUIRES ADMIN ACCESS.
+REQUIRES ADMIN ACCESS.
 
-    Supported Parameters:
-    - `id` (str): Unique ID of the category being deleted.
-    """
-    ),
+Supported Parameters:
+- `id` (str): Unique ID of the category being deleted.
+""",
     auth=admin_auth,
     openapi_extra=CATEGORIES_DELETE,
 )

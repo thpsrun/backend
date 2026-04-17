@@ -101,16 +101,6 @@ PLAYERS_GET = {
             "schema": {"type": "string", "maxLength": 15},
             "description": "Player ID",
         },
-        {
-            "name": "embed",
-            "in": "query",
-            "example": "country,stats,awards,runs",
-            "schema": {"type": "string"},
-            "description": (
-                "Comma-separated embeds: country, stats, awards,"
-                " runs, profile, profile-obsolete"
-            ),
-        },
     ],
 }
 
@@ -524,41 +514,4 @@ PLAYERS_ALL = {
         429: {"description": "Rate limit exceeded, calm your horses."},
         500: {"description": "Server Error. Error is logged."},
     },
-    "parameters": [
-        {
-            "name": "country",
-            "in": "query",
-            "example": "us",
-            "schema": {"type": "string"},
-            "description": "Filter by country code",
-        },
-        {
-            "name": "search",
-            "in": "query",
-            "example": "ThePackle",
-            "schema": {"type": "string"},
-            "description": "Search by name",
-        },
-        {
-            "name": "embed",
-            "in": "query",
-            "example": "country,awards",
-            "schema": {"type": "string"},
-            "description": "Comma-separated embeds",
-        },
-        {
-            "name": "limit",
-            "in": "query",
-            "example": 50,
-            "schema": {"type": "integer", "minimum": 1, "maximum": 100},
-            "description": "Results per page (default 50, max 100)",
-        },
-        {
-            "name": "offset",
-            "in": "query",
-            "example": 0,
-            "schema": {"type": "integer", "minimum": 0},
-            "description": "Results to skip (default 0)",
-        },
-    ],
 }

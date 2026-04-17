@@ -27,22 +27,6 @@ STREAMS_LIVE = {
         429: {"description": "Rate limit exceeded, calm your horses."},
         500: {"description": "Server Error. Error is logged."},
     },
-    "parameters": [
-        {
-            "name": "game_id",
-            "in": "query",
-            "example": "thps4",
-            "schema": {"type": "string"},
-            "description": "Filter by game",
-        },
-        {
-            "name": "limit",
-            "in": "query",
-            "example": 20,
-            "schema": {"type": "integer", "minimum": 1, "maximum": 50},
-            "description": "Max results (default 20, max 50)",
-        },
-    ],
 }
 
 STREAMS_GAME = {
@@ -76,13 +60,6 @@ STREAMS_GAME = {
             "example": "thps4",
             "schema": {"type": "string", "maxLength": 15},
             "description": "Game ID or slug",
-        },
-        {
-            "name": "limit",
-            "in": "query",
-            "example": 10,
-            "schema": {"type": "integer", "minimum": 1, "maximum": 25},
-            "description": "Max results (default 10, max 25)",
         },
     ],
 }

@@ -56,13 +56,6 @@ VARIABLES_GET = {
             "schema": {"type": "string", "maxLength": 15},
             "description": "Variable ID",
         },
-        {
-            "name": "embed",
-            "in": "query",
-            "example": "game,category,level",
-            "schema": {"type": "string"},
-            "description": "Comma-separated embeds: game, category, level",
-        },
     ],
 }
 
@@ -292,60 +285,6 @@ VARIABLES_ALL = {
         429: {"description": "Rate limit exceeded, calm your horses."},
         500: {"description": "Server Error. Error is logged."},
     },
-    "parameters": [
-        {
-            "name": "game_id",
-            "in": "query",
-            "example": "thps4",
-            "schema": {"type": "string"},
-            "description": "Filter by game ID",
-        },
-        {
-            "name": "category_id",
-            "in": "query",
-            "example": "rklge08d",
-            "schema": {"type": "string"},
-            "description": "Filter by category ID",
-        },
-        {
-            "name": "level_id",
-            "in": "query",
-            "example": "592pxj8d",
-            "schema": {"type": "string"},
-            "description": "Filter by level ID",
-        },
-        {
-            "name": "scope",
-            "in": "query",
-            "example": "full-game",
-            "schema": {
-                "type": "string",
-                "pattern": "^(global|full-game|all-levels|single-level)$",
-            },
-            "description": "Filter by scope",
-        },
-        {
-            "name": "embed",
-            "in": "query",
-            "example": "game,category",
-            "schema": {"type": "string"},
-            "description": "Comma-separated embeds",
-        },
-        {
-            "name": "limit",
-            "in": "query",
-            "example": 50,
-            "schema": {"type": "integer", "minimum": 1, "maximum": 100},
-            "description": "Results per page (default 50, max 100)",
-        },
-        {
-            "name": "offset",
-            "in": "query",
-            "example": 0,
-            "schema": {"type": "integer", "minimum": 0},
-            "description": "Results to skip (default 0)",
-        },
-    ],
 }
 
 
@@ -390,13 +329,6 @@ VALUES_GET = {
             "schema": {"type": "string", "maxLength": 10},
             "description": "Variable Value ID",
         },
-        {
-            "name": "embed",
-            "in": "query",
-            "example": "variable",
-            "schema": {"type": "string"},
-            "description": "Comma-separated embeds: variable",
-        },
     ],
 }
 
@@ -429,36 +361,6 @@ VALUES_ALL = {
         429: {"description": "Rate limit exceeded, calm your horses."},
         500: {"description": "Server Error. Error is logged."},
     },
-    "parameters": [
-        {
-            "name": "variable_id",
-            "in": "query",
-            "example": "5lygdn8q",
-            "schema": {"type": "string"},
-            "description": "Filter by variable ID (required)",
-        },
-        {
-            "name": "embed",
-            "in": "query",
-            "example": "variable",
-            "schema": {"type": "string"},
-            "description": "Comma-separated embeds: variable",
-        },
-        {
-            "name": "limit",
-            "in": "query",
-            "example": 50,
-            "schema": {"type": "integer", "minimum": 1, "maximum": 100},
-            "description": "Results per page (default 50, max 100)",
-        },
-        {
-            "name": "offset",
-            "in": "query",
-            "example": 0,
-            "schema": {"type": "integer", "minimum": 0},
-            "description": "Results to skip (default 0)",
-        },
-    ],
 }
 
 VALUES_POST = {

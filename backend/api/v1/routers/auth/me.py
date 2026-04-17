@@ -1,6 +1,5 @@
 import logging
 import os
-from textwrap import dedent
 
 from django.conf import settings
 from django.db import transaction
@@ -107,12 +106,10 @@ def get_me(
     "/me",
     response={200: PlayerProfileResponse, codes_4xx: ErrorResponse},
     summary="Update My Profile",
-    description=dedent(
-        """
-    Updates editable fields on the current authenticated player's profile.
-    Only non-null fields in the request body will be applied.
-    """
-    ),
+    description="""\
+Updates editable fields on the current authenticated player's profile.
+Only non-null fields in the request body will be applied.
+""",
     auth=player_session_auth,
 )
 def update_me(
@@ -201,12 +198,10 @@ def update_me(
     "/me",
     response={204: None, codes_4xx: ErrorResponse},
     summary="Delete My Account",
-    description=dedent(
-        """
-    Deletes the authenticated player's account.
-    Blanks the Player record (runs are preserved) and deletes the linked Django User.
-    """
-    ),
+    description="""\
+Deletes the authenticated player's account.
+Blanks the Player record (runs are preserved) and deletes the linked Django User.
+""",
     auth=player_session_auth,
 )
 def delete_me(

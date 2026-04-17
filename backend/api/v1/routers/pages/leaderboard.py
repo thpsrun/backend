@@ -1,11 +1,9 @@
-from textwrap import dedent
 from typing import Annotated, Any
 
 from django.db.models import Q
 from django.http import HttpRequest
 from ninja import Query, Router, Status
 from ninja.responses import codes_4xx
-from pydantic import Field
 from srl.models import Games
 
 from api.permissions import public_auth
@@ -37,15 +35,13 @@ router = Router()
         500: ErrorResponse,
     },
     summary="Get Overall Series Point Leaderboard",
-    description=dedent(
-        """
-    Get the series-wide points leaderboard, ranking all runners across every game.
+    description="""\
+Get the series-wide points leaderboard, ranking all runners across every game.
 
-    Only non-obsolete, verified runs are counted toward point totals.
+Only non-obsolete, verified runs are counted toward point totals.
 
-    Players are ranked by total_points in descending order.
-    """
-    ),
+Players are ranked by total_points in descending order.
+""",
     auth=public_auth,
 )
 def get_overall_leaderboard(
@@ -68,27 +64,25 @@ def get_overall_leaderboard(
     "/pointslb/{game_id}",
     response={200: dict[str, Any], codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Get Per-Game Leaderboard",
-    description=dedent(
-        """
-    Get the points leaderboard for a specific game, ranking all runners by their
-    combined full-game and individual level points for that game only.
+    description="""\
+Get the points leaderboard for a specific game, ranking all runners by their
+combined full-game and individual level points for that game only.
 
-    Only non-obsolete, verified runs are counted toward point totals.
+Only non-obsolete, verified runs are counted toward point totals.
 
-    THPS4 note: The level "Zoo - Feed the Hippos" is automatically excluded
-    from point calculations.
+THPS4 note: The level "Zoo - Feed the Hippos" is automatically excluded
+from point calculations.
 
-    Supported Embeds:
-    - `oldest-runs` (THPS4 only): Adds an `oldest_runs` key to the response containing
-      each runner's personal best sorted by longest-held time (days since the run was set).
-      Returns -1 for days_held when the submission date is unknown.
+Supported Embeds:
+- `oldest-runs` (THPS4 only): Adds an `oldest_runs` key to the response containing
+  each runner's personal best sorted by longest-held time (days since the run was set).
+  Returns -1 for days_held when the submission date is unknown.
 
-    Examples:
-    - `/website/game/thps4/pointslb` - THPS4 leaderboard
-    - `/website/game/thps4/pointslb?embed=oldest-runs` - THPS4 leaderboard with oldest PBs
-    - `/website/game/n2680o1p/pointslb` - Leaderboard by game ID
-    """
-    ),
+Examples:
+- `/website/game/thps4/pointslb` - THPS4 leaderboard
+- `/website/game/thps4/pointslb?embed=oldest-runs` - THPS4 leaderboard with oldest PBs
+- `/website/game/n2680o1p/pointslb` - Leaderboard by game ID
+""",
     auth=public_auth,
 )
 def get_game_leaderboard(
@@ -96,8 +90,7 @@ def get_game_leaderboard(
     game_id: str,
     embed: Annotated[
         str | None,
-        Query,
-        Field(description="Optional: 'oldest-runs' for THPS4 oldest PBs embed"),
+        Query(description="Optional: 'oldest-runs' for THPS4 oldest PBs embed"),
     ] = None,
 ) -> Status:
     if len(game_id) > 15:

@@ -1,11 +1,9 @@
-from textwrap import dedent
 from typing import Annotated
 
 from django.http import HttpRequest
 from django.utils.text import slugify
 from ninja import Query, Router, Status
 from ninja.responses import codes_4xx
-from pydantic import Field
 from srl.models import Categories, Games, Levels, Variables, VariableValues
 
 from api.permissions import admin_auth, moderator_auth, public_auth
@@ -107,60 +105,58 @@ def apply_value_embeds(
     "/all",
     response={200: list[VariableSchema], codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Get All Variables",
-    description=dedent(
-        """Retrieve all variables within the `Variables` object, including optional embedding and
-    filtering
+    description="""\
+Retrieve all variables within the `Variables` object, including optional embedding and
+filtering
 
-    Supported Embeds:
-    - `game`: Include metadata of the game the variable belongs to
-    - `category`: Include metadata of the category the variable belongs to
-    - `level`: Include metadata of the level the variable belongs to
+Supported Embeds:
+- `game`: Include metadata of the game the variable belongs to
+- `category`: Include metadata of the category the variable belongs to
+- `level`: Include metadata of the level the variable belongs to
 
-    Supported Parameters:
-    - `game_id`: Filter by specific game ID or slug
-    - `category_id`: Filter by specific category ID
-    - `level_id`: Filter by specific level ID
-    - `scope`: Filter by scope (`global`, `full-game`, `all-levels`, `single-level`)
-    - `embed`: Comma-separated list of resources to embed
-    - `limit`: Results per page (default 50, max 100)
-    - `offset`: Results to skip (default 0)
+Supported Parameters:
+- `game_id`: Filter by specific game ID or slug
+- `category_id`: Filter by specific category ID
+- `level_id`: Filter by specific level ID
+- `scope`: Filter by scope (`global`, `full-game`, `all-levels`, `single-level`)
+- `embed`: Comma-separated list of resources to embed
+- `limit`: Results per page (default 50, max 100)
+- `offset`: Results to skip (default 0)
 
-    Examples:
-    - `/variables/all` - Get all variables
-    - `/variables/all?game_id=thps4` - Get all variables for THPS4
-    - `/variables/all?scope=full-game` - Get all full-game variables
-    - `/variables/all?game_id=thps4&embed=game,category` - Get THPS4 variables with embeds
-    """
-    ),
+Examples:
+- `/variables/all` - Get all variables
+- `/variables/all?game_id=thps4` - Get all variables for THPS4
+- `/variables/all?scope=full-game` - Get all full-game variables
+- `/variables/all?game_id=thps4&embed=game,category` - Get THPS4 variables with embeds
+""",
     auth=public_auth,
 )
 def get_all_variables(
     request: HttpRequest,
     game_id: Annotated[
-        str | None, Query, Field(description="Filter by game ID")
+        str | None, Query(description="Filter by game ID")
     ] = None,
     category_id: Annotated[
-        str | None, Query, Field(description="Filter by category ID")
+        str | None, Query(description="Filter by category ID")
     ] = None,
     level_id: Annotated[
-        str | None, Query, Field(description="Filter by level ID")
+        str | None, Query(description="Filter by level ID")
     ] = None,
     scope: Annotated[
-        VariableScopeType | None, Query, Field(description="Filter by scope")
+        VariableScopeType | None, Query(description="Filter by scope")
     ] = None,
     embed: Annotated[
-        str | None, Query, Field(description="Comma-separated embeds")
+        str | None, Query(description="Comma-separated embeds")
     ] = None,
     limit: Annotated[
         int,
-        Query,
-        Field(
+        Query(
             ge=1,
             le=100,
             description="Maximum number of returned objects (default 50, less than 100)",
         ),
     ] = 50,
-    offset: Annotated[int, Query, Field(ge=0, description="Offset from 0")] = 0,
+    offset: Annotated[int, Query(ge=0, description="Offset from 0")] = 0,
 ) -> Status:
     # Checks to see what embeds are being used versus what is allowed
     # via this endpoint. It will return an error to the client if they
@@ -225,44 +221,42 @@ def get_all_variables(
         500: ErrorResponse,
     },
     summary="Get All Variable Values",
-    description=dedent(
-        """Retrieve all values for a specific variable.
+    description="""\
+Retrieve all values for a specific variable.
 
-    Supported Embeds:
-    - `variable`: Include metadata of the variable this value belongs to
+Supported Embeds:
+- `variable`: Include metadata of the variable this value belongs to
 
-    Supported Parameters:
-    - `variable_id` (required): Filter by specific variable ID
-    - `embed`: Comma-separated list of resources to embed
-    - `limit`: Results per page (default 50, max 100)
-    - `offset`: Results to skip (default 0)
+Supported Parameters:
+- `variable_id` (required): Filter by specific variable ID
+- `embed`: Comma-separated list of resources to embed
+- `limit`: Results per page (default 50, max 100)
+- `offset`: Results to skip (default 0)
 
-    Examples:
-    - `/variables/values/all?variable_id=5lygdn8q` - Get all values for a variable
-    - `/variables/values/all?variable_id=5lygdn8q&embed=variable` - With embeds
-    """
-    ),
+Examples:
+- `/variables/values/all?variable_id=5lygdn8q` - Get all values for a variable
+- `/variables/values/all?variable_id=5lygdn8q&embed=variable` - With embeds
+""",
     auth=public_auth,
     openapi_extra=VALUES_ALL,
 )
 def get_all_values(
     request: HttpRequest,
     variable_id: Annotated[
-        str | None, Query, Field(description="Filter by variable ID (required)")
+        str | None, Query(description="Filter by variable ID (required)")
     ] = None,
     embed: Annotated[
-        str | None, Query, Field(description="Comma-separated embeds")
+        str | None, Query(description="Comma-separated embeds")
     ] = None,
     limit: Annotated[
         int,
-        Query,
-        Field(
+        Query(
             ge=1,
             le=100,
             description="Maximum number of returned objects (default 50, less than 100)",
         ),
     ] = 50,
-    offset: Annotated[int, Query, Field(ge=0, description="Offset from 0")] = 0,
+    offset: Annotated[int, Query(ge=0, description="Offset from 0")] = 0,
 ) -> Status:
     if not variable_id:
         return Status(400, ErrorResponse(
@@ -316,20 +310,19 @@ def get_all_values(
     "/values/",
     response={201: VariableValueSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Create Variable Value",
-    description=dedent(
-        """Creates a brand new variable value.
+    description="""\
+Creates a brand new variable value.
 
-    REQUIRES MODERATOR ACCESS OR HIGHER.
+REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    Request Body:
-    - `variable_id` (str): Variable ID this value belongs to.
-    - `name` (str): Value name.
-    - `value` (str | None): Value ID; if not provided, one will be auto-generated.
-    - `slug` (str | None): URL-friendly slug; auto-generated from name if not provided.
-    - `archive` (bool): Whether value is archived/hidden.
-    - `rules` (str | None): Rules specific to this value choice.
-    """
-    ),
+Request Body:
+- `variable_id` (str): Variable ID this value belongs to.
+- `name` (str): Value name.
+- `value` (str | None): Value ID; if not provided, one will be auto-generated.
+- `slug` (str | None): URL-friendly slug; auto-generated from name if not provided.
+- `archive` (bool): Whether value is archived/hidden.
+- `rules` (str | None): Rules specific to this value choice.
+""",
     auth=moderator_auth,
     openapi_extra=VALUES_POST,
 )
@@ -380,17 +373,16 @@ def create_value(
     "/values/{value_id}",
     response={200: VariableValueSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Get Variable Value by ID",
-    description=dedent(
-        """Retrieve a single variable value by its ID.
+    description="""\
+Retrieve a single variable value by its ID.
 
-    Supported Embeds:
-    - `variable`: Include metadata of the variable this value belongs to
+Supported Embeds:
+- `variable`: Include metadata of the variable this value belongs to
 
-    Examples:
-    - `/variables/values/pc` - Get value by ID
-    - `/variables/values/pc?embed=variable` - Get value with variable data
-    """
-    ),
+Examples:
+- `/variables/values/pc` - Get value by ID
+- `/variables/values/pc?embed=variable` - Get value with variable data
+""",
     auth=public_auth,
     openapi_extra=VALUES_GET,
 )
@@ -398,7 +390,7 @@ def get_value(
     request: HttpRequest,
     value_id: str,
     embed: Annotated[
-        str | None, Query, Field(description="Comma-separated embeds")
+        str | None, Query(description="Comma-separated embeds")
     ] = None,
 ) -> Status:
     if len(value_id) > 10:
@@ -450,22 +442,21 @@ def get_value(
     "/values/{value_id}",
     response={200: VariableValueSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Update Variable Value",
-    description=dedent(
-        """Updates the variable value based on its unique ID.
+    description="""\
+Updates the variable value based on its unique ID.
 
-    REQUIRES MODERATOR ACCESS OR HIGHER.
+REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    Supported Parameters:
-    - `value_id` (str): Unique ID of the value being updated.
+Supported Parameters:
+- `value_id` (str): Unique ID of the value being updated.
 
-    Request Body:
-    - `variable_id` (str | None): Updated variable ID.
-    - `name` (str | None): Updated value name.
-    - `slug` (str | None): Updated URL-friendly slug.
-    - `archive` (bool | None): Updated archive status.
-    - `rules` (str | None): Updated rules.
-    """
-    ),
+Request Body:
+- `variable_id` (str | None): Updated variable ID.
+- `name` (str | None): Updated value name.
+- `slug` (str | None): Updated URL-friendly slug.
+- `archive` (bool | None): Updated archive status.
+- `rules` (str | None): Updated rules.
+""",
     auth=moderator_auth,
     openapi_extra=VALUES_PUT,
 )
@@ -514,15 +505,14 @@ def update_value(
     "/values/{value_id}",
     response={200: dict[str, str], codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Delete Variable Value",
-    description=dedent(
-        """Deletes the selected variable value by its ID.
+    description="""\
+Deletes the selected variable value by its ID.
 
-    REQUIRES ADMIN ACCESS.
+REQUIRES ADMIN ACCESS.
 
-    Supported Parameters:
-    - `value_id` (str): Unique ID of the value being deleted.
-    """
-    ),
+Supported Parameters:
+- `value_id` (str): Unique ID of the value being deleted.
+""",
     auth=admin_auth,
     openapi_extra=VALUES_DELETE,
 )
@@ -557,20 +547,19 @@ def delete_value(
         500: ErrorResponse,
     },
     summary="Get Variable by ID",
-    description=dedent(
-        """Retrieve a single variable by its ID, including optional embedding.
+    description="""\
+Retrieve a single variable by its ID, including optional embedding.
 
-    Supported Embeds:
-    - `game`: Include metadata related to the game
-    - `category`: Include metadata related to the category
-    - `level`: Include metadata related to the level
+Supported Embeds:
+- `game`: Include metadata related to the game
+- `category`: Include metadata related to the category
+- `level`: Include metadata related to the level
 
-    Examples:
-    - `/variables/5lygdn8q` - Get variable by ID
-    - `/variables/5lygdn8q?embed=game` - Get variable with game data
-    - `/variables/5lygdn8q?embed=game,category,level` - Get variable with all embeds
-    """
-    ),
+Examples:
+- `/variables/5lygdn8q` - Get variable by ID
+- `/variables/5lygdn8q?embed=game` - Get variable with game data
+- `/variables/5lygdn8q?embed=game,category,level` - Get variable with all embeds
+""",
     auth=public_auth,
     openapi_extra=VARIABLES_GET,
 )
@@ -578,7 +567,7 @@ def get_variable(
     request: HttpRequest,
     id: str,
     embed: Annotated[
-        str | None, Query, Field(description="Comma-separated embeds")
+        str | None, Query(description="Comma-separated embeds")
     ] = None,
 ) -> Status:
     if len(id) > 15:
@@ -648,20 +637,19 @@ def get_variable(
     "/",
     response={201: VariableSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Create Variable",
-    description=dedent(
-        """Creates a brand new variable with validation for scope and relationship constraints.
+    description="""\
+Creates a brand new variable with validation for scope and relationship constraints.
 
-    REQUIRES MODERATOR ACCESS OR HIGHER.
+REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    Request Body:
-    - `game_id` (str): Game ID this variable belongs to.
-    - `name` (str): Variable name.
-    - `scope` (str): Where variable applies (`global`, `full-game`, `all-levels`, `single-level`).
-    - `archive` (bool): Whether variable is archived/hidden from listings.
-    - `category_id` (str | None): Specific category ID.
-    - `level_id` (str | None): Specific level ID (required if scope is `single-level`).
-    """
-    ),
+Request Body:
+- `game_id` (str): Game ID this variable belongs to.
+- `name` (str): Variable name.
+- `scope` (str): Where variable applies (`global`, `full-game`, `all-levels`, `single-level`).
+- `archive` (bool): Whether variable is archived/hidden from listings.
+- `category_id` (str | None): Specific category ID.
+- `level_id` (str | None): Specific level ID (required if scope is `single-level`).
+""",
     auth=moderator_auth,
     openapi_extra=VARIABLES_POST,
 )
@@ -737,23 +725,22 @@ def create_variable(
     "/{id}",
     response={200: VariableSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Update Variable",
-    description=dedent(
-        """Updates the variable based on its unique ID.
+    description="""\
+Updates the variable based on its unique ID.
 
-    REQUIRES MODERATOR ACCESS OR HIGHER.
+REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    Supported Parameters:
-    - `id` (str): Unique ID of the variable being updated.
+Supported Parameters:
+- `id` (str): Unique ID of the variable being updated.
 
-    Request Body:
-    - `game_id` (str | None): Updated game ID.
-    - `name` (str | None): Updated variable name.
-    - `scope` (str | None): Updated scope (`global`, `full-game`, `all-levels`, `single-level`).
-    - `archive` (bool | None): Updated archive status.
-    - `category_id` (str | None): Updated category ID.
-    - `level_id` (str | None): Updated level ID.
-    """
-    ),
+Request Body:
+- `game_id` (str | None): Updated game ID.
+- `name` (str | None): Updated variable name.
+- `scope` (str | None): Updated scope (`global`, `full-game`, `all-levels`, `single-level`).
+- `archive` (bool | None): Updated archive status.
+- `category_id` (str | None): Updated category ID.
+- `level_id` (str | None): Updated level ID.
+""",
     auth=moderator_auth,
     openapi_extra=VARIABLES_PUT,
 )
@@ -838,15 +825,14 @@ def update_variable(
     "/{id}",
     response={200: dict[str, str], codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Delete Variable",
-    description=dedent(
-        """Deletes the selected variable by its ID. Also deletes associated values.
+    description="""\
+Deletes the selected variable by its ID. Also deletes associated values.
 
-    REQUIRES ADMIN ACCESS.
+REQUIRES ADMIN ACCESS.
 
-    Supported Parameters:
-    - `id` (str): Unique ID of the variable being deleted.
-    """
-    ),
+Supported Parameters:
+- `id` (str): Unique ID of the variable being deleted.
+""",
     auth=admin_auth,
     openapi_extra=VARIABLES_DELETE,
 )

@@ -1,10 +1,8 @@
-from textwrap import dedent
 from typing import Annotated
 
 from django.http import HttpRequest
 from ninja import Query, Router, Status
 from ninja.responses import codes_4xx
-from pydantic import Field
 from srl.models import Games, Levels, Variables, VariableValues
 
 from api.permissions import admin_auth, moderator_auth, public_auth
@@ -124,48 +122,46 @@ def apply_level_embeds(
     "/all",
     response={200: list[LevelSchema], codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Get All Levels",
-    description=dedent(
-        """Retrieves all levels within a `Games` object, including optional embedding.
+    description="""\
+Retrieves all levels within a `Games` object, including optional embedding.
 
-    Supported Parameters:
-    - `game_id` (str | None): Filter by specific game ID or its slug.
-    - `limit` (int | None): Results per page (default 50, max 100).
-    - `offset` (int | None): Results to skip (default 0).
-    - `embed` (list | None): Comma-separated list of resources to embed.
+Supported Parameters:
+- `game_id` (str | None): Filter by specific game ID or its slug.
+- `limit` (int | None): Results per page (default 50, max 100).
+- `offset` (int | None): Results to skip (default 0).
+- `embed` (list | None): Comma-separated list of resources to embed.
 
-    Supported Embeds:
-    - `game`: Includes the metadata of the game the level belongs to.
-    - `variables`: Include metadata of the variables belonging to this level.
-    - `values`: Include all metadata for each variable and its values.
+Supported Embeds:
+- `game`: Includes the metadata of the game the level belongs to.
+- `variables`: Include metadata of the variables belonging to this level.
+- `values`: Include all metadata for each variable and its values.
 
-    Examples:
-    - `/levels/all` - Get all levels.
-    - `/levels/all?game_id=thps4` - Get all levels for THPS4.
-    - `/levels/all?game_id=thps4&embed=game` - Get THPS4 levels with game info.
-    - `/levels/all?limit=10&offset=20` - Get levels 21-30 from the overall list.
-    """
-    ),
+Examples:
+- `/levels/all` - Get all levels.
+- `/levels/all?game_id=thps4` - Get all levels for THPS4.
+- `/levels/all?game_id=thps4&embed=game` - Get THPS4 levels with game info.
+- `/levels/all?limit=10&offset=20` - Get levels 21-30 from the overall list.
+""",
     auth=public_auth,
     openapi_extra=LEVELS_ALL,
 )
 def get_all_levels(
     request: HttpRequest,
     game_id: Annotated[
-        str | None, Query, Field(description="Filter by game ID")
+        str | None, Query(description="Filter by game ID")
     ] = None,
     embed: Annotated[
-        str | None, Query, Field(description="Comma-separated embeds")
+        str | None, Query(description="Comma-separated embeds")
     ] = None,
     limit: Annotated[
         int,
-        Query,
-        Field(
+        Query(
             ge=1,
             le=100,
             description="Maximum number of returned objects (default 50, less than 100)",
         ),
     ] = 50,
-    offset: Annotated[int, Query, Field(ge=0, description="Offset from 0")] = 0,
+    offset: Annotated[int, Query(ge=0, description="Offset from 0")] = 0,
 ) -> Status:
     # Checks to see what embeds are being used versus what is allowed
     # via this endpoint. It will return an error to the client if they
@@ -241,24 +237,23 @@ def get_all_levels(
     "/{id}",
     response={200: LevelSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Get Level by ID",
-    description=dedent(
-        """Retrieve a single level based upon its ID, including optional embedding.
+    description="""\
+Retrieve a single level based upon its ID, including optional embedding.
 
-    Supported Parameters:
-    - `id` (str): Unique ID of the level being queried.
-    - `embed` (list | None): Comma-separated list of resources to embed.
+Supported Parameters:
+- `id` (str): Unique ID of the level being queried.
+- `embed` (list | None): Comma-separated list of resources to embed.
 
-    Supported Embeds:
-    - `game`: Includes the metadata of the game the level belongs to
-    - `variables`: Include metadata of the variables belonging to this level
-    - `values`: Include all metadata for each variable and its values
+Supported Embeds:
+- `game`: Includes the metadata of the game the level belongs to
+- `variables`: Include metadata of the variables belonging to this level
+- `values`: Include all metadata for each variable and its values
 
-    Examples:
-    - `/levels/592pxj8d` - Get level by ID
-    - `/levels/592pxj8d?embed=game` - Get level with game info
-    - `/levels/592pxj8d?embed=variables,values` - Get level with variables and values
-    """
-    ),
+Examples:
+- `/levels/592pxj8d` - Get level by ID
+- `/levels/592pxj8d?embed=game` - Get level with game info
+- `/levels/592pxj8d?embed=variables,values` - Get level with variables and values
+""",
     auth=public_auth,
     openapi_extra=LEVELS_GET,
 )
@@ -266,7 +261,7 @@ def get_level(
     request: HttpRequest,
     id: str,
     embed: Annotated[
-        str | None, Query, Field(description="Comma-separated embeds")
+        str | None, Query(description="Comma-separated embeds")
     ] = None,
 ) -> Status:
     if len(id) > 15:
@@ -334,25 +329,24 @@ def get_level(
     "/",
     response={201: LevelSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Create Level",
-    description=dedent(
-        """Creates a brand new level.
+    description="""\
+Creates a brand new level.
 
-    REQUIRES MODERATOR ACCESS OR HIGHER.
+REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    Request Body:
-    - `id` (str): Unique ID (usually based on SRC) of the level.
-    - `name` (str): Level name (e.g., "Warehouse", "School").
-    - `slug` (str): URL-friendly version.
-    - `type` (str): Whether this is per-game or per-level category.
-    - `url` (str): Link to level on Speedrun.com.
-    - `rules` (str | None): Level-specific rules text.
-    - `appear_on_main` (bool): Whether to show on main page.
-    - `archive` (bool): Whether category is hidden from listings.
-    - `game` (str): Game this category belongs to.
-    - `variables` (List[dict]): Associated variables to the category.
-    - `values` (List[dict]): Associated values to the category.
-    """
-    ),
+Request Body:
+- `id` (str): Unique ID (usually based on SRC) of the level.
+- `name` (str): Level name (e.g., "Warehouse", "School").
+- `slug` (str): URL-friendly version.
+- `type` (str): Whether this is per-game or per-level category.
+- `url` (str): Link to level on Speedrun.com.
+- `rules` (str | None): Level-specific rules text.
+- `appear_on_main` (bool): Whether to show on main page.
+- `archive` (bool): Whether category is hidden from listings.
+- `game` (str): Game this category belongs to.
+- `variables` (List[dict]): Associated variables to the category.
+- `values` (List[dict]): Associated values to the category.
+""",
     auth=moderator_auth,
     openapi_extra=LEVELS_POST,
 )
@@ -405,26 +399,25 @@ def create_level(
     "/{id}",
     response={200: LevelSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Update Level",
-    description=dedent(
-        """Updates the level based on its unique ID.
+    description="""\
+Updates the level based on its unique ID.
 
-    REQUIRES MODERATOR ACCESS OR HIGHER.
+REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    Supported Parameters:
-    - `id` (str): Unique ID of the level being edited.
+Supported Parameters:
+- `id` (str): Unique ID of the level being edited.
 
-    Request Body:
-    - `name` (str | None): Level name (e.g., "Warehouse", "School").
-    - `slug` (str | None): URL-friendly version.
-    - `type` (str | None): Whether this is per-game or per-level category.
-    - `url` (str | None): Link to level on Speedrun.com.
-    - `rules` (str | None): Level-specific rules text.
-    - `archive` (bool): Whether category is hidden from listings.
-    - `game` (str | None): Game this category belongs to.
-    - `variables` (list[dict]): Associated variables to the category.
-    - `values` (list[dict]): Associated values to the category.
-    """
-    ),
+Request Body:
+- `name` (str | None): Level name (e.g., "Warehouse", "School").
+- `slug` (str | None): URL-friendly version.
+- `type` (str | None): Whether this is per-game or per-level category.
+- `url` (str | None): Link to level on Speedrun.com.
+- `rules` (str | None): Level-specific rules text.
+- `archive` (bool): Whether category is hidden from listings.
+- `game` (str | None): Game this category belongs to.
+- `variables` (list[dict]): Associated variables to the category.
+- `values` (list[dict]): Associated values to the category.
+""",
     auth=moderator_auth,
     openapi_extra=LEVELS_PUT,
 )
@@ -484,15 +477,14 @@ def update_level(
     "/{id}",
     response={200: dict[str, str], codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Delete Level",
-    description=dedent(
-        """Deletes the selected level by its ID.
+    description="""\
+Deletes the selected level by its ID.
 
-    REQUIRES ADMIN ACCESS.
+REQUIRES ADMIN ACCESS.
 
-    Supported Parameters:
-    - `id` (str): Unique ID of the level being deleted.
-    """
-    ),
+Supported Parameters:
+- `id` (str): Unique ID of the level being deleted.
+""",
     auth=admin_auth,
     openapi_extra=LEVELS_DELETE,
 )

@@ -89,23 +89,6 @@ LBS_FG_GET = {
                 "all-goals-and-golds). Must be a per-game category."
             ),
         },
-        {
-            "name": "values",
-            "in": "query",
-            "example": "beginner",
-            "schema": {"type": "string"},
-            "description": (
-                "Comma-separated variable value slugs to filter by subcategory. "
-                "Order does not matter. Omit to return all subcategories."
-            ),
-        },
-        {
-            "name": "embed",
-            "in": "query",
-            "example": "stats,recent",
-            "schema": {"type": "string"},
-            "description": "Comma-separated embeds: stats, recent",
-        },
     ],
 }
 
@@ -190,23 +173,6 @@ LBS_IL_SUMMARY_GET = {
             "example": "thug",
             "schema": {"type": "string", "maxLength": 15},
             "description": "Game slug (e.g. thug, thps4, thps12)",
-        },
-        {
-            "name": "values",
-            "in": "query",
-            "example": "normal",
-            "schema": {"type": "string"},
-            "description": (
-                "Comma-separated variable value slugs to filter by subcategory. "
-                "Order does not matter. Omit to return all subcategories."
-            ),
-        },
-        {
-            "name": "embed",
-            "in": "query",
-            "example": "stats,recent",
-            "schema": {"type": "string"},
-            "description": "Comma-separated embeds: stats, recent",
         },
     ],
 }
@@ -313,23 +279,6 @@ LBS_IL_DETAIL_GET = {
             "description": (
                 "IL category slug (e.g. any, 100). Must be a per-level category."
             ),
-        },
-        {
-            "name": "values",
-            "in": "query",
-            "example": "beginner",
-            "schema": {"type": "string"},
-            "description": (
-                "Comma-separated variable value slugs to filter by subcategory. "
-                "Order does not matter. Omit to return all subcategories."
-            ),
-        },
-        {
-            "name": "embed",
-            "in": "query",
-            "example": "stats,recent",
-            "schema": {"type": "string"},
-            "description": "Comma-separated embeds: stats, recent",
         },
     ],
 }

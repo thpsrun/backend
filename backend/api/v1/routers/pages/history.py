@@ -1,11 +1,9 @@
-from textwrap import dedent
 from typing import Annotated, Any
 
 from django.db.models import Q
 from django.http import HttpRequest
 from ninja import Query, Router, Status
 from ninja.responses import codes_4xx
-from pydantic import Field
 from srl.models import Categories, Games, Levels
 
 from api.permissions import public_auth
@@ -71,17 +69,15 @@ def _parse_value_slugs(
         500: ErrorResponse,
     },
     summary="Get Full-Game WR History",
-    description=dedent(
-        """
-    Get the complete world record history for a full-game category,
-    optionally filtered by variable value slugs (subcategory). Returns
-    every WR from first to current with timing deltas.
+    description="""\
+Get the complete world record history for a full-game category,
+optionally filtered by variable value slugs (subcategory). Returns
+every WR from first to current with timing deltas.
 
-    Examples:
-    - `/history/thug1/category/any` - Any% WR history for THUG1
-    - `/history/thug1/category/any?values=beginner` - Any% Beginner
-    """
-    ),
+Examples:
+- `/history/thug1/category/any` - Any% WR history for THUG1
+- `/history/thug1/category/any?values=beginner` - Any% Beginner
+""",
     auth=public_auth,
     openapi_extra=HISTORY_FG_GET,
 )
@@ -91,8 +87,7 @@ def get_fg_wr_history(
     category_slug: str,
     values: Annotated[
         str | None,
-        Query,
-        Field(description="Comma-separated variable value slugs"),
+        Query(description="Comma-separated variable value slugs"),
     ] = None,
 ) -> Status:
     game, error, code = _resolve_game(game_slug)
@@ -176,16 +171,14 @@ def get_fg_wr_history(
         500: ErrorResponse,
     },
     summary="Get IL WR History",
-    description=dedent(
-        """
-    Get the complete world record history for an individual level
-    category, optionally filtered by variable value slugs.
+    description="""\
+Get the complete world record history for an individual level
+category, optionally filtered by variable value slugs.
 
-    Examples:
-    - `/history/thps1/level/warehouse/agg` - Warehouse AG&G WR history
-    - `/history/thps1/level/warehouse/agg?values=console,igt`
-    """
-    ),
+Examples:
+- `/history/thps1/level/warehouse/agg` - Warehouse AG&G WR history
+- `/history/thps1/level/warehouse/agg?values=console,igt`
+""",
     auth=public_auth,
     openapi_extra=HISTORY_IL_GET,
 )
@@ -196,8 +189,7 @@ def get_il_wr_history(
     category_slug: str,
     values: Annotated[
         str | None,
-        Query,
-        Field(description="Comma-separated variable value slugs"),
+        Query(description="Comma-separated variable value slugs"),
     ] = None,
 ) -> Status:
     game, error, code = _resolve_game(game_slug)

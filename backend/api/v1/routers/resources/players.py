@@ -1,11 +1,9 @@
-from textwrap import dedent
 from typing import Annotated
 
 from django.db.models import Count, Q, QuerySet, Sum
 from django.http import HttpRequest
 from ninja import Query, Router, Status
 from ninja.responses import codes_4xx
-from pydantic import Field
 from srl.models import CountryCodes, Players, Runs
 
 from api.permissions import admin_auth, moderator_auth, public_auth
@@ -159,32 +157,29 @@ def apply_player_embeds(
     "/search",
     response={200: list[PlayerSearchResultSchema], codes_4xx: ErrorResponse},
     summary="Search Players",
-    description=dedent(
-        """Search for players by name or nickname. Returns lightweight results
-    suitable for autocomplete/typeahead.
+    description="""\
+Search for players by name or nickname. Returns lightweight results
+suitable for autocomplete/typeahead.
 
-    Supported Parameters:
-    - `q` (str): Search query (min 2 characters). Matches against name and nickname.
-    - `limit` (int): Max results to return (default 10, max 25).
+Supported Parameters:
+- `q` (str): Search query (min 2 characters). Matches against name and nickname.
+- `limit` (int): Max results to return (default 10, max 25).
 
-    Examples:
-    - `/players/search?q=hawk` - Search for players matching "hawk".
-    - `/players/search?q=spe&limit=5` - Search with a custom limit.
-    """
-    ),
+Examples:
+- `/players/search?q=hawk` - Search for players matching "hawk".
+- `/players/search?q=spe&limit=5` - Search with a custom limit.
+""",
     auth=public_auth,
 )
 def search_players(
     request: HttpRequest,
     q: Annotated[
         str,
-        Query,
-        Field(min_length=2, max_length=30, description="Search query"),
+        Query(min_length=2, max_length=30, description="Search query"),
     ],
     limit: Annotated[
         int,
-        Query,
-        Field(default=10, ge=1, le=25, description="Max results"),
+        Query(default=10, ge=1, le=25, description="Max results"),
     ] = 10,
 ) -> Status:
     players = (
@@ -211,29 +206,28 @@ def search_players(
     "/{id}",
     response={200: PlayerResponse, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Get Player by ID",
-    description=dedent(
-        """Retrieve a single player by their ID, including optional embedding.
+    description="""\
+Retrieve a single player by their ID, including optional embedding.
 
-    Exclusively for this endpoint, you can also GET a player by their username or their nickname.
+Exclusively for this endpoint, you can also GET a player by their username or their nickname.
 
-    Supported Parameters:
-    - `id` (str): Unique ID of the player being queried.
-    - `embed` (list | None): Comma-separated list of resources to embed.
+Supported Parameters:
+- `id` (str): Unique ID of the player being queried.
+- `embed` (list | None): Comma-separated list of resources to embed.
 
-    Supported Embeds:
-    - `country`: Includes the metadata of the country associated with the player, if any.
-    - `stats`: Includes total verified runs, full-game points, and IL points.
-    - `awards`: Include the metadata of the awards the player has collected, if any.
-    - `runs`: Last 25 verified non-obsolete runs as a flat list.
-    - `profile`: All verified non-obsolete runs split into `fg` and `il` keys.
-    - `profile-obsolete`: All verified runs (including obsolete) split into `fg` and `il` keys.
+Supported Embeds:
+- `country`: Includes the metadata of the country associated with the player, if any.
+- `stats`: Includes total verified runs, full-game points, and IL points.
+- `awards`: Include the metadata of the awards the player has collected, if any.
+- `runs`: Last 25 verified non-obsolete runs as a flat list.
+- `profile`: All verified non-obsolete runs split into `fg` and `il` keys.
+- `profile-obsolete`: All verified runs (including obsolete) split into `fg` and `il` keys.
 
-    Examples:
-    - `/players/v8lponvj` - Get player by ID.
-    - `/players/v8lponvj?embed=country` - Get player with country info.
-    - `/players/v8lponvj?embed=country,stats,awards,profile` - Get player with stats and profile.
-    """
-    ),
+Examples:
+- `/players/v8lponvj` - Get player by ID.
+- `/players/v8lponvj?embed=country` - Get player with country info.
+- `/players/v8lponvj?embed=country,stats,awards,profile` - Get player with stats and profile.
+""",
     auth=public_auth,
     openapi_extra=PLAYERS_GET,
 )
@@ -241,7 +235,7 @@ def get_player(
     request: HttpRequest,
     id: str,
     embed: Annotated[
-        str | None, Query, Field(description="Comma-separated embeds")
+        str | None, Query(description="Comma-separated embeds")
     ] = None,
 ) -> Status:
     if len(id) > 30:
@@ -377,18 +371,17 @@ def get_player(
     "/",
     response={201: PlayerResponse, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Create Player",
-    description=dedent(
-        """Creates a brand new player.
+    description="""\
+Creates a brand new player.
 
-    REQUIRES MODERATOR ACCESS OR HIGHER.
+REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    Request Body:
-    - `id` (str | None): The player ID; if one is not given, it will auto-generate.
-    - `url` (str): Speedrun.com profile URL.
-    - `player` (object): Core player info (name, nickname, pronouns, country_id, pfp, ex_stream).
-    - `socials` (object): Social links (twitch, youtube, twitter, bluesky, discord).
-    """
-    ),
+Request Body:
+- `id` (str | None): The player ID; if one is not given, it will auto-generate.
+- `url` (str): Speedrun.com profile URL.
+- `player` (object): Core player info (name, nickname, pronouns, country_id, pfp, ex_stream).
+- `socials` (object): Social links (twitch, youtube, twitter, bluesky, discord).
+""",
     auth=moderator_auth,
     openapi_extra=PLAYERS_POST,
 )
@@ -486,22 +479,21 @@ def create_player(
     "/{id}",
     response={200: PlayerResponse, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Update Player",
-    description=dedent(
-        """Updates the player based on their unique ID.
+    description="""\
+Updates the player based on their unique ID.
 
-    REQUIRES MODERATOR ACCESS OR HIGHER.
+REQUIRES MODERATOR ACCESS OR HIGHER.
 
-    Supported Parameters:
-    - `id` (str): Unique ID of the player being updated.
+Supported Parameters:
+- `id` (str): Unique ID of the player being updated.
 
-    Request Body:
-    - `url` (str | None): Updated Speedrun.com profile URL.
-    - `player` (object | None): Core player info to update (name, nickname, pronouns,
-        country_id, pfp, ex_stream).
-    - `socials` (object | None): Social links to update (twitch, youtube, twitter, bluesky,
-        discord).
-    """
-    ),
+Request Body:
+- `url` (str | None): Updated Speedrun.com profile URL.
+- `player` (object | None): Core player info to update (name, nickname, pronouns,
+    country_id, pfp, ex_stream).
+- `socials` (object | None): Social links to update (twitch, youtube, twitter, bluesky,
+    discord).
+""",
     auth=moderator_auth,
     openapi_extra=PLAYERS_PUT,
 )
@@ -609,15 +601,14 @@ def update_player(
     "/{id}",
     response={200: dict[str, str], codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Delete Player",
-    description=dedent(
-        """Deletes the selected player based on its ID.
+    description="""\
+Deletes the selected player based on its ID.
 
-    REQUIRES ADMIN ACCESS.
+REQUIRES ADMIN ACCESS.
 
-    Supported Parameters:
-    - `id` (str): Unique ID of the player being deleted.
-    """
-    ),
+Supported Parameters:
+- `id` (str): Unique ID of the player being deleted.
+""",
     auth=admin_auth,
     openapi_extra=PLAYERS_DELETE,
 )

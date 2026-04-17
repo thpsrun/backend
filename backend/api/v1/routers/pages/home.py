@@ -1,10 +1,8 @@
-from textwrap import dedent
 from typing import Annotated, Any
 
 from django.http import HttpRequest
 from ninja import Query, Router, Status
 from ninja.responses import codes_4xx
-from pydantic import Field
 
 from api.permissions import public_auth
 from api.v1.docs.website import MAIN_PAGE_GET
@@ -18,25 +16,23 @@ router = Router()
     "/main",
     response={200: dict[str, Any], codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Get Main Page Data",
-    description=dedent(
-        """
-    Get aggregated data for the website main page including latest world records,
-    personal bests, and current records for featured categories.
+    description="""\
+Get aggregated data for the website main page including latest world records,
+personal bests, and current records for featured categories.
 
-    Supported Embeds:
-    - `latest-wrs`: Latest 5 world records within the database.
-    - `latest-pbs`: Latest 5 personal bests (excluding WRs) within the database.
-    - `records`: Current WRs for featured categories.
+Supported Embeds:
+- `latest-wrs`: Latest 5 world records within the database.
+- `latest-pbs`: Latest 5 personal bests (excluding WRs) within the database.
+- `records`: Current WRs for featured categories.
 
-    Supported Parameters:
-    - `embed`: Comma-separated list of data types to include (required)
+Supported Parameters:
+- `embed`: Comma-separated list of data types to include (required)
 
-    Examples:
-    - `/website/main?embed=latest-wrs,latest-pbs` - Recent activity
-    - `/website/main?embed=records` - Current world records
-    - `/website/main?embed=latest-wrs,latest-pbs,records,stats` - All data
-    """
-    ),
+Examples:
+- `/website/main?embed=latest-wrs,latest-pbs` - Recent activity
+- `/website/main?embed=records` - Current world records
+- `/website/main?embed=latest-wrs,latest-pbs,records,stats` - All data
+""",
     auth=public_auth,
     openapi_extra=MAIN_PAGE_GET,
 )
@@ -44,8 +40,7 @@ def get_main_page_data(
     request: HttpRequest,
     embed: Annotated[
         str | None,
-        Query,
-        Field(description="Comma-separated embed types"),
+        Query(description="Comma-separated embed types"),
     ] = None,
 ) -> Status:
     if not embed:
