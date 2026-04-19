@@ -39,10 +39,10 @@ class CountryEmbed(Schema):
 class PlayerEmbed(Schema):
     username: str
     name: str
-    nickname: str | None
-    pronouns: str | None
-    country: CountryEmbed | None
-    pfp: str | None
+    nickname: str | None = None
+    pronouns: str | None = None
+    country: CountryEmbed | None = None
+    pfp: str | None = None
     is_superuser: bool = False
     ex_stream: bool = False
 

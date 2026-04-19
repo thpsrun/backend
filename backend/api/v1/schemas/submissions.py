@@ -4,6 +4,7 @@ from typing import Any, Literal
 from ninja import Schema
 from pydantic import Field, field_validator, model_validator
 
+from api.v1.schemas.base import RunStatusType
 from api.v1.schemas.runs import PlayerRunEmbedSchema
 
 
@@ -31,7 +32,7 @@ class SubmissionRunSchema(PlayerRunEmbedSchema):
             return v
         return []
 
-    vid_status: str = Field(
+    vid_status: RunStatusType = Field(
         ...,
         description="Verification status: new, verified, or rejected",
     )
@@ -237,7 +238,7 @@ class RunSubmitResponse(Schema):
 
     run_id: str
     src_url: str
-    vid_status: str
+    vid_status: RunStatusType
     message: str
 
 

@@ -2,7 +2,7 @@ from typing import Any
 
 from pydantic import ConfigDict, Field, field_validator
 
-from api.v1.schemas.base import BaseEmbedSchema, SlugMixin
+from api.v1.schemas.base import BaseEmbedSchema, CategoryTypeType, SlugMixin
 from api.v1.schemas.variables import VariableWithValuesSchema
 
 
@@ -23,7 +23,7 @@ class CategoryBaseSchema(SlugMixin, BaseEmbedSchema):
     id: str = Field(..., max_length=10)
     name: str = Field(..., max_length=50)
     slug: str = Field(..., max_length=50, description="URL-friendly slug")
-    type: str = Field(..., pattern="^(per-level|per-game)$")
+    type: CategoryTypeType = Field(...)
     url: str
     rules: str | None = Field(default=None, max_length=5000)
     appear_on_main: bool = Field(
@@ -108,7 +108,7 @@ class CategoryCreateSchema(SlugMixin, BaseEmbedSchema):
     name: str = Field(..., max_length=50)
     slug: str = Field(..., max_length=50, description="URL-friendly slug")
     game_id: str
-    type: str = Field(..., pattern="^(per-level|per-game)$")
+    type: CategoryTypeType = Field(...)
     url: str
     rules: str | None = None
     appear_on_main: bool = Field(
@@ -138,7 +138,7 @@ class CategoryUpdateSchema(BaseEmbedSchema):
 
     game_id: str | None = None
     name: str | None = None
-    type: str | None = Field(None, pattern="^(per-level|per-game)$")
+    type: CategoryTypeType | None = None
     url: str | None = None
     rules: str | None = None
     appear_on_main: bool | None = Field(

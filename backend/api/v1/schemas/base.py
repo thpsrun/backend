@@ -8,6 +8,7 @@ RunTypeType = Literal["main", "il"]
 RunStatusType = Literal["verified", "new", "rejected"]
 CategoryTypeType = Literal["per-level", "per-game"]
 VariableScopeType = Literal["global", "full-game", "all-levels", "single-level"]
+TimingMethodType = Literal["realtime", "realtime_noloads", "ingame"]
 
 
 class ErrorResponse(BaseModel):

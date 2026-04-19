@@ -3,7 +3,7 @@ from typing import Any
 
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
-from api.v1.schemas.base import BaseEmbedSchema, BaseModel
+from api.v1.schemas.base import BaseEmbedSchema, RunTypeType
 
 
 def compute_run_subcategory(data: Any) -> str | None:
@@ -46,7 +46,7 @@ _TIME_FIELDS = (
 )
 
 
-class RunTimesSchema(BaseModel):
+class RunTimesSchema(BaseEmbedSchema):
     """Nested timing data for a run.
 
     Attributes:
@@ -119,9 +119,8 @@ class RunBaseSchema(BaseEmbedSchema):
     """
 
     id: str = Field(..., max_length=10)
-    runtype: str = Field(
+    runtype: RunTypeType = Field(
         ...,
-        pattern="^(main|il)$",
         description="main=full-game, il=individual level",
     )
     place: int = Field(..., ge=0)
@@ -358,7 +357,7 @@ class RunCreateSchema(BaseEmbedSchema):
     category_id: str | None = None
     level_id: str | None = Field(default=None, description="For IL runs")
     player_ids: list[str] | None = Field(None, description="In order of participation")
-    runtype: str = Field(..., pattern="^(main|il)$")
+    runtype: RunTypeType = Field(...)
     place: int = Field(..., ge=1)
     time: str | None = Field(default=None, max_length=25)
     time_secs: float | None = Field(default=None, ge=0)
@@ -404,7 +403,7 @@ class RunUpdateSchema(BaseEmbedSchema):
     category_id: str | None = None
     level_id: str | None = None
     player_ids: list[str] | None = Field(None, description="In order of participation")
-    runtype: str | None = Field(default=None, pattern="^(main|il)$")
+    runtype: RunTypeType | None = None
     place: int | None = Field(default=None, ge=1)
     time: str | None = Field(default=None, max_length=25)
     time_secs: float | None = Field(default=None, ge=0)

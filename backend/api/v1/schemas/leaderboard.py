@@ -6,8 +6,8 @@ from api.v1.schemas.base import BaseEmbedSchema
 from api.v1.schemas.players import GradientsEmbed
 
 
-class PointLeaderboardEntrySchema(BaseEmbedSchema):
-    """Schema for a single entry in the series-wide points leaderboard.
+class LeaderboardEntrySchema(BaseEmbedSchema):
+    """Schema for a single entry in a points leaderboard (series-wide or per-game).
 
     Attributes:
         rank (int): Position on the leaderboard (1-based).
@@ -16,12 +16,12 @@ class PointLeaderboardEntrySchema(BaseEmbedSchema):
         player_url (str): Speedrun.com profile URL.
         player_pfp (str | None): Profile picture URL.
         total_points (int): Combined full-game + individual level points.
-        fg_points (int): Full-game category points only.
-        il_points (int): Individual level points only.
+        fg_points (int): Full-game category points.
+        il_points (int): Individual level points.
         gradients (GradientsEmbed | None): Player gradient colors, if claimed.
     """
 
-    rank: int
+    rank: int = Field(..., ge=1)
     player_id: str = Field(..., max_length=15)
     player_name: str
     player_url: str
@@ -32,30 +32,8 @@ class PointLeaderboardEntrySchema(BaseEmbedSchema):
     gradients: GradientsEmbed | None = None
 
 
-class GameLeaderboardEntrySchema(BaseEmbedSchema):
-    """Schema for a single entry in a per-game points leaderboard.
-
-    Attributes:
-        rank (int): Position on the leaderboard (1-based).
-        player_id (str): Unique player ID.
-        player_name (str): Display name; nickname if set, otherwise SRC name.
-        player_url (str): Speedrun.com profile URL.
-        player_pfp (str | None): Profile picture URL.
-        total_points (int): Combined full-game + individual level points for this game.
-        fg_points (int): Full-game category points for this game only.
-        il_points (int): Individual level points for this game only.
-        gradients (GradientsEmbed | None): Player gradient colors, if claimed.
-    """
-
-    rank: int
-    player_id: str = Field(..., max_length=15)
-    player_name: str
-    player_url: str
-    player_pfp: str | None = None
-    total_points: int = Field(..., ge=0)
-    fg_points: int = Field(..., ge=0)
-    il_points: int = Field(..., ge=0)
-    gradients: GradientsEmbed | None = None
+PointLeaderboardEntrySchema = LeaderboardEntrySchema
+GameLeaderboardEntrySchema = LeaderboardEntrySchema
 
 
 class OldestRunEntrySchema(BaseEmbedSchema):

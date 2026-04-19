@@ -2,7 +2,7 @@ from typing import Any
 
 from pydantic import ConfigDict, Field, field_validator
 
-from api.v1.schemas.base import BaseEmbedSchema, SlugMixin
+from api.v1.schemas.base import BaseEmbedSchema, SlugMixin, VariableScopeType
 
 
 class VariableValueSchema(BaseEmbedSchema):
@@ -66,9 +66,8 @@ class VariableBaseSchema(SlugMixin, BaseEmbedSchema):
     id: str = Field(..., max_length=10)
     name: str = Field(..., max_length=50)
     slug: str = Field(..., max_length=50, description="URL-friendly slug")
-    scope: str = Field(
+    scope: VariableScopeType = Field(
         ...,
-        pattern="^(global|full-game|all-levels|single-level)$",
         description="Where this variable applies",
     )
     archive: bool = Field(default=False, description="Hidden from listings")
@@ -140,7 +139,7 @@ class VariableCreateSchema(BaseEmbedSchema):
     game_id: str
     name: str = Field(..., max_length=50)
     slug: str = Field(..., max_length=50, description="URL-friendly slug")
-    scope: str = Field(..., pattern="^(global|full-game|all-levels|single-level)$")
+    scope: VariableScopeType = Field(...)
     archive: bool = Field(default=False, description="Hidden from listings")
     category_id: str | None = Field(
         None, description="If not applying to all categories"
@@ -162,9 +161,7 @@ class VariableUpdateSchema(BaseEmbedSchema):
 
     game_id: str | None = None
     name: str | None = Field(default=None, max_length=50)
-    scope: str | None = Field(
-        None, pattern="^(global|full-game|all-levels|single-level)$"
-    )
+    scope: VariableScopeType | None = None
     archive: bool | None = None
     category_id: str | None = None
     level_id: str | None = None

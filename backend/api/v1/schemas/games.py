@@ -4,7 +4,7 @@ from typing import Any
 from django.conf import settings
 from pydantic import ConfigDict, Field, field_validator
 
-from api.v1.schemas.base import BaseEmbedSchema, SlugMixin
+from api.v1.schemas.base import BaseEmbedSchema, SlugMixin, TimingMethodType
 
 
 class GameBaseSchema(SlugMixin, BaseEmbedSchema):
@@ -35,14 +35,12 @@ class GameBaseSchema(SlugMixin, BaseEmbedSchema):
     )
     release: date
     boxart: str
-    defaulttime: str = Field(
+    defaulttime: TimingMethodType = Field(
         ...,
-        pattern="^(realtime|realtime_noloads|ingame)$",
         description="Timing for full-game runs",
     )
-    idefaulttime: str = Field(
+    idefaulttime: TimingMethodType = Field(
         ...,
-        pattern="^(realtime|realtime_noloads|ingame)$",
         description="Timing for IL runs",
     )
     pointsmax: int = Field(
@@ -142,10 +140,8 @@ class GameCreateSchema(SlugMixin, BaseEmbedSchema):
     )
     release: date
     boxart: str
-    defaulttime: str = Field("realtime", pattern="^(realtime|realtime_noloads|ingame)$")
-    idefaulttime: str = Field(
-        "realtime", pattern="^(realtime|realtime_noloads|ingame)$"
-    )
+    defaulttime: TimingMethodType = Field(default="realtime")
+    idefaulttime: TimingMethodType = Field(default="realtime")
     pointsmax: int = Field(
         settings.POINTS_MAX_FG, ge=1, description="WR points for full-game runs"
     )
@@ -154,7 +150,7 @@ class GameCreateSchema(SlugMixin, BaseEmbedSchema):
     )
 
 
-class GameUpdateSchema(SlugMixin, BaseEmbedSchema):
+class GameUpdateSchema(BaseEmbedSchema):
     """Schema for updating existing games.
 
     Attributes:
@@ -170,18 +166,18 @@ class GameUpdateSchema(SlugMixin, BaseEmbedSchema):
         rules (str | None): Updated game-level rules text.
     """
 
+    name: str | None = Field(default=None, max_length=55)
+    slug: str | None = Field(
+        default=None, min_length=1, max_length=20, description="URL-friendly slug"
+    )
     twitch: str | None = Field(default=None, max_length=55)
     rules: str | None = Field(
         default=None, max_length=5000, description="Game-level rules"
     )
     release: date | None = None
     boxart: str | None = None
-    defaulttime: str | None = Field(
-        None, pattern="^(realtime|realtime_noloads|ingame)$"
-    )
-    idefaulttime: str | None = Field(
-        None, pattern="^(realtime|realtime_noloads|ingame)$"
-    )
+    defaulttime: TimingMethodType | None = None
+    idefaulttime: TimingMethodType | None = None
     pointsmax: int | None = Field(default=None, ge=1)
     ipointsmax: int | None = Field(default=None, ge=1)
 
