@@ -4,6 +4,7 @@ from django.http import HttpRequest
 from ninja.security import APIKeyHeader, SessionAuth
 from srl.models import Players
 
+from api.csrf import enforce_csrf
 from api.models import RoleAPIKey
 
 
@@ -115,6 +116,7 @@ class PlayerSessionAuth(SessionAuth):
         Returns:
             Players instance if authenticated and claimed, else None.
         """
+        enforce_csrf(request)
         user = super().authenticate(request, token)
         if user is None:
             return None

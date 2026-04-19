@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from api.v1.schemas.base import BaseEmbedSchema, BaseModel
 
@@ -126,6 +126,10 @@ class RunBaseSchema(BaseEmbedSchema):
     )
     place: int = Field(..., ge=0)
     points: int = Field(default=0, ge=0)
+    obsolete: bool = Field(
+        default=False,
+        description="When true, the run is obsolete and points do not count toward the player's total.",
+    )
     subcategory: str | None = Field(
         default=None,
         max_length=100,
@@ -133,6 +137,7 @@ class RunBaseSchema(BaseEmbedSchema):
     )
     times: RunTimesSchema = Field(description="Nested timing data")
     video: str | None = None
+    arch_video: str | None = Field(default=None, description="Archived/mirrored video URL")
     date: datetime | None = None
     v_date: datetime | None = Field(default=None, description="Verification date")
     url: str
@@ -170,6 +175,39 @@ class RunSchema(RunBaseSchema):
             full variable info with ?embed=variables.
         bonus (int): Field that holds the monthly streak bonus, if the run is the world record.
     """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "id": "y8dwozoj",
+                "runtype": "main",
+                "place": 1,
+                "points": 1000,
+                "obsolete": False,
+                "subcategory": "Any% (PC)",
+                "times": {
+                    "time": "12:34.567",
+                    "time_secs": 754.567,
+                    "timenl": None,
+                    "timenl_secs": None,
+                    "timeigt": None,
+                    "timeigt_secs": None,
+                    "p_time": "12:34.567",
+                    "p_time_secs": 754.567,
+                },
+                "video": "https://youtube.com/watch?v=example",
+                "arch_video": "https://archive.thps.run/videos/y8dwozoj.mp4",
+                "date": "2025-08-15T00:00:00Z",
+                "v_date": "2025-08-15T10:30:00Z",
+                "url": "https://speedrun.com/thps4/run/y8dwozoj",
+                "game": "n2680o1p",
+                "category": "rklge08d",
+                "level": None,
+                "players": [{"id": "v8lponvj", "name": "ThePackle", "order": 1}],
+                "variables": {"5lygdn8q": "pc"},
+            },
+        },
+    )
 
     game: str | dict | None = Field(None, description="ID or embedded with ?embed=game")
     category: str | dict | None = Field(
@@ -327,6 +365,8 @@ class RunCreateSchema(BaseEmbedSchema):
     timeigt: str | None = Field(default=None, max_length=25)
     timeigt_secs: float | None = Field(default=None, ge=0)
     video: str | None = None
+    arch_video: str | None = Field(default=None, description="Archived/mirrored video URL")
+    obsolete: bool = Field(default=False, description="Mark the run as obsolete")
     date: datetime | None = None
     v_date: datetime | None = Field(default=None, description="Verification date")
     url: str
@@ -363,6 +403,8 @@ class RunUpdateSchema(BaseEmbedSchema):
     timeigt: str | None = Field(default=None, max_length=25)
     timeigt_secs: float | None = Field(default=None, ge=0)
     video: str | None = None
+    arch_video: str | None = Field(default=None, description="Archived/mirrored video URL")
+    obsolete: bool | None = Field(default=None, description="Mark the run as obsolete")
     date: datetime | None = None
     v_date: datetime | None = Field(default=None, description="Verification date")
     url: str | None = None

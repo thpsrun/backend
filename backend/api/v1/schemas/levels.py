@@ -1,6 +1,6 @@
 from typing import Any
 
-from pydantic import Field, field_validator
+from pydantic import ConfigDict, Field, field_validator
 
 from api.v1.schemas.base import BaseEmbedSchema, SlugMixin
 from api.v1.schemas.variables import VariableWithValuesSchema
@@ -30,6 +30,18 @@ class LevelSchema(LevelBaseSchema):
         variables (List[dict] | None): Level-specific variables - included with ?embed=variables.
         values (List[dict] | None): Variables with values - included with ?embed=values.
     """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "id": "xd1m508k",
+                "name": "Warehouse",
+                "slug": "warehouse",
+                "url": "https://speedrun.com/thps4/warehouse",
+                "rules": "Timing starts on first input and ends on goal complete.",
+            },
+        },
+    )
 
     game: dict | None = Field(None, description="Included with ?embed=game")
     variables: list[dict] | None = Field(

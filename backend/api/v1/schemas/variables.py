@@ -1,6 +1,6 @@
 from typing import Any
 
-from pydantic import Field, field_validator
+from pydantic import ConfigDict, Field, field_validator
 
 from api.v1.schemas.base import BaseEmbedSchema, SlugMixin
 
@@ -16,6 +16,18 @@ class VariableValueSchema(BaseEmbedSchema):
         rules (str | None): Specific rules for this value choice.
         variable (dict | None): Variable this value belongs to - included with ?embed=variable.
     """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "value": "pc",
+                "name": "PC",
+                "slug": "pc",
+                "archive": False,
+                "rules": None,
+            },
+        },
+    )
 
     value: str = Field(..., max_length=15)
     name: str = Field(..., max_length=50)
@@ -71,6 +83,18 @@ class VariableSchema(VariableBaseSchema):
         level (dict | None): Specific level (if scope=single-level) - included with
             ?embed=level.
     """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "id": "5lygdn8q",
+                "name": "Platform",
+                "slug": "platform",
+                "scope": "full-game",
+                "archive": False,
+            },
+        },
+    )
 
     game: dict | None = Field(None, description="Included with ?embed=game")
     category: dict | None = Field(None, description="Included with ?embed=category")

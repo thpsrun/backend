@@ -3,7 +3,6 @@ from ninja import Router, Status
 from ninja.responses import codes_4xx
 
 from api.permissions import public_auth
-from api.v1.docs.nav import NAVBAR_GET
 from api.v1.routers.utils import cache_response, navbar_cache_key
 from api.v1.schemas.base import ErrorResponse
 from api.v1.schemas.nav import NavbarResponse, NavItemSchema, SocialLinkSchema
@@ -71,7 +70,6 @@ def _navbar_cache_key(request: HttpRequest) -> str:
         "are modified in the admin."
     ),
     auth=public_auth,
-    openapi_extra=NAVBAR_GET,
 )
 @cache_response(
     timeout=300,

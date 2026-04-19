@@ -39,6 +39,12 @@ services:
       - no-new-privileges:true
     networks:
       - thpsrun
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
 
   celery:
     container_name: celery

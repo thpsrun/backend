@@ -88,7 +88,13 @@ def upload_profile_bg(
             ProfileBGUploadResponse(profile_bg=player.user.profile_bg.url),
         )
 
-    return Status(500, "There was an issue looking up that user.")
+    return Status(
+        500,
+        ErrorResponse(
+            error="User account not found.",
+            details=None,
+        ),
+    )
 
 
 @router.delete(

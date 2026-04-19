@@ -45,7 +45,7 @@ class SRCSyncTask(models.Model):
     )
     moderator = models.ForeignKey(
         "srl.Players",
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
         null=True,
         related_name="src_sync_tasks",
     )

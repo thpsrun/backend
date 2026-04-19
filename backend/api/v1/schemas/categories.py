@@ -1,6 +1,6 @@
 from typing import Any
 
-from pydantic import Field, field_validator
+from pydantic import ConfigDict, Field, field_validator
 
 from api.v1.schemas.base import BaseEmbedSchema, SlugMixin
 from api.v1.schemas.variables import VariableWithValuesSchema
@@ -42,6 +42,21 @@ class CategorySchema(CategoryBaseSchema):
         variables (List[dict] | None): Category variables - included with ?embed=variables.
         values (List[dict] | None): Variables with values - included with ?embed=values.
     """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "id": "rklge08d",
+                "name": "Any%",
+                "slug": "any",
+                "type": "per-game",
+                "url": "https://speedrun.com/thps4/full_game#Any",
+                "rules": "Rulez.",
+                "players": 1,
+                "archive": False,
+            },
+        },
+    )
 
     game: dict | None = Field(None, description="Included with ?embed=game")
     variables: list[dict] | None = Field(

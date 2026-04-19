@@ -19,7 +19,6 @@ from srl.models import (
 )
 
 from api.permissions import admin_auth, moderator_auth, public_auth
-from api.v1.docs.runs import RUNS_ALL, RUNS_DELETE, RUNS_GET, RUNS_POST, RUNS_PUT
 from api.v1.schemas.base import (
     ErrorResponse,
     RunStatusType,
@@ -129,12 +128,8 @@ def apply_run_embeds(
 
     if "variables" in embed_fields:
         try:
-            run_variables = RunVariableValues.objects.filter(run=run).select_related(
-                "variable", "value"
-            )
-
             variables_data = []
-            for rv in run_variables:
+            for rv in run.runvariablevalues_set.all():
                 if rv.variable and rv.value:
                     variables_data.append(
                         {
@@ -187,24 +182,15 @@ Examples:
 - `/runs/all?game_id=thps4&level_id=alcatraz&embed=player,game` - Alcatraz ILs with embeds
 """,
     auth=public_auth,
-    openapi_extra=RUNS_ALL,
 )
 def get_all_runs(
     request: HttpRequest,
     game_id: Annotated[str | None, Query(description="Filter by game")] = None,
-    category_id: Annotated[
-        str | None, Query(description="Filter by category")
-    ] = None,
+    category_id: Annotated[str | None, Query(description="Filter by category")] = None,
     level_id: Annotated[str | None, Query(description="Filter by level")] = None,
-    player_id: Annotated[
-        str | None, Query(description="Filter by player")
-    ] = None,
-    runtype: Annotated[
-        RunTypeType | None, Query(description="Filter by type")
-    ] = None,
-    place: Annotated[
-        int | None, Query(ge=1, description="Filter by place")
-    ] = None,
+    player_id: Annotated[str | None, Query(description="Filter by player")] = None,
+    runtype: Annotated[RunTypeType | None, Query(description="Filter by type")] = None,
+    place: Annotated[int | None, Query(ge=1, description="Filter by place")] = None,
     status: Annotated[
         RunStatusType | None, Query(description="Filter by status")
     ] = None,
@@ -212,9 +198,7 @@ def get_all_runs(
         str | None,
         Query(description="Search category/level/variable value names"),
     ] = None,
-    embed: Annotated[
-        str | None, Query(description="Comma-separated embeds")
-    ] = None,
+    embed: Annotated[str | None, Query(description="Comma-separated embeds")] = None,
     limit: Annotated[
         int,
         Query(
@@ -223,7 +207,10 @@ def get_all_runs(
             description="Maximum number of returned objects (default 50, less than 100)",
         ),
     ] = 50,
-    offset: Annotated[int, Query(ge=0, description="Offset from 0")] = 0,
+    offset: Annotated[
+        int,
+        Query(ge=0, description="Offset from 0"),
+    ] = 0,
 ) -> Status:
     embed_fields = []
     if embed:
@@ -325,14 +312,11 @@ Examples:
 - `/runs/y8dwozoj?embed=game,category,variables` - Full run details with embeds.
 """,
     auth=public_auth,
-    openapi_extra=RUNS_GET,
 )
 def get_run(
     request: HttpRequest,
     id: str,
-    embed: Annotated[
-        str | None, Query(description="Comma-separated embeds")
-    ] = None,
+    embed: Annotated[str | None, Query(description="Comma-separated embeds")] = None,
 ) -> Status:
     if len(id) > 15:
         return Status(
@@ -446,7 +430,6 @@ Variable Values Format:
 ```
 """,
     auth=moderator_auth,
-    openapi_extra=RUNS_POST,
 )
 def create_run(
     request: HttpRequest,
@@ -650,7 +633,6 @@ Request Body:
     pairs.
 """,
     auth=moderator_auth,
-    openapi_extra=RUNS_PUT,
 )
 def update_run(
     request: HttpRequest,
@@ -734,25 +716,31 @@ def update_run(
                 run.level = None
             del update_data["level_id"]
 
-        if "player_ids" in update_data:
-            RunPlayers.objects.filter(run=run).delete()
-
-            if update_data["player_ids"]:
-                for index, player_id in enumerate(update_data["player_ids"], start=1):
-                    player = Players.objects.filter(id=player_id).first()
-                    if not player:
+        with transaction.atomic():
+            if "player_ids" in update_data:
+                new_ids = update_data["player_ids"]
+                if new_ids:
+                    players_id = {
+                        p.id: p for p in Players.objects.filter(id__in=new_ids)
+                    }
+                    missing = [pid for pid in new_ids if pid not in players_id]
+                    if missing:
                         return Status(
                             400,
                             ErrorResponse(
-                                error=f"Player ID '{player_id}' Doesn't Exist",
+                                error=f"Player ID(s) don't exist: {', '.join(missing)}",
                                 details=None,
                             ),
                         )
-                    RunPlayers.objects.create(run=run, player=player, order=index)
-
-            del update_data["player_ids"]
-
-        with transaction.atomic():
+                RunPlayers.objects.filter(run=run).delete()
+                if new_ids:
+                    RunPlayers.objects.bulk_create(
+                        [
+                            RunPlayers(run=run, player=players_id[pid], order=i)
+                            for i, pid in enumerate(new_ids, start=1)
+                        ]
+                    )
+                del update_data["player_ids"]
             if "variable_values" in update_data:
                 RunVariableValues.objects.filter(run=run).delete()
 
@@ -843,7 +831,6 @@ Supported Parameters:
 - `id` (str): Unique ID of the run being deleted.
 """,
     auth=admin_auth,
-    openapi_extra=RUNS_DELETE,
 )
 def delete_run(
     request: HttpRequest,

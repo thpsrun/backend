@@ -413,6 +413,7 @@ def query_thps4_oldest_runs(
             game_id=game_id,
             obsolete=False,
             vid_status="verified",
+            place=1,
         )
         .exclude(level__slug="zoo-feed-the-hippos")
         .order_by("date")
@@ -792,7 +793,7 @@ def query_wr_history(
             qs = qs.filter(run__runvariablevalues__value__slug=slug)
         qs = qs.distinct()
 
-    qs = qs.order_by("start_date")
+    qs = qs.order_by("run_id", "start_date").distinct("run_id")
 
     seen_run_ids: set[str] = set()
     wr_entries: list[tuple[Any, Runs]] = []

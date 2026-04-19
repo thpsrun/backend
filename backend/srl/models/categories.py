@@ -36,7 +36,7 @@ class Categories(models.Model):
         verbose_name="Category ID",
     )
     game = models.ForeignKey(
-        Games, verbose_name="Linked Game", null=True, on_delete=models.SET_NULL
+        Games, verbose_name="Linked Game", null=True, on_delete=models.PROTECT
     )
     name = models.CharField(
         max_length=50,

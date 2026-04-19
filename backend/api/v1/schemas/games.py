@@ -2,7 +2,7 @@ from datetime import date
 from typing import Any
 
 from django.conf import settings
-from pydantic import Field, field_validator
+from pydantic import ConfigDict, Field, field_validator
 
 from api.v1.schemas.base import BaseEmbedSchema, SlugMixin
 
@@ -59,6 +59,24 @@ class GameSchema(GameBaseSchema):
         levels (List[dict] | None): Individual levels - included with ?embed=levels.
         platforms (List[dict] | None): Supported platforms - included with ?embed=platforms.
     """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "id": "n2680o1p",
+                "name": "Tony Hawk's Pro Skater 4",
+                "slug": "thps4",
+                "twitch": "Tony Hawk's Pro Skater 4",
+                "rules": "Timing starts on first input and ends on final input.",
+                "release": "2002-10-23",
+                "boxart": "https://example.com/boxart.jpg",
+                "defaulttime": "realtime",
+                "idefaulttime": "realtime",
+                "pointsmax": 1000,
+                "ipointsmax": 100,
+            },
+        },
+    )
 
     categories: list[dict] | None = Field(
         None, description="Included with ?embed=categories"

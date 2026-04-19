@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any, Literal, Self
 
 from django.conf import settings
-from pydantic import BaseModel, Field, field_serializer, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
 RunTypeType = Literal["main", "il"]
 RunStatusType = Literal["verified", "new", "rejected"]
@@ -67,10 +67,10 @@ class PaginatedResponse(BaseModel):
 
 
 class BaseEmbedSchema(BaseModel):
-    class Config:
-        from_attributes = True
-        arbitrary_types_allowed = True
-        exclude_none = False
+    model_config = ConfigDict(
+        from_attributes=True,
+        arbitrary_types_allowed=True,
+    )
 
 
 class TimestampMixin(BaseModel):

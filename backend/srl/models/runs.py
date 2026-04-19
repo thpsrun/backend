@@ -41,6 +41,22 @@ class Runs(models.Model):
                 fields=["game", "category", "level", "obsolete"],
                 name="idx_runs_game_cat_level_obs",
             ),
+            models.Index(
+                fields=["vid_status"],
+                name="idx_runs_vid_status",
+            ),
+            models.Index(
+                fields=["obsolete"],
+                name="idx_runs_obsolete",
+            ),
+            models.Index(
+                fields=["date"],
+                name="idx_runs_date",
+            ),
+            models.Index(
+                fields=["vid_status", "obsolete", "place"],
+                name="idx_runs_vstatus_obs_place",
+            ),
         ]
 
     statuschoices = [
@@ -74,14 +90,14 @@ class Runs(models.Model):
         verbose_name="Category",
         blank=True,
         null=True,
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
     )
     level = models.ForeignKey(
         Levels,
         verbose_name="Level",
         blank=True,
         null=True,
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
     )
     variables = models.ManyToManyField(
         Variables,
@@ -168,7 +184,7 @@ class Runs(models.Model):
         verbose_name="Platform",
         blank=True,
         null=True,
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
     )
     emulated = models.BooleanField(
         verbose_name="Emulated?",
@@ -189,7 +205,7 @@ class Runs(models.Model):
         verbose_name="Approver",
         blank=True,
         null=True,
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
         related_name="approved_runs",
     )
     obsolete = models.BooleanField(

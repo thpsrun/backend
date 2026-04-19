@@ -3,6 +3,7 @@ from pathlib import Path
 
 import sentry_sdk
 from celery.schedules import crontab
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -16,6 +17,9 @@ if os.getenv("SENTRY_ENABLED") == "True":
     )
 
 SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    raise ImproperlyConfigured("SECRET_KEY environmental variable is not set...")
+
 SRC_ENCRYPTION_KEY = os.getenv("SRC_ENCRYPTION_KEY")
 
 ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "").split(",")
@@ -102,7 +106,10 @@ else:
     APPEND_SLASH = True
     MIDDLEWARE.insert(1, "whitenoise.middleware.WhiteNoiseMiddleware")
 
-    CSRF_TRUSTED_ORIGINS = [os.getenv("FRONTEND_URL", "")]
+    CSRF_TRUSTED_ORIGINS = [os.getenv("FRONTEND_URL", False)]
+    if not CSRF_TRUSTED_ORIGINS:
+        raise ImproperlyConfigured("FRONTEND_URL environmental variable is not set...")
+
     CSRF_COOKIE_SECURE = True
     SESSION_COOKIE_SECURE = True
     SESSION_COOKIE_HTTPONLY = True

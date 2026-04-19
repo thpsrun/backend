@@ -7,7 +7,6 @@ from ninja.responses import codes_4xx
 from srl.models import Categories, Games, Levels
 
 from api.permissions import public_auth
-from api.v1.docs.history import HISTORY_FG_GET, HISTORY_IL_GET
 from api.v1.routers.utils import (
     check_cache_query,
     history_cache_key,
@@ -79,7 +78,6 @@ Examples:
 - `/history/thug1/category/any?values=beginner` - Any% Beginner
 """,
     auth=public_auth,
-    openapi_extra=HISTORY_FG_GET,
 )
 def get_fg_wr_history(
     request: HttpRequest,
@@ -180,7 +178,6 @@ Examples:
 - `/history/thps1/level/warehouse/agg?values=console,igt`
 """,
     auth=public_auth,
-    openapi_extra=HISTORY_IL_GET,
 )
 def get_il_wr_history(
     request: HttpRequest,

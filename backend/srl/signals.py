@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 
+from django.db.models import Q
 from django.db.models.signals import m2m_changed, post_save
 from django.dispatch import receiver
 
@@ -83,8 +84,9 @@ def set_joined_on_run_verified(
     if run_date is None:
         return
 
-    for player in instance.players.all():
-        _update_player_joined(player, run_date)
+    Players.objects.filter(
+        pk__in=instance.players.values_list("pk", flat=True),
+    ).filter(Q(joined__isnull=True) | Q(joined__gt=run_date),).update(joined=run_date)
 
 
 @receiver(

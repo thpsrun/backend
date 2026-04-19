@@ -9,13 +9,6 @@ from ninja.responses import codes_4xx
 from srl.models.games import Games
 
 from api.permissions import admin_auth, moderator_auth, public_auth
-from api.v1.docs.guides import (
-    GUIDES_ALL,
-    GUIDES_DELETE,
-    GUIDES_GET,
-    GUIDES_POST,
-    GUIDES_PUT,
-)
 from api.v1.schemas.base import ErrorResponse, validate_embeds
 from api.v1.schemas.games import GameSchema
 from api.v1.schemas.guides import (
@@ -46,7 +39,6 @@ Supported Embeds:
 - `tags`: Include metadata of the tags belonging to this guide.
 """,
     auth=public_auth,
-    openapi_extra=GUIDES_ALL,
 )
 def list_guides(
     request: HttpRequest,
@@ -114,7 +106,6 @@ Supported Embeds:
 - `tags`: Include metadata of the tags belonging to this guide.
 """,
     auth=public_auth,
-    openapi_extra=GUIDES_GET,
 )
 def get_guide(
     request: HttpRequest,
@@ -166,7 +157,6 @@ Request Body:
 - `content` (str): Full guide content (markdown supported).
 """,
     auth=moderator_auth,
-    openapi_extra=GUIDES_POST,
 )
 def create_guide(
     request: HttpRequest,
@@ -241,7 +231,6 @@ Request Body:
 - `content` (str | None): Full guide content (markdown supported).
 """,
     auth=moderator_auth,
-    openapi_extra=GUIDES_PUT,
 )
 def update_guide(
     request: HttpRequest,
@@ -333,7 +322,6 @@ Supported Parameters:
 - `slug` (str): Simplified, URL friendly name of the guide.
 """,
     auth=admin_auth,
-    openapi_extra=GUIDES_DELETE,
 )
 def delete_guide(
     request: HttpRequest,

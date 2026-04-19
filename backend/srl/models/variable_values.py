@@ -13,7 +13,7 @@ class VariableValues(models.Model):
         Variables,
         verbose_name="Linked Variable",
         null=True,
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
     )
     name = models.CharField(
         max_length=50,
@@ -69,4 +69,6 @@ class VariableValues(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.var.game.name}: {self.var.name} - {self.name}"  # type: ignore
+        if self.var and self.var.game:
+            return f"{self.var.game.name}: {self.var.name} - {self.name}"
+        return f"(orphaned runff) - {self.name}"

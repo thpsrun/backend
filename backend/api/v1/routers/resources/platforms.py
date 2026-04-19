@@ -7,13 +7,6 @@ from ninja.responses import codes_4xx
 from srl.models import Platforms
 
 from api.permissions import admin_auth, moderator_auth, public_auth
-from api.v1.docs.platforms import (
-    PLATFORMS_ALL,
-    PLATFORMS_DELETE,
-    PLATFORMS_GET,
-    PLATFORMS_POST,
-    PLATFORMS_PUT,
-)
 from api.v1.schemas.base import ErrorResponse
 from api.v1.schemas.platforms import (
     PlatformCreateSchema,
@@ -42,7 +35,6 @@ Examples:
 - `/platforms/all?limit=10&offset=10` - Get platforms 11-20
 """,
     auth=public_auth,
-    openapi_extra=PLATFORMS_ALL,
 )
 def get_all_platforms(
     request: HttpRequest,
@@ -81,7 +73,6 @@ Examples:
 - `/platforms/pc` - Get platform by slug
 """,
     auth=public_auth,
-    openapi_extra=PLATFORMS_GET,
 )
 def get_platform(
     request: HttpRequest,
@@ -127,7 +118,6 @@ Request Body:
 - `slug` (str): URL-friendly version (e.g., "playstation-2").
 """,
     auth=moderator_auth,
-    openapi_extra=PLATFORMS_POST,
 )
 def create_platform(
     request: HttpRequest,
@@ -174,7 +164,6 @@ Request Body:
 - `slug` (str | None): URL-friendly version (e.g., "playstation-2").
 """,
     auth=moderator_auth,
-    openapi_extra=PLATFORMS_PUT,
 )
 def update_platform(
     request: HttpRequest,
@@ -216,7 +205,6 @@ Supported Parameters:
 - `id (str): Unique ID (usually based on SRC) of the platform being deleted.
 """,
     auth=admin_auth,
-    openapi_extra=PLATFORMS_DELETE,
 )
 def delete_platform(
     request: HttpRequest,

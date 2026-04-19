@@ -7,7 +7,6 @@ from ninja.responses import codes_4xx
 from srl.models import CountryCodes, Players, Runs
 
 from api.permissions import admin_auth, moderator_auth, public_auth
-from api.v1.docs.players import PLAYERS_DELETE, PLAYERS_GET, PLAYERS_POST, PLAYERS_PUT
 from api.v1.schemas.base import ErrorResponse, validate_embeds
 from api.v1.schemas.players import (
     AwardSchema,
@@ -229,7 +228,6 @@ Examples:
 - `/players/v8lponvj?embed=country,stats,awards,profile` - Get player with stats and profile.
 """,
     auth=public_auth,
-    openapi_extra=PLAYERS_GET,
 )
 def get_player(
     request: HttpRequest,
@@ -383,7 +381,6 @@ Request Body:
 - `socials` (object): Social links (twitch, youtube, twitter, bluesky, discord).
 """,
     auth=moderator_auth,
-    openapi_extra=PLAYERS_POST,
 )
 def create_player(
     request: HttpRequest,
@@ -495,7 +492,6 @@ Request Body:
     discord).
 """,
     auth=moderator_auth,
-    openapi_extra=PLAYERS_PUT,
 )
 def update_player(
     request: HttpRequest,
@@ -610,7 +606,6 @@ Supported Parameters:
 - `id` (str): Unique ID of the player being deleted.
 """,
     auth=admin_auth,
-    openapi_extra=PLAYERS_DELETE,
 )
 def delete_player(
     request: HttpRequest,

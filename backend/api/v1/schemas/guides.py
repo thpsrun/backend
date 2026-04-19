@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 from api.v1.schemas.base import BaseEmbedSchema, SlugMixin, TimestampMixin
 from api.v1.schemas.games import GameSchema
@@ -31,6 +31,22 @@ class GuideSchema(SlugMixin, TimestampMixin, BaseEmbedSchema):
         game (GameSchema | None): Associated game - included with ?embed=game.
         tags (list[TagSchema] | None): Associated tags - included with ?embed=tags.
     """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "name": "Getting Started with THPS4 Speedruns",
+                "slug": "getting-started",
+                "title": "Getting Started with THPS4 Speedruns",
+                "short_description": "A beginner's guide to speedrunning THPS4.",
+                "content": "# Intro\n\nWelcome to THPS4 speedruns...",
+                "created_at": "2025-01-15T12:00:00Z",
+                "updated_at": "2025-01-20T09:30:00Z",
+                "game": None,
+                "tags": None,
+            },
+        },
+    )
 
     title: str
     short_description: str

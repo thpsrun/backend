@@ -7,13 +7,6 @@ from ninja.responses import codes_4xx
 from srl.models import Categories, Games, Variables, VariableValues
 
 from api.permissions import admin_auth, moderator_auth, public_auth
-from api.v1.docs.categories import (
-    CATEGORIES_ALL,
-    CATEGORIES_DELETE,
-    CATEGORIES_GET,
-    CATEGORIES_POST,
-    CATEGORIES_PUT,
-)
 from api.v1.schemas.base import CategoryTypeType, ErrorResponse, validate_embeds
 from api.v1.schemas.categories import (
     CategoryCreateSchema,
@@ -156,7 +149,6 @@ Examples:
 - `/categories/all?game=thps4&embed=variables` - Get THPS4 categories with variables.
 """,
     auth=public_auth,
-    openapi_extra=CATEGORIES_ALL,
 )
 def get_all_categories(
     request: HttpRequest,
@@ -272,7 +264,6 @@ Examples:
 - `/categories/rklge08d?embed=variables,values` - Get category with variables and values.
 """,
     auth=public_auth,
-    openapi_extra=CATEGORIES_GET,
 )
 def get_category(
     request: HttpRequest,
@@ -364,7 +355,6 @@ Request Body:
 - `values` (list[dict]): Associated values to the category.
 """,
     auth=moderator_auth,
-    openapi_extra=CATEGORIES_POST,
 )
 def create_category(
     request: HttpRequest,
@@ -435,7 +425,6 @@ Request Body:
 - `values` (list[dict] | None): Associated values to the category.
 """,
     auth=moderator_auth,
-    openapi_extra=CATEGORIES_PUT,
 )
 def update_category(
     request: HttpRequest,
@@ -501,7 +490,6 @@ Supported Parameters:
 - `id` (str): Unique ID of the category being deleted.
 """,
     auth=admin_auth,
-    openapi_extra=CATEGORIES_DELETE,
 )
 def delete_category(
     request: HttpRequest,

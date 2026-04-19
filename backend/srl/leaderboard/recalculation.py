@@ -1,7 +1,8 @@
 from django.conf import settings
-from django.db.models import F, QuerySet
+from django.db.models import F, Prefetch, QuerySet
 from django.db.models.functions import Coalesce
-from srl.models import Games, RunHistory, Runs
+
+from srl.models import Games, Players, RunHistory, Runs
 from srl.models.run_history import RunHistoryEndReason
 from srl.srcom.utils import filter_by_variable_map
 from srl.utils import calculate_bonus, points_formula, runs_share_player
@@ -82,7 +83,11 @@ def process_leaderboard(
     game_is_ce: dict[str, bool],
     game_time_columns: dict[str, dict[str, str]],
 ) -> tuple[int, int, int]:
-    runs = list(get_runs_for_leaderboard(leaderboard).prefetch_related("players"))
+    runs = list(
+        get_runs_for_leaderboard(leaderboard).prefetch_related(
+            Prefetch("players", queryset=Players.objects.only("id"))
+        ),
+    )
     if not runs:
         return 0, 0, 0
 

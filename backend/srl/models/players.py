@@ -48,7 +48,7 @@ class Players(models.Model):
         verbose_name="Country Code",
         blank=True,
         null=True,
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
     )
     pfp = models.CharField(
         max_length=100,
@@ -107,7 +107,7 @@ class Players(models.Model):
     )
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
         null=True,
         blank=True,
         related_name="player",

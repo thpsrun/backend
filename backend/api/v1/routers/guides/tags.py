@@ -6,7 +6,6 @@ from ninja import Router, Status
 from ninja.responses import codes_4xx
 
 from api.permissions import contributor_auth, public_auth
-from api.v1.docs.tags import TAGS_ALL, TAGS_DELETE, TAGS_GET, TAGS_POST, TAGS_PUT
 from api.v1.schemas.base import ErrorResponse
 from api.v1.schemas.guides import (
     TagCreateSchema,
@@ -29,7 +28,6 @@ Examples:
 - `/tags/all` - Get all tags
 """,
     auth=public_auth,
-    openapi_extra=TAGS_ALL,
 )
 def list_tags(
     request: HttpRequest,
@@ -53,7 +51,6 @@ Examples:
 - `/tags/glitches` - Get the "Glitches" tag
 """,
     auth=public_auth,
-    openapi_extra=TAGS_GET,
 )
 def get_tag(
     request: HttpRequest,
@@ -83,7 +80,6 @@ Request Body:
 - `description` (str): Description of what this tag represents
 """,
     auth=contributor_auth,
-    openapi_extra=TAGS_POST,
 )
 def create_tag(
     request: HttpRequest,
@@ -127,7 +123,6 @@ Request Body:
 - `description` (str | None): Updated tag description
 """,
     auth=contributor_auth,
-    openapi_extra=TAGS_PUT,
 )
 def update_tag(
     request: HttpRequest,
@@ -185,7 +180,6 @@ Supported Parameters:
 - `slug` (str): Unique ID or the slug of the tag to remove.
 """,
     auth=contributor_auth,
-    openapi_extra=TAGS_DELETE,
 )
 def delete_tag(
     request: HttpRequest,

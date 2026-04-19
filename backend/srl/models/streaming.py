@@ -19,7 +19,7 @@ class NowStreaming(models.Model):
         Games,
         verbose_name="Game",
         null=True,
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
     )
     title = models.CharField(
         max_length=100,

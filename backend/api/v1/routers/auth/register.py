@@ -10,6 +10,7 @@ from ninja.responses import codes_4xx
 from srl.encryption import encrypt_src_key
 from srl.models import Players, RunPlayers
 
+from api.csrf import enforce_csrf
 from api.rate_limiting import auth_rate_limit
 from api.v1.schemas.auth import RegisterRequest, RegisterResponse
 from api.v1.schemas.base import ErrorResponse
@@ -35,6 +36,8 @@ def register(
     request: HttpRequest,
     body: RegisterRequest,
 ) -> Status:
+    enforce_csrf(request)
+
     try:
         src_response = http_requests.get(
             "https://www.speedrun.com/api/v1/profile",

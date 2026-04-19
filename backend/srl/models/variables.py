@@ -46,14 +46,14 @@ class Variables(models.Model):
         Games,
         verbose_name="Linked Game",
         null=True,
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
     )
     cat = models.ForeignKey(
         Categories,
         verbose_name="Category",
         null=True,
         blank=True,
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
         help_text=(
             'If not set, the variable  is seen as a "global" variable for the scope you choose '
             'below. For example: a "global" variable set for "Only IL Runs" will make it a GLOBAL '
@@ -69,7 +69,7 @@ class Variables(models.Model):
         verbose_name="Associated Level",
         null=True,
         blank=True,
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
         help_text=(
             'If "scope" is set to "single-level", then a level must be associated. Otherwise, '
             "keep null."

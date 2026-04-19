@@ -5,7 +5,6 @@ from ninja import Query, Router, Status
 from ninja.responses import codes_4xx
 
 from api.permissions import public_auth
-from api.v1.docs.website import MAIN_PAGE_GET
 from api.v1.routers.utils import get_cached_embed
 from api.v1.schemas.base import ErrorResponse
 
@@ -34,7 +33,6 @@ Examples:
 - `/website/main?embed=latest-wrs,latest-pbs,records,stats` - All data
 """,
     auth=public_auth,
-    openapi_extra=MAIN_PAGE_GET,
 )
 def get_main_page_data(
     request: HttpRequest,

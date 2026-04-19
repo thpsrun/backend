@@ -47,6 +47,14 @@ class RunHistory(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
+    constraints = [
+        models.UniqueConstraint(
+            fields=["run"],
+            condition=models.Q(end_date__isnull=True),
+            name="unique_open_runhistory_per_run",
+        ),
+    ]
+
     def __str__(
         self,
     ) -> str:

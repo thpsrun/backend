@@ -7,17 +7,6 @@ from ninja.responses import codes_4xx
 from srl.models import Categories, Games, Levels, Variables, VariableValues
 
 from api.permissions import admin_auth, moderator_auth, public_auth
-from api.v1.docs.variables import (
-    VALUES_ALL,
-    VALUES_DELETE,
-    VALUES_GET,
-    VALUES_POST,
-    VALUES_PUT,
-    VARIABLES_DELETE,
-    VARIABLES_GET,
-    VARIABLES_POST,
-    VARIABLES_PUT,
-)
 from api.v1.schemas.base import ErrorResponse, VariableScopeType
 from api.v1.schemas.variables import (
     VariableCreateSchema,
@@ -238,7 +227,6 @@ Examples:
 - `/variables/values/all?variable_id=5lygdn8q&embed=variable` - With embeds
 """,
     auth=public_auth,
-    openapi_extra=VALUES_ALL,
 )
 def get_all_values(
     request: HttpRequest,
@@ -324,7 +312,6 @@ Request Body:
 - `rules` (str | None): Rules specific to this value choice.
 """,
     auth=moderator_auth,
-    openapi_extra=VALUES_POST,
 )
 def create_value(
     request: HttpRequest,
@@ -384,7 +371,6 @@ Examples:
 - `/variables/values/pc?embed=variable` - Get value with variable data
 """,
     auth=public_auth,
-    openapi_extra=VALUES_GET,
 )
 def get_value(
     request: HttpRequest,
@@ -458,7 +444,6 @@ Request Body:
 - `rules` (str | None): Updated rules.
 """,
     auth=moderator_auth,
-    openapi_extra=VALUES_PUT,
 )
 def update_value(
     request: HttpRequest,
@@ -514,7 +499,6 @@ Supported Parameters:
 - `value_id` (str): Unique ID of the value being deleted.
 """,
     auth=admin_auth,
-    openapi_extra=VALUES_DELETE,
 )
 def delete_value(
     request: HttpRequest,
@@ -561,7 +545,6 @@ Examples:
 - `/variables/5lygdn8q?embed=game,category,level` - Get variable with all embeds
 """,
     auth=public_auth,
-    openapi_extra=VARIABLES_GET,
 )
 def get_variable(
     request: HttpRequest,
@@ -651,7 +634,6 @@ Request Body:
 - `level_id` (str | None): Specific level ID (required if scope is `single-level`).
 """,
     auth=moderator_auth,
-    openapi_extra=VARIABLES_POST,
 )
 def create_variable(
     request: HttpRequest,
@@ -742,7 +724,6 @@ Request Body:
 - `level_id` (str | None): Updated level ID.
 """,
     auth=moderator_auth,
-    openapi_extra=VARIABLES_PUT,
 )
 def update_variable(
     request: HttpRequest,
@@ -834,7 +815,6 @@ Supported Parameters:
 - `id` (str): Unique ID of the variable being deleted.
 """,
     auth=admin_auth,
-    openapi_extra=VARIABLES_DELETE,
 )
 def delete_variable(
     request: HttpRequest,

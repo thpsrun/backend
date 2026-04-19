@@ -7,7 +7,6 @@ from ninja.responses import codes_4xx
 from srl.models import Categories, Games, Levels, Variables, VariableValues
 
 from api.permissions import admin_auth, moderator_auth, public_auth
-from api.v1.docs.games import GAMES_ALL, GAMES_DELETE, GAMES_GET, GAMES_POST, GAMES_PUT
 from api.v1.schemas.base import ErrorResponse, validate_embeds
 from api.v1.schemas.games import GameCreateSchema, GameSchema, GameUpdateSchema
 from api.v1.utils import get_or_generate_id
@@ -228,7 +227,6 @@ Examples:
 - `/games/all?embed=categories,platforms` - Get games with categories and platforms.
 """,
     auth=public_auth,
-    openapi_extra=GAMES_ALL,
 )
 def get_all_games(
     request: HttpRequest,
@@ -308,7 +306,6 @@ Examples:
 - `/games/thps4?embed=categories,levels` - Get game with categories and levels
 """,
     auth=public_auth,
-    openapi_extra=GAMES_GET,
 )
 def get_game(
     request: HttpRequest,
@@ -396,7 +393,6 @@ Request Body:
 - `ipointsmax` (int): Maximum points for world record individual level runs.
 """,
     auth=moderator_auth,
-    openapi_extra=GAMES_POST,
 )
 def create_game(
     request: HttpRequest,
@@ -467,7 +463,6 @@ Request Body:
 - `ipointsmax` (int | None): Maximum points for world record individual level runs.
 """,
     auth=moderator_auth,
-    openapi_extra=GAMES_PUT,
 )
 def update_game(
     request: HttpRequest,
@@ -513,7 +508,6 @@ Supported Parameters:
 - id (str): Unique ID or slug of the specified game
 """,
     auth=admin_auth,
-    openapi_extra=GAMES_DELETE,
 )
 def delete_game(
     request: HttpRequest,

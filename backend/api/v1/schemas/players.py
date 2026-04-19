@@ -1,7 +1,7 @@
 from datetime import date
 from typing import Any
 
-from pydantic import Field, field_validator
+from pydantic import ConfigDict, Field, field_validator
 
 from api.v1.schemas.base import BaseEmbedSchema
 
@@ -169,6 +169,49 @@ class PlayerModerationEmbed(BaseEmbedSchema):
 
 
 class PlayerResponse(BaseEmbedSchema):
+    model_config = ConfigDict(
+        from_attributes=True,
+        arbitrary_types_allowed=True,
+        json_schema_extra={
+            "example": {
+                "id": "v8lponvj",
+                "url": "https://speedrun.com/user/ThePackle",
+                "joined": "2015-06-22",
+                "player": {
+                    "name": "ThePackle",
+                    "nickname": None,
+                    "pronouns": "he/him",
+                    "country": {"id": "us", "name": "United States", "flag": None},
+                    "pfp": None,
+                    "ex_stream": False,
+                },
+                "socials": {
+                    "twitch": "https://twitch.tv/thepackle",
+                    "youtube": "https://youtube.com/thepackle",
+                    "twitter": None,
+                    "bluesky": None,
+                    "discord": None,
+                    "therun_gg": None,
+                },
+                "customizations": {
+                    "gradient_1": "#ff0000",
+                    "gradient_2": "#00ff00",
+                    "gradient_3": "#0000ff",
+                    "tagline": "Skate or die",
+                    "profile_bg": None,
+                },
+                "stats": {
+                    "total_runs": 42,
+                    "fg_points": 15000.0,
+                    "il_points": 3200.0,
+                    "awards": [],
+                },
+                "runs": {"recent": [], "fg": [], "il": []},
+                "moderation": {"moderated_games": []},
+            },
+        },
+    )
+
     id: str = Field(..., max_length=15)
     url: str
     joined: date | None = Field(

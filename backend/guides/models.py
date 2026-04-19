@@ -59,7 +59,7 @@ class Guides(models.Model):
     )
     game = models.ForeignKey(
         Games,
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         verbose_name="Associated Game",
     )
     short_description = models.TextField(

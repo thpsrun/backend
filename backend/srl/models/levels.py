@@ -18,7 +18,7 @@ class Levels(models.Model):
         Games,
         verbose_name="Linked Game",
         null=True,
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
     )
     name = models.CharField(
         max_length=75,

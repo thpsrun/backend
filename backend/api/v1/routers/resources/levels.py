@@ -6,13 +6,6 @@ from ninja.responses import codes_4xx
 from srl.models import Games, Levels, Variables, VariableValues
 
 from api.permissions import admin_auth, moderator_auth, public_auth
-from api.v1.docs.levels import (
-    LEVELS_ALL,
-    LEVELS_DELETE,
-    LEVELS_GET,
-    LEVELS_POST,
-    LEVELS_PUT,
-)
 from api.v1.schemas.base import ErrorResponse, validate_embeds
 from api.v1.schemas.levels import LevelCreateSchema, LevelSchema, LevelUpdateSchema
 from api.v1.utils import get_or_generate_id
@@ -143,7 +136,6 @@ Examples:
 - `/levels/all?limit=10&offset=20` - Get levels 21-30 from the overall list.
 """,
     auth=public_auth,
-    openapi_extra=LEVELS_ALL,
 )
 def get_all_levels(
     request: HttpRequest,
@@ -255,7 +247,6 @@ Examples:
 - `/levels/592pxj8d?embed=variables,values` - Get level with variables and values
 """,
     auth=public_auth,
-    openapi_extra=LEVELS_GET,
 )
 def get_level(
     request: HttpRequest,
@@ -348,7 +339,6 @@ Request Body:
 - `values` (List[dict]): Associated values to the category.
 """,
     auth=moderator_auth,
-    openapi_extra=LEVELS_POST,
 )
 def create_level(
     request: HttpRequest,
@@ -419,7 +409,6 @@ Request Body:
 - `values` (list[dict]): Associated values to the category.
 """,
     auth=moderator_auth,
-    openapi_extra=LEVELS_PUT,
 )
 def update_level(
     request: HttpRequest,
@@ -486,7 +475,6 @@ Supported Parameters:
 - `id` (str): Unique ID of the level being deleted.
 """,
     auth=admin_auth,
-    openapi_extra=LEVELS_DELETE,
 )
 def delete_level(
     request: HttpRequest,

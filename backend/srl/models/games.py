@@ -29,6 +29,7 @@ class Games(models.Model):
     slug = models.SlugField(
         max_length=20,
         verbose_name="Abbreviation/Slug",
+        unique=True,
     )
     twitch = models.CharField(
         max_length=55,
