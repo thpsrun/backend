@@ -20,7 +20,9 @@ class CategoryBaseSchema(SlugMixin, BaseEmbedSchema):
         archive (bool): Whether category is hidden from listings.
     """
 
-    id: str
+    id: str = Field(..., max_length=10)
+    name: str = Field(..., max_length=50)
+    slug: str = Field(..., max_length=50, description="URL-friendly slug")
     type: str = Field(..., pattern="^(per-level|per-game)$")
     url: str
     rules: str | None = Field(default=None, max_length=5000)
@@ -101,8 +103,10 @@ class CategoryCreateSchema(SlugMixin, BaseEmbedSchema):
     """
 
     id: str | None = Field(
-        default=None, max_length=12, description="Auto-generates if omitted"
+        default=None, max_length=10, description="Auto-generates if omitted"
     )
+    name: str = Field(..., max_length=50)
+    slug: str = Field(..., max_length=50, description="URL-friendly slug")
     game_id: str
     type: str = Field(..., pattern="^(per-level|per-game)$")
     url: str

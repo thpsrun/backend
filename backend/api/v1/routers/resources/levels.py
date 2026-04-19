@@ -6,7 +6,8 @@ from ninja.responses import codes_4xx
 from srl.models import Games, Levels, Variables, VariableValues
 
 from api.permissions import admin_auth, moderator_auth, public_auth
-from api.v1.schemas.base import ErrorResponse, validate_embeds
+from api.v1.routers.utils.embeds import parse_embeds, serialize_game_embed
+from api.v1.schemas.base import ErrorResponse
 from api.v1.schemas.levels import LevelCreateSchema, LevelSchema, LevelUpdateSchema
 from api.v1.utils import get_or_generate_id
 
@@ -43,18 +44,7 @@ def apply_level_embeds(
 
     if "game" in embed_fields:
         if level.game:
-            embeds["game"] = {
-                "id": level.game.id,
-                "name": level.game.name,
-                "slug": level.game.slug,
-                "release": level.game.release.isoformat(),
-                "boxart": level.game.boxart,
-                "twitch": level.game.twitch,
-                "defaulttime": level.game.defaulttime,
-                "idefaulttime": level.game.idefaulttime,
-                "pointsmax": level.game.pointsmax,
-                "ipointsmax": level.game.ipointsmax,
-            }
+            embeds["game"] = serialize_game_embed(level.game)
 
     if "variables" in embed_fields or "values" in embed_fields:
         if all_variables is not None:
@@ -139,12 +129,8 @@ Examples:
 )
 def get_all_levels(
     request: HttpRequest,
-    game_id: Annotated[
-        str | None, Query(description="Filter by game ID")
-    ] = None,
-    embed: Annotated[
-        str | None, Query(description="Comma-separated embeds")
-    ] = None,
+    game_id: Annotated[str | None, Query(description="Filter by game ID")] = None,
+    embed: Annotated[str | None, Query(description="Comma-separated embeds")] = None,
     limit: Annotated[
         int,
         Query(
@@ -155,21 +141,7 @@ def get_all_levels(
     ] = 50,
     offset: Annotated[int, Query(ge=0, description="Offset from 0")] = 0,
 ) -> Status:
-    # Checks to see what embeds are being used versus what is allowed
-    # via this endpoint. It will return an error to the client if they
-    # have an embed type not supported.
-    embed_fields = []
-    if embed:
-        embed_fields = [field.strip() for field in embed.split(",") if field.strip()]
-        invalid_embeds = validate_embeds("levels", embed_fields)
-        if invalid_embeds:
-            return Status(
-                400,
-                ErrorResponse(
-                    error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
-                    details=None,
-                ),
-            )
+    embed_fields = parse_embeds(embed, "levels")
 
     try:
         queryset = Levels.objects.select_related("game").order_by("name")
@@ -251,9 +223,7 @@ Examples:
 def get_level(
     request: HttpRequest,
     id: str,
-    embed: Annotated[
-        str | None, Query(description="Comma-separated embeds")
-    ] = None,
+    embed: Annotated[str | None, Query(description="Comma-separated embeds")] = None,
 ) -> Status:
     if len(id) > 15:
         return Status(
@@ -264,21 +234,7 @@ def get_level(
             ),
         )
 
-    # Checks to see what embeds are being used versus what is allowed
-    # via this endpoint. It will return an error to the client if they
-    # have an embed type not supported.
-    embed_fields = []
-    if embed:
-        embed_fields = [field.strip() for field in embed.split(",") if field.strip()]
-        invalid_embeds = validate_embeds("levels", embed_fields)
-        if invalid_embeds:
-            return Status(
-                400,
-                ErrorResponse(
-                    error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
-                    details={"valid_embeds": ["game", "variables", "values"]},
-                ),
-            )
+    embed_fields = parse_embeds(embed, "levels")
 
     try:
         level = (

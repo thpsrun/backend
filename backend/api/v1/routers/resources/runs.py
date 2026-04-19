@@ -10,6 +10,7 @@ from srl.models import (
     Categories,
     Games,
     Levels,
+    Platforms,
     Players,
     RunPlayers,
     Runs,
@@ -19,12 +20,13 @@ from srl.models import (
 )
 
 from api.permissions import admin_auth, moderator_auth, public_auth
-from api.v1.schemas.base import (
-    ErrorResponse,
-    RunStatusType,
-    RunTypeType,
-    validate_embeds,
+from api.v1.routers.utils.embeds import (
+    parse_embeds,
+    serialize_category_embed,
+    serialize_game_embed,
+    serialize_level_embed,
 )
+from api.v1.schemas.base import ErrorResponse, RunStatusType, RunTypeType
 from api.v1.schemas.runs import RunCreateSchema, RunSchema, RunUpdateSchema
 from api.v1.utils import get_or_generate_id
 
@@ -92,39 +94,13 @@ def apply_run_embeds(
     embeds = {}
 
     if "game" in embed_fields and run.game:
-        embeds["game"] = {
-            "id": run.game.id,
-            "name": run.game.name,
-            "slug": run.game.slug,
-            "release": run.game.release.isoformat(),
-            "boxart": run.game.boxart,
-            "twitch": run.game.twitch,
-            "defaulttime": run.game.defaulttime,
-            "idefaulttime": run.game.idefaulttime,
-            "pointsmax": run.game.pointsmax,
-            "ipointsmax": run.game.ipointsmax,
-        }
+        embeds["game"] = serialize_game_embed(run.game)
 
     if "category" in embed_fields and run.category:
-        embeds["category"] = {
-            "id": run.category.id,
-            "name": run.category.name,
-            "slug": run.category.slug,
-            "type": run.category.type,
-            "url": run.category.url,
-            "rules": run.category.rules,
-            "appear_on_main": run.category.appear_on_main,
-            "archive": run.category.archive,
-        }
+        embeds["category"] = serialize_category_embed(run.category)
 
     if "level" in embed_fields and run.level:
-        embeds["level"] = {
-            "id": run.level.id,
-            "name": run.level.name,
-            "slug": run.level.slug,
-            "url": run.level.url,
-            "rules": run.level.rules,
-        }
+        embeds["level"] = serialize_level_embed(run.level)
 
     if "variables" in embed_fields:
         try:
@@ -212,18 +188,7 @@ def get_all_runs(
         Query(ge=0, description="Offset from 0"),
     ] = 0,
 ) -> Status:
-    embed_fields = []
-    if embed:
-        embed_fields = [field.strip() for field in embed.split(",") if field.strip()]
-        invalid_embeds = validate_embeds("runs", embed_fields)
-        if invalid_embeds:
-            return Status(
-                400,
-                ErrorResponse(
-                    error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
-                    details=None,
-                ),
-            )
+    embed_fields = parse_embeds(embed, "runs")
 
     try:
         queryset = (
@@ -327,25 +292,7 @@ def get_run(
             ),
         )
 
-    embed_fields = []
-    if embed:
-        embed_fields = [field.strip() for field in embed.split(",") if field.strip()]
-        invalid_embeds = validate_embeds("runs", embed_fields)
-        if invalid_embeds:
-            return Status(
-                400,
-                ErrorResponse(
-                    error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
-                    details={
-                        "valid_embeds": [
-                            "game",
-                            "category",
-                            "level",
-                            "variables",
-                        ]
-                    },
-                ),
-            )
+    embed_fields = parse_embeds(embed, "runs")
 
     try:
         run = (
@@ -522,11 +469,37 @@ def create_run(
                 ),
             )
 
+        platform = None
+        if run_data.platform_id:
+            platform = Platforms.objects.filter(id=run_data.platform_id).first()
+            if not platform:
+                return Status(
+                    400,
+                    ErrorResponse(
+                        error="Platform does not exist",
+                        details=None,
+                    ),
+                )
+
+        approver = None
+        if run_data.approver_id:
+            approver = Players.objects.filter(id=run_data.approver_id).first()
+            if not approver:
+                return Status(
+                    400,
+                    ErrorResponse(
+                        error="Approver does not exist",
+                        details=None,
+                    ),
+                )
+
         create_data = run_data.model_dump(
             exclude={
                 "game_id",
                 "category_id",
                 "level_id",
+                "platform_id",
+                "approver_id",
                 "player_ids",
                 "variable_values",
             }
@@ -538,6 +511,8 @@ def create_run(
                 game=game,
                 category=category,
                 level=level,
+                platform=platform,
+                approver=approver,
                 **create_data,
             )
 
@@ -715,6 +690,42 @@ def update_run(
             else:
                 run.level = None
             del update_data["level_id"]
+
+        if "platform_id" in update_data:
+            if update_data["platform_id"]:
+                platform = Platforms.objects.filter(
+                    id=update_data["platform_id"],
+                ).first()
+                if not platform:
+                    return Status(
+                        400,
+                        ErrorResponse(
+                            error="Platform does not exist",
+                            details=None,
+                        ),
+                    )
+                run.platform = platform
+            else:
+                run.platform = None
+            del update_data["platform_id"]
+
+        if "approver_id" in update_data:
+            if update_data["approver_id"]:
+                approver = Players.objects.filter(
+                    id=update_data["approver_id"],
+                ).first()
+                if not approver:
+                    return Status(
+                        400,
+                        ErrorResponse(
+                            error="Approver does not exist",
+                            details=None,
+                        ),
+                    )
+                run.approver = approver
+            else:
+                run.approver = None
+            del update_data["approver_id"]
 
         with transaction.atomic():
             if "player_ids" in update_data:

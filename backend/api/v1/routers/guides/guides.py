@@ -9,7 +9,8 @@ from ninja.responses import codes_4xx
 from srl.models.games import Games
 
 from api.permissions import admin_auth, moderator_auth, public_auth
-from api.v1.schemas.base import ErrorResponse, validate_embeds
+from api.v1.routers.utils.embeds import parse_embeds
+from api.v1.schemas.base import ErrorResponse
 from api.v1.schemas.games import GameSchema
 from api.v1.schemas.guides import (
     GuideCreateSchema,
@@ -48,15 +49,7 @@ def list_guides(
         str | None, Query(description="Comma-separated embeds (game,tags)")
     ] = None,
 ) -> Status:
-    embed_list = []
-    if embed:
-        embed_list = [e.strip() for e in embed.split(",")]
-        invalid_embeds = validate_embeds("guides", embed_list)
-        if invalid_embeds:
-            return Status(400, ErrorResponse(
-                error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
-                details=None,
-            ))
+    embed_list = parse_embeds(embed, "guides")
 
     queryset = Guides.objects.all()
 
@@ -114,15 +107,7 @@ def get_guide(
         str | None, Query(description="Comma-separated embeds (game,tags)")
     ] = None,
 ) -> Status:
-    embed_list = []
-    if embed:
-        embed_list = [e.strip() for e in embed.split(",")]
-        invalid_embeds = validate_embeds("guides", embed_list)
-        if invalid_embeds:
-            return Status(400, ErrorResponse(
-                error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
-                details=None,
-            ))
+    embed_list = parse_embeds(embed, "guides")
 
     queryset = Guides.objects.filter(slug__iexact=slug)
     if "game" in embed_list:
@@ -132,10 +117,13 @@ def get_guide(
 
     guide = queryset.first()
     if not guide:
-        return Status(404, ErrorResponse(
-            error=f"Guide with slug '{slug}' not found",
-            details=None,
-        ))
+        return Status(
+            404,
+            ErrorResponse(
+                error=f"Guide with slug '{slug}' not found",
+                details=None,
+            ),
+        )
 
     return Status(200, GuideSchema.model_validate(guide))
 
@@ -165,10 +153,13 @@ def create_guide(
     try:
         game = Games.objects.get(id=data.game_id)
     except Games.DoesNotExist:
-        return Status(400, ErrorResponse(
-            error="Game ID Doesn't Exist",
-            details={"games": {data.game_id}},
-        ))
+        return Status(
+            400,
+            ErrorResponse(
+                error="Game ID Doesn't Exist",
+                details={"games": {data.game_id}},
+            ),
+        )
 
     if data.tag_ids:
         existing_tags = Tags.objects.filter(
@@ -183,10 +174,13 @@ def create_guide(
         missing_tags = provided_tags - found_identifiers
 
         if missing_tags:
-            return Status(400, ErrorResponse(
-                error="Tags not found",
-                details={"missing_tags": list(missing_tags)},
-            ))
+            return Status(
+                400,
+                ErrorResponse(
+                    error="Tags not found",
+                    details={"missing_tags": list(missing_tags)},
+                ),
+            )
 
     try:
         with transaction.atomic():
@@ -208,10 +202,13 @@ def create_guide(
 
             return Status(200, guide_data)
     except Exception as e:
-        return Status(500, ErrorResponse(
-            error="Guide Creation Failed",
-            details={"exception": str(e)},
-        ))
+        return Status(
+            500,
+            ErrorResponse(
+                error="Guide Creation Failed",
+                details={"exception": str(e)},
+            ),
+        )
 
 
 @router.put(
@@ -239,19 +236,25 @@ def update_guide(
 ) -> Status:
     guide = Guides.objects.filter(slug__iexact=slug).first()
     if not guide:
-        return Status(404, ErrorResponse(
-            error=f"Guide with slug '{slug}' not found",
-            details=None,
-        ))
+        return Status(
+            404,
+            ErrorResponse(
+                error=f"Guide with slug '{slug}' not found",
+                details=None,
+            ),
+        )
 
     if data.game_id:
         try:
             Games.objects.get(id=data.game_id)
         except Games.DoesNotExist:
-            return Status(400, ErrorResponse(
-                error=f"Game with ID '{data.game_id}' does not exist",
-                details=None,
-            ))
+            return Status(
+                400,
+                ErrorResponse(
+                    error=f"Game with ID '{data.game_id}' does not exist",
+                    details=None,
+                ),
+            )
 
     if data.tag_ids is not None:
         existing_tags = Tags.objects.filter(
@@ -266,10 +269,13 @@ def update_guide(
         missing_tags = provided_tags - found_identifiers
 
         if missing_tags:
-            return Status(400, ErrorResponse(
-                error="Tags not found",
-                details={"missing_tags": list(missing_tags)},
-            ))
+            return Status(
+                400,
+                ErrorResponse(
+                    error="Tags not found",
+                    details={"missing_tags": list(missing_tags)},
+                ),
+            )
 
     try:
         with transaction.atomic():
@@ -283,10 +289,13 @@ def update_guide(
                     .first()
                 )
                 if existing_guide:
-                    return Status(400, ErrorResponse(
-                        error="Guide With Slug Already Exists",
-                        details={"slug": data.slug},
-                    ))
+                    return Status(
+                        400,
+                        ErrorResponse(
+                            error="Guide With Slug Already Exists",
+                            details={"slug": data.slug},
+                        ),
+                    )
                 guide.slug = data.slug
 
             if data.game_id:
@@ -303,10 +312,13 @@ def update_guide(
 
             return Status(200, GuideSchema.model_validate(guide))
     except Exception as e:
-        return Status(500, ErrorResponse(
-            error="Guide Update Failed",
-            details={"exception": str(e)},
-        ))
+        return Status(
+            500,
+            ErrorResponse(
+                error="Guide Update Failed",
+                details={"exception": str(e)},
+            ),
+        )
 
 
 @router.delete(
@@ -329,17 +341,23 @@ def delete_guide(
 ) -> Status:
     guide = Guides.objects.filter(slug__iexact=slug).first()
     if not guide:
-        return Status(404, ErrorResponse(
-            error=f"Guide with slug '{slug}' not found",
-            details=None,
-        ))
+        return Status(
+            404,
+            ErrorResponse(
+                error=f"Guide with slug '{slug}' not found",
+                details=None,
+            ),
+        )
 
     try:
         title = guide.title
         guide.delete()
         return Status(200, {"message": f"Guide '{title} deleted successfully."})
     except Exception as e:
-        return Status(500, ErrorResponse(
-            error="Guide Delete Failed",
-            details={"exception": str(e)},
-        ))
+        return Status(
+            500,
+            ErrorResponse(
+                error="Guide Delete Failed",
+                details={"exception": str(e)},
+            ),
+        )

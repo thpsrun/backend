@@ -7,7 +7,8 @@ from ninja.responses import codes_4xx
 from srl.models import CountryCodes, Players, Runs
 
 from api.permissions import admin_auth, moderator_auth, public_auth
-from api.v1.schemas.base import ErrorResponse, validate_embeds
+from api.v1.routers.utils.embeds import parse_embeds
+from api.v1.schemas.base import ErrorResponse
 from api.v1.schemas.players import (
     AwardSchema,
     CountrySchema,
@@ -98,9 +99,7 @@ def apply_player_embeds(
             embeds["player"]["country"] = CountrySchema(
                 id=player.countrycode.id,
                 name=player.countrycode.name,
-                flag=(
-                    player.countrycode.flag.url if player.countrycode.flag else None
-                ),
+                flag=(player.countrycode.flag.url if player.countrycode.flag else None),
             )
 
     if "awards" in embed_fields:
@@ -232,9 +231,7 @@ Examples:
 def get_player(
     request: HttpRequest,
     id: str,
-    embed: Annotated[
-        str | None, Query(description="Comma-separated embeds")
-    ] = None,
+    embed: Annotated[str | None, Query(description="Comma-separated embeds")] = None,
 ) -> Status:
     if len(id) > 30:
         return Status(
@@ -245,27 +242,7 @@ def get_player(
             ),
         )
 
-    embed_fields = []
-    if embed:
-        embed_fields = [field.strip() for field in embed.split(",") if field.strip()]
-        invalid_embeds = validate_embeds("players", embed_fields)
-        if invalid_embeds:
-            return Status(
-                400,
-                ErrorResponse(
-                    error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
-                    details={
-                        "valid_embeds": [
-                            "country",
-                            "stats",
-                            "awards",
-                            "runs",
-                            "profile",
-                            "profile-obsolete",
-                        ]
-                    },
-                ),
-            )
+    embed_fields = parse_embeds(embed, "players")
 
     try:
         player = (

@@ -7,7 +7,8 @@ from ninja.responses import codes_4xx
 from srl.models import Categories, Games, Variables, VariableValues
 
 from api.permissions import admin_auth, moderator_auth, public_auth
-from api.v1.schemas.base import CategoryTypeType, ErrorResponse, validate_embeds
+from api.v1.routers.utils.embeds import parse_embeds, serialize_game_embed
+from api.v1.schemas.base import CategoryTypeType, ErrorResponse
 from api.v1.schemas.categories import (
     CategoryCreateSchema,
     CategorySchema,
@@ -38,7 +39,7 @@ def _filter_scope(
     return filtered
 
 
-def category_embeds(
+def apply_category_embeds(
     category: Categories,
     embed_fields: list[str],
     all_variables: list[Variables] | None = None,
@@ -53,18 +54,7 @@ def category_embeds(
 
     if "game" in embed_fields:
         if category.game:
-            embeds["game"] = {
-                "id": category.game.id,
-                "name": category.game.name,
-                "slug": category.game.slug,
-                "release": category.game.release.isoformat(),
-                "boxart": category.game.boxart,
-                "twitch": category.game.twitch,
-                "defaulttime": category.game.defaulttime,
-                "idefaulttime": category.game.idefaulttime,
-                "pointsmax": category.game.pointsmax,
-                "ipointsmax": category.game.ipointsmax,
-            }
+            embeds["game"] = serialize_game_embed(category.game)
 
     if "variables" in embed_fields or "values" in embed_fields:
         if all_variables is not None:
@@ -156,9 +146,7 @@ def get_all_categories(
     type: Annotated[
         CategoryTypeType | None, Query(description="Filter by type")
     ] = None,
-    embed: Annotated[
-        str | None, Query(description="Comma-separated embeds")
-    ] = None,
+    embed: Annotated[str | None, Query(description="Comma-separated embeds")] = None,
     limit: Annotated[
         int,
         Query(
@@ -169,21 +157,7 @@ def get_all_categories(
     ] = 50,
     offset: Annotated[int, Query(ge=0, description="Offset from 0")] = 0,
 ) -> Status:
-    # Checks to see what embeds are being used versus what is allowed
-    # via this endpoint. It will return an error to the client if they
-    # have an embed type not supported.
-    embed_fields = []
-    if embed:
-        embed_fields = [field.strip() for field in embed.split(",") if field.strip()]
-        invalid_embeds = validate_embeds("categories", embed_fields)
-        if invalid_embeds:
-            return Status(
-                400,
-                ErrorResponse(
-                    error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
-                    details=None,
-                ),
-            )
+    embed_fields = parse_embeds(embed, "categories")
 
     try:
         queryset = (
@@ -220,7 +194,7 @@ def get_all_categories(
             category_data = CategorySchema.model_validate(category)
 
             if embed_fields:
-                embed_data = category_embeds(
+                embed_data = apply_category_embeds(
                     category,
                     embed_fields,
                     all_variables,
@@ -268,9 +242,7 @@ Examples:
 def get_category(
     request: HttpRequest,
     id: str,
-    embed: Annotated[
-        str | None, Query(description="Comma-separated embeds")
-    ] = None,
+    embed: Annotated[str | None, Query(description="Comma-separated embeds")] = None,
 ) -> Status:
     if len(id) > 15:
         return Status(
@@ -281,21 +253,7 @@ def get_category(
             ),
         )
 
-    # Checks to see what embeds are being used versus what is allowed
-    # via this endpoint. It will return an error to the client if they
-    # have an embed type not supported.
-    embed_fields = []
-    if embed:
-        embed_fields = [field.strip() for field in embed.split(",") if field.strip()]
-        invalid_embeds = validate_embeds("categories", embed_fields)
-        if invalid_embeds:
-            return Status(
-                400,
-                ErrorResponse(
-                    error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
-                    details={"valid_embeds": ["game", "variables", "values"]},
-                ),
-            )
+    embed_fields = parse_embeds(embed, "categories")
 
     try:
         category = (
@@ -317,7 +275,7 @@ def get_category(
         category_data = CategorySchema.model_validate(category)
 
         if embed_fields:
-            embed_data = category_embeds(category, embed_fields)
+            embed_data = apply_category_embeds(category, embed_fields)
             for field, data in embed_data.items():
                 setattr(category_data, field, data)
 

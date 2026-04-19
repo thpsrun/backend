@@ -118,7 +118,7 @@ class RunBaseSchema(BaseEmbedSchema):
         url (str): Speedrun.com URL.
     """
 
-    id: str = Field(..., max_length=15)
+    id: str = Field(..., max_length=10)
     runtype: str = Field(
         ...,
         pattern="^(main|il)$",
@@ -137,7 +137,9 @@ class RunBaseSchema(BaseEmbedSchema):
     )
     times: RunTimesSchema = Field(description="Nested timing data")
     video: str | None = None
-    arch_video: str | None = Field(default=None, description="Archived/mirrored video URL")
+    arch_video: str | None = Field(
+        default=None, description="Archived/mirrored video URL"
+    )
     date: datetime | None = None
     v_date: datetime | None = Field(default=None, description="Verification date")
     url: str
@@ -350,7 +352,7 @@ class RunCreateSchema(BaseEmbedSchema):
     """
 
     id: str | None = Field(
-        default=None, max_length=12, description="Auto-generates if omitted"
+        default=None, max_length=10, description="Auto-generates if omitted"
     )
     game_id: str
     category_id: str | None = None
@@ -365,8 +367,14 @@ class RunCreateSchema(BaseEmbedSchema):
     timeigt: str | None = Field(default=None, max_length=25)
     timeigt_secs: float | None = Field(default=None, ge=0)
     video: str | None = None
-    arch_video: str | None = Field(default=None, description="Archived/mirrored video URL")
+    arch_video: str | None = Field(
+        default=None, description="Archived/mirrored video URL"
+    )
     obsolete: bool = Field(default=False, description="Mark the run as obsolete")
+    platform_id: str | None = None
+    approver_id: str | None = None
+    description: str | None = Field(default=None, max_length=5000)
+    emulated: bool = Field(default=False, description="Emulated run")
     date: datetime | None = None
     v_date: datetime | None = Field(default=None, description="Verification date")
     url: str
@@ -398,13 +406,21 @@ class RunUpdateSchema(BaseEmbedSchema):
     player_ids: list[str] | None = Field(None, description="In order of participation")
     runtype: str | None = Field(default=None, pattern="^(main|il)$")
     place: int | None = Field(default=None, ge=1)
+    time: str | None = Field(default=None, max_length=25)
+    time_secs: float | None = Field(default=None, ge=0)
     timenl: str | None = Field(default=None, max_length=25)
     timenl_secs: float | None = Field(default=None, ge=0)
     timeigt: str | None = Field(default=None, max_length=25)
     timeigt_secs: float | None = Field(default=None, ge=0)
     video: str | None = None
-    arch_video: str | None = Field(default=None, description="Archived/mirrored video URL")
+    arch_video: str | None = Field(
+        default=None, description="Archived/mirrored video URL"
+    )
     obsolete: bool | None = Field(default=None, description="Mark the run as obsolete")
+    platform_id: str | None = None
+    approver_id: str | None = None
+    description: str | None = Field(default=None, max_length=5000)
+    emulated: bool | None = None
     date: datetime | None = None
     v_date: datetime | None = Field(default=None, description="Verification date")
     url: str | None = None

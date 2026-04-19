@@ -15,6 +15,8 @@ class TagSchema(SlugMixin, BaseEmbedSchema):
         description (str): Description of what this tag represents.
     """
 
+    name: str = Field(..., max_length=100)
+    slug: str = Field(..., max_length=100, description="URL-friendly slug")
     description: str
 
 
@@ -48,8 +50,9 @@ class GuideSchema(SlugMixin, TimestampMixin, BaseEmbedSchema):
         },
     )
 
-    title: str
-    short_description: str
+    title: str = Field(..., max_length=200)
+    slug: str = Field(..., max_length=200, description="URL-friendly slug")
+    short_description: str = Field(..., max_length=500)
     content: str = Field(..., description="Supports Markdown")
 
     game: GameSchema | None = Field(
@@ -73,7 +76,7 @@ class GuideCreateSchema(BaseEmbedSchema):
 
     title: str = Field(..., min_length=1, max_length=200)
     game_id: str
-    tag_ids: list[int] | None = Field(default=[])
+    tag_ids: list[str] | None = Field(default=[])
     short_description: str = Field(..., min_length=1, max_length=500)
     content: str = Field(..., min_length=1, description="Supports Markdown")
 
@@ -92,7 +95,7 @@ class GuideUpdateSchema(BaseEmbedSchema):
 
     title: str | None = Field(default=None, min_length=1, max_length=200)
     slug: str | None = Field(
-        default=None, min_length=1, max_length=15, description="URL-friendly slug"
+        default=None, min_length=1, max_length=200, description="URL-friendly slug"
     )
     game_id: str | None = None
     tag_ids: list[str] | None = None
@@ -108,7 +111,7 @@ class TagCreateSchema(BaseEmbedSchema):
         description (str): Tag description.
     """
 
-    name: str = Field(..., min_length=1, max_length=25)
+    name: str = Field(..., min_length=1, max_length=100)
     description: str = Field(..., min_length=1, max_length=500)
 
 
@@ -123,7 +126,7 @@ class TagUpdateSchema(BaseEmbedSchema):
 
     name: str | None = Field(default=None, min_length=1, max_length=100)
     slug: str | None = Field(
-        default=None, min_length=1, max_length=15, description="URL-friendly slug"
+        default=None, min_length=1, max_length=100, description="URL-friendly slug"
     )
     description: str | None = Field(default=None, min_length=1, max_length=500)
 
@@ -141,9 +144,11 @@ class GuideListSchema(BaseEmbedSchema):
         tags (list[TagSchema] | None): Associated tags.
     """
 
-    title: str
-    slug: str = Field(..., min_length=1, max_length=15, description="URL-friendly slug")
-    short_description: str
+    title: str = Field(..., max_length=200)
+    slug: str = Field(
+        ..., min_length=1, max_length=200, description="URL-friendly slug"
+    )
+    short_description: str = Field(..., max_length=500)
     created_at: datetime | None = None
     updated_at: datetime | None = None
     game: GameSchema | None = None
@@ -159,4 +164,6 @@ class TagListSchema(SlugMixin, BaseEmbedSchema):
         description (str): Tag description.
     """
 
+    name: str = Field(..., max_length=100)
+    slug: str = Field(..., max_length=100, description="URL-friendly slug")
     description: str

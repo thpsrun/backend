@@ -17,7 +17,9 @@ class LevelBaseSchema(SlugMixin, BaseEmbedSchema):
         rules (str | None): Level-specific rules text.
     """
 
-    id: str = Field(..., max_length=15)
+    id: str = Field(..., max_length=10)
+    name: str = Field(..., max_length=75)
+    slug: str = Field(..., max_length=75, description="URL-friendly slug")
     url: str
     rules: str | None = Field(default=None, max_length=5000)
 
@@ -83,8 +85,10 @@ class LevelCreateSchema(SlugMixin, BaseEmbedSchema):
     """
 
     id: str | None = Field(
-        default=None, max_length=12, description="Auto-generates if omitted"
+        default=None, max_length=10, description="Auto-generates if omitted"
     )
+    name: str = Field(..., max_length=75)
+    slug: str = Field(..., max_length=75, description="URL-friendly slug")
     game_id: str
     url: str
     rules: str | None = None

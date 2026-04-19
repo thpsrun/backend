@@ -88,7 +88,7 @@ class RegisterRequest(Schema):
     )
     email: EmailStr = Field(
         ...,
-        max_length=64,
+        max_length=254,
         description="Email address",
     )
     password1: str = Field(

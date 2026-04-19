@@ -7,7 +7,8 @@ from ninja.responses import codes_4xx
 from srl.models import Categories, Games, Levels, Variables, VariableValues
 
 from api.permissions import admin_auth, moderator_auth, public_auth
-from api.v1.schemas.base import ErrorResponse, validate_embeds
+from api.v1.routers.utils.embeds import parse_embeds
+from api.v1.schemas.base import ErrorResponse
 from api.v1.schemas.games import GameCreateSchema, GameSchema, GameUpdateSchema
 from api.v1.utils import get_or_generate_id
 
@@ -230,9 +231,7 @@ Examples:
 )
 def get_all_games(
     request: HttpRequest,
-    embed: Annotated[
-        str | None, Query(description="Comma-separated embeds")
-    ] = None,
+    embed: Annotated[str | None, Query(description="Comma-separated embeds")] = None,
     limit: Annotated[
         int,
         Query(
@@ -243,21 +242,7 @@ def get_all_games(
     ] = 50,
     offset: Annotated[int, Query(ge=0, description="Offset from 0")] = 0,
 ) -> Status:
-    # Checks to see what embeds are being used versus what is allowed
-    # via this endpoint. It will return an error to the client if they
-    # have an embed type not supported.
-    embed_fields = []
-    if embed:
-        embed_fields = [field.strip() for field in embed.split(",") if field.strip()]
-        invalid_embeds = validate_embeds("games", embed_fields)
-        if invalid_embeds:
-            return Status(
-                400,
-                ErrorResponse(
-                    error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
-                    details={"valid_embeds": ["categories", "levels", "platforms"]},
-                ),
-            )
+    embed_fields = parse_embeds(embed, "games")
 
     try:
         queryset = Games.objects.all().order_by("release")
@@ -310,9 +295,7 @@ Examples:
 def get_game(
     request: HttpRequest,
     id: str,
-    embed: Annotated[
-        str | None, Query(description="Comma-separated embeds")
-    ] = None,
+    embed: Annotated[str | None, Query(description="Comma-separated embeds")] = None,
 ) -> Status:
     if len(id) > 15:
         return Status(
@@ -323,21 +306,7 @@ def get_game(
             ),
         )
 
-    # Checks to see what embeds are being used versus what is allowed
-    # via this endpoint. It will return an error to the client if they
-    # have an embed type not supported.
-    embed_fields = []
-    if embed:
-        embed_fields = [field.strip() for field in embed.split(",") if field.strip()]
-        invalid_embeds = validate_embeds("games", embed_fields)
-        if invalid_embeds:
-            return Status(
-                400,
-                ErrorResponse(
-                    error=f"Invalid embed(s): {', '.join(invalid_embeds)}",
-                    details={"valid_embeds": ["categories", "levels", "platforms"]},
-                ),
-            )
+    embed_fields = parse_embeds(embed, "games")
 
     try:
         queryset = Games.objects.all()

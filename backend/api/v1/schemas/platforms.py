@@ -12,7 +12,9 @@ class PlatformSchema(SlugMixin, BaseEmbedSchema):
         slug (str): URL-friendly version (e.g., "playstation-2").
     """
 
-    id: str = Field(..., max_length=15)
+    id: str = Field(..., max_length=10)
+    name: str = Field(..., max_length=30)
+    slug: str = Field(..., max_length=30, description="URL-friendly slug")
 
 
 class PlatformCreateSchema(SlugMixin, BaseEmbedSchema):
@@ -25,8 +27,9 @@ class PlatformCreateSchema(SlugMixin, BaseEmbedSchema):
     """
 
     id: str | None = Field(
-        default=None, max_length=12, description="Auto-generates if omitted"
+        default=None, max_length=10, description="Auto-generates if omitted"
     )
+    name: str = Field(..., max_length=30)
 
 
 class PlatformUpdateSchema(BaseEmbedSchema):
@@ -38,4 +41,4 @@ class PlatformUpdateSchema(BaseEmbedSchema):
     """
 
     name: str | None = Field(default=None, max_length=30)
-    slug: str | None = Field(default=None, max_length=15)
+    slug: str | None = Field(default=None, max_length=30)

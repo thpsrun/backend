@@ -29,9 +29,9 @@ class VariableValueSchema(BaseEmbedSchema):
         },
     )
 
-    value: str = Field(..., max_length=15)
+    value: str = Field(..., max_length=10)
     name: str = Field(..., max_length=50)
-    slug: str = Field(..., max_length=15, description="URL-friendly slug")
+    slug: str = Field(..., max_length=50, description="URL-friendly slug")
     appear_on_main: bool = Field(
         default=False, exclude=True, description="Show on main leaderboard page"
     )
@@ -63,9 +63,9 @@ class VariableBaseSchema(SlugMixin, BaseEmbedSchema):
         archive (bool): Whether variable is archived/hidden.
     """
 
-    id: str = Field(..., max_length=15)
+    id: str = Field(..., max_length=10)
     name: str = Field(..., max_length=50)
-    slug: str = Field(..., max_length=15, description="URL-friendly slug")
+    slug: str = Field(..., max_length=50, description="URL-friendly slug")
     scope: str = Field(
         ...,
         pattern="^(global|full-game|all-levels|single-level)$",
@@ -135,11 +135,11 @@ class VariableCreateSchema(BaseEmbedSchema):
     """
 
     id: str | None = Field(
-        default=None, max_length=12, description="Auto-generates if omitted"
+        default=None, max_length=10, description="Auto-generates if omitted"
     )
     game_id: str
     name: str = Field(..., max_length=50)
-    slug: str = Field(..., max_length=15, description="URL-friendly slug")
+    slug: str = Field(..., max_length=50, description="URL-friendly slug")
     scope: str = Field(..., pattern="^(global|full-game|all-levels|single-level)$")
     archive: bool = Field(default=False, description="Hidden from listings")
     category_id: str | None = Field(
@@ -189,7 +189,7 @@ class VariableValueCreateSchema(BaseEmbedSchema):
     name: str = Field(..., max_length=50)
     slug: str | None = Field(
         default=None,
-        max_length=15,
+        max_length=50,
         description="URL-friendly; auto-generates from name",
     )
     appear_on_main: bool = Field(
@@ -215,7 +215,7 @@ class VariableValueUpdateSchema(BaseEmbedSchema):
 
     variable_id: str | None = None
     name: str | None = Field(default=None, max_length=50)
-    slug: str | None = Field(default=None, max_length=15)
+    slug: str | None = Field(default=None, max_length=50)
     appear_on_main: bool = Field(
         default=False, exclude=True, description="Show on main leaderboard page"
     )

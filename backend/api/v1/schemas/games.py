@@ -24,7 +24,9 @@ class GameBaseSchema(SlugMixin, BaseEmbedSchema):
         rules (str | None): Game-level rules text.
     """
 
-    id: str = Field(..., max_length=15)
+    id: str = Field(..., max_length=10)
+    name: str = Field(..., max_length=55)
+    slug: str = Field(..., max_length=20, description="URL-friendly slug")
     twitch: str | None = Field(
         default=None, max_length=55, description="Game name on Twitch"
     )
@@ -128,8 +130,10 @@ class GameCreateSchema(SlugMixin, BaseEmbedSchema):
     """
 
     id: str | None = Field(
-        default=None, max_length=15, description="Auto-generates if omitted"
+        default=None, max_length=10, description="Auto-generates if omitted"
     )
+    name: str = Field(..., max_length=55)
+    slug: str = Field(..., max_length=20, description="URL-friendly slug")
     twitch: str | None = Field(
         default=None, max_length=55, description="Game name on Twitch"
     )
@@ -142,8 +146,12 @@ class GameCreateSchema(SlugMixin, BaseEmbedSchema):
     idefaulttime: str = Field(
         "realtime", pattern="^(realtime|realtime_noloads|ingame)$"
     )
-    pointsmax: int = Field(1000, ge=1, description="WR points for full-game runs")
-    ipointsmax: int = Field(100, ge=1, description="WR points for IL runs")
+    pointsmax: int = Field(
+        settings.POINTS_MAX_FG, ge=1, description="WR points for full-game runs"
+    )
+    ipointsmax: int = Field(
+        settings.POINTS_MAX_IL, ge=1, description="WR points for IL runs"
+    )
 
 
 class GameUpdateSchema(SlugMixin, BaseEmbedSchema):

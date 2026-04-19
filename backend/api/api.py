@@ -30,6 +30,7 @@ from api.v1.routers.resources.players import router as players_router
 from api.v1.routers.resources.runs import router as runs_router
 from api.v1.routers.resources.streams import router as streams_router
 from api.v1.routers.resources.variables import router as variables_router
+from api.v1.routers.utils.embeds import InvalidEmbedsError
 from api.v1.schemas.base import ErrorResponse, ValidationErrorResponse
 
 logger = logging.getLogger(__name__)
@@ -187,6 +188,22 @@ def validation_exception_handler(
             validation_errors=exc.errors,
         ).model_dump(),
         status=422,
+    )
+
+
+@ninja_api.exception_handler(InvalidEmbedsError)
+def invalid_embeds_exception_handler(
+    request: HttpRequest,
+    exc: InvalidEmbedsError,
+) -> HttpResponse:
+    """Handle invalid `?embed=...` values raised from `parse_embeds`."""
+    return ninja_api.create_response(
+        request,
+        ErrorResponse(
+            error=str(exc),
+            details={"valid_embeds": sorted(exc.valid)},
+        ).model_dump(),
+        status=400,
     )
 
 

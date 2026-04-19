@@ -57,7 +57,7 @@ class PlayerSearchResultSchema(BaseEmbedSchema):
             no colors set.
     """
 
-    id: str
+    id: str = Field(..., max_length=10)
     name: str
     nickname: str | None = None
     country_id: str | None = None
@@ -98,8 +98,8 @@ class AwardSchema(BaseEmbedSchema):
         image (str | None): Award image URL.
     """
 
-    name: str
-    description: str | None = None
+    name: str = Field(..., max_length=50)
+    description: str | None = Field(default=None, max_length=500)
     image: str | None = None
 
 
@@ -112,7 +112,7 @@ class ModeratedGameEmbedSchema(BaseEmbedSchema):
         slug (str): Game slug/abbreviation.
     """
 
-    id: str
+    id: str = Field(..., max_length=10)
     name: str
     slug: str
 
@@ -147,7 +147,7 @@ class PlayerCustomizationsEmbed(BaseEmbedSchema):
     gradient_1: str | None = None
     gradient_2: str | None = None
     gradient_3: str | None = None
-    tagline: str | None = None
+    tagline: str | None = Field(default=None, max_length=100)
     profile_bg: str | None = None
 
 
@@ -212,7 +212,7 @@ class PlayerResponse(BaseEmbedSchema):
         },
     )
 
-    id: str = Field(..., max_length=15)
+    id: str = Field(..., max_length=10)
     url: str
     joined: date | None = Field(
         default=None,
@@ -254,7 +254,7 @@ class PlayerCreateSocialsEmbed(BaseEmbedSchema):
 class PlayerCreateSchema(BaseEmbedSchema):
     id: str | None = Field(
         default=None,
-        max_length=12,
+        max_length=10,
         description="Auto-generates if omitted",
     )
     url: str
