@@ -2,6 +2,7 @@ from django.conf import settings
 from django.db import models
 from django.utils.text import slugify
 
+from srl.models.base import LeaderboardChoices
 from srl.models.platforms import Platforms
 from srl.models.players import Players
 
@@ -10,12 +11,6 @@ class Games(models.Model):
     class Meta:
         verbose_name_plural = "Games"
         ordering = ["release"]
-
-    leaderboard_choices = [
-        ("realtime", "RTA"),
-        ("realtime_noloads", "LRT"),
-        ("ingame", "IGT"),
-    ]
 
     id = models.CharField(
         max_length=10,
@@ -45,13 +40,13 @@ class Games(models.Model):
     )
     defaulttime = models.CharField(
         verbose_name="Default Time",
-        choices=leaderboard_choices,
-        default="realtime",
+        choices=LeaderboardChoices.choices,
+        default=LeaderboardChoices.REALTIME,
     )
     idefaulttime = models.CharField(
         verbose_name="ILs Default Time",
-        choices=leaderboard_choices,
-        default="realtime",
+        choices=LeaderboardChoices.choices,
+        default=LeaderboardChoices.REALTIME,
         help_text=(
             "Sometimes leaderboards have one timing standard for full game "
             "speedruns and another standard for ILs. This setting lets you change the "

@@ -1,5 +1,6 @@
 from django.db import models
 
+from srl.models.base import LeaderboardChoices
 from srl.models.games import Games
 
 
@@ -18,17 +19,9 @@ class Categories(models.Model):
             ),
         ]
 
-    type_choices = [
-        ("per-level", "Individual Level"),
-        ("per-game", "Full Game"),
-    ]
-
-    # RTA = real-time, LRT = load-removed time, IGT = in-game timer
-    leaderboard_choices = [
-        ("realtime", "RTA"),
-        ("realtime_noloads", "LRT"),
-        ("ingame", "IGT"),
-    ]
+    class CategoryType(models.TextChoices):
+        PER_LEVEL = "per-level", "Individual Level"
+        PER_GAME = "per-game", "Full Game"
 
     id = models.CharField(
         max_length=10,
@@ -49,11 +42,11 @@ class Categories(models.Model):
     )
     type = models.CharField(
         verbose_name="Type (IL/FG)",
-        choices=type_choices,
+        choices=CategoryType.choices,
     )
     defaulttime = models.CharField(
         verbose_name="Default Time",
-        choices=leaderboard_choices,
+        choices=LeaderboardChoices.choices,
         null=True,
         default=None,
         help_text=(

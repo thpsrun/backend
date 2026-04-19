@@ -21,12 +21,11 @@ class Variables(models.Model):
             ),
         ]
 
-    type_choices = [
-        ("global", "Entire Game"),
-        ("full-game", "Only Full Game Runs"),
-        ("all-levels", "Only IL Runs"),
-        ("single-level", "Specific IL"),
-    ]
+    class VariableScope(models.TextChoices):
+        GLOBAL = "global", "Entire Game"
+        FULL_GAME = "full-game", "Only Full Game Runs"
+        ALL_LEVELS = "all-levels", "Only IL Runs"
+        SINGLE_LEVEL = "single-level", "Specific IL"
 
     id = models.CharField(
         max_length=10,
@@ -62,7 +61,7 @@ class Variables(models.Model):
     )
     scope = models.CharField(
         verbose_name="Scope (FG/IL)",
-        choices=type_choices,
+        choices=VariableScope.choices,
     )
     level = models.ForeignKey(
         Levels,

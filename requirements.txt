@@ -1,5 +1,6 @@
 aiohttp>=3.13.3
 asgiref==3.11.*
+bleach==6.*
 celery[redis]==5.6.*
 celery-types>=0.24.0
 cryptography==46.0.*

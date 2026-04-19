@@ -59,16 +59,14 @@ class Runs(models.Model):
             ),
         ]
 
-    statuschoices = [
-        ("verified", "Verified"),
-        ("new", "Unverified"),
-        ("rejected", "Rejected"),
-    ]
+    class VidStatus(models.TextChoices):
+        VERIFIED = "verified", "Verified"
+        NEW = "new", "Unverified"
+        REJECTED = "rejected", "Rejected"
 
-    RUNTYPE_CHOICES = [
-        ("main", "Full Game"),
-        ("il", "Individual Level"),
-    ]
+    class RunType(models.TextChoices):
+        MAIN = "main", "Full Game"
+        IL = "il", "Individual Level"
 
     id = models.CharField(
         max_length=10,
@@ -77,7 +75,7 @@ class Runs(models.Model):
     )
     runtype = models.CharField(
         max_length=5,
-        choices=RUNTYPE_CHOICES,
+        choices=RunType.choices,
         verbose_name="Full-Game or IL",
     )
     game = models.ForeignKey(
@@ -192,8 +190,8 @@ class Runs(models.Model):
     )
     vid_status = models.CharField(
         verbose_name="SRC Status",
-        choices=statuschoices,
-        default="verified",
+        choices=VidStatus.choices,
+        default=VidStatus.VERIFIED,
         help_text=(
             "This is the current status of the run, according to Speedrun.com. "
             'It should be updated whenever the run is approved. Runs set as "Unverified" '

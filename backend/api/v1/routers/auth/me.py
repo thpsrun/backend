@@ -2,8 +2,10 @@ import logging
 import os
 
 from django.conf import settings
+from django.contrib.sessions.models import Session
 from django.db import transaction
 from django.http import HttpRequest
+from django.utils import timezone
 from ninja import Router, Status
 from ninja.responses import codes_4xx
 from srl.models import CountryCodes, Players
@@ -27,6 +29,20 @@ router = Router()
 
 PFP_DIR: str = os.path.join(settings.MEDIA_ROOT, "pfp")
 os.makedirs(PFP_DIR, exist_ok=True)
+
+
+def _invalidate_user_sessions(
+    user_id: int,
+) -> None:
+    """Delete every non-expired session row whose decoded payload matches `user_id`."""
+    try:
+        target: str = str(user_id)
+        now = timezone.now()
+        for session in Session.objects.filter(expire_date__gte=now):
+            if str(session.get_decoded().get("_auth_user_id")) == target:
+                session.delete()
+    except Exception:
+        logger.exception("Failed to invalidate remote sessions for user %s", user_id)
 
 
 def _build_profile_response(
@@ -209,6 +225,7 @@ def delete_me(
 ) -> Status:
     player: Players = request.auth  # type: ignore
     user = player.user
+    user_id: int | None = user.id if user is not None else None
     old_pfp = player.pfp
 
     try:
@@ -250,15 +267,25 @@ def delete_me(
                 if user.profile_bg:
                     user.profile_bg.delete(save=False)
                 user.delete()
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to delete account for player %s", player.id)
         return Status(
             500,
             ErrorResponse(
                 error="Failed to delete account",
-                details={"exception": str(e)},
+                details=None,
             ),
         )
+
+    try:
+        request.session.flush()
+    except Exception:
+        logger.exception(
+            "Failed to flush current session for deleted player %s", player.id
+        )
+
+    if user_id is not None:
+        _invalidate_user_sessions(user_id)
 
     if old_pfp:
         pfp_basename = os.path.basename(old_pfp)
@@ -281,7 +308,7 @@ def delete_me(
     logger.info(
         "Account deleted: player_id=%s user_id=%s",
         player.id,
-        user.id if user else None,
+        user_id,
     )
 
     return Status(204, None)

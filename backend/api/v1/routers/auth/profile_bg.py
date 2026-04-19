@@ -6,16 +6,18 @@ from django.http import HttpRequest
 from ninja import File, Router, Status
 from ninja.files import UploadedFile
 from ninja.responses import codes_4xx
-from PIL import Image
 from srl.models import Players
 
 from api.permissions import player_session_auth
+from api.v1.routers.utils.images import ImageValidationError, validate_image
 from api.v1.schemas.auth import ProfileBGUploadResponse
 from api.v1.schemas.base import ErrorResponse
 
 logger = logging.getLogger(__name__)
 
 router = Router()
+
+PROFILE_BG_MAX_PIXELS: int = 12_000_000
 
 
 @router.post(
@@ -24,7 +26,8 @@ router = Router()
     summary="Upload Profile Background",
     description=(
         "Uploads a profile background image for the authenticated player. "
-        "Accepts image files only (max 10 MB). Re-encodes to strip metadata."
+        "Accepts JPEG, PNG, WEBP, or GIF images up to 10 MB and 12 MP. "
+        "Re-encodes to strip metadata."
     ),
     auth=player_session_auth,
 )
@@ -33,15 +36,6 @@ def upload_profile_bg(
     file: UploadedFile = File(...),  # type: ignore
 ) -> Status:
     player: Players = request.auth  # type: ignore
-
-    if not file.content_type or not file.content_type.startswith("image/"):
-        return Status(
-            400,
-            ErrorResponse(
-                error="Uploaded file must be an image",
-                details={"content_type": file.content_type},
-            ),
-        )
 
     if not file.size or file.size > 10 * 1024 * 1024:
         return Status(
@@ -55,14 +49,13 @@ def upload_profile_bg(
     raw: bytes = b"".join(file.chunks())
 
     try:
-        with Image.open(io.BytesIO(raw)) as img:
-            rgb = img.convert("RGB")
-    except Exception as e:
+        rgb = validate_image(raw, file.content_type, max_pixels=PROFILE_BG_MAX_PIXELS)
+    except ImageValidationError as e:
         return Status(
             400,
             ErrorResponse(
-                error="Uploaded file is not a valid image",
-                details={"exception": str(e)},
+                error=e.message,
+                details=None,
             ),
         )
 

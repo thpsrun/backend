@@ -9,6 +9,16 @@ from dotenv import load_dotenv
 load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+DEBUG = os.getenv("DEBUG_MODE") == "True"
+
+
+def _require_env(name: str) -> str:
+    value: str | None = os.getenv(name)
+    if not value:
+        raise ImproperlyConfigured(f"{name} environmental variable is not set")
+    return value
+
+
 if os.getenv("SENTRY_ENABLED") == "True":
     sentry_sdk.init(
         dsn=os.getenv("SENTRY_DSN"),
@@ -16,13 +26,22 @@ if os.getenv("SENTRY_ENABLED") == "True":
         traces_sample_rate=0.5,
     )
 
-SECRET_KEY = os.getenv("SECRET_KEY")
-if not SECRET_KEY:
-    raise ImproperlyConfigured("SECRET_KEY environmental variable is not set...")
+SECRET_KEY = _require_env("SECRET_KEY")
 
 SRC_ENCRYPTION_KEY = os.getenv("SRC_ENCRYPTION_KEY")
 
-ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "").split(",")
+if DEBUG:
+    ALLOWED_HOSTS = [
+        h.strip() for h in os.getenv("ALLOWED_HOSTS", "").split(",") if h.strip()
+    ]
+    FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+else:
+    ALLOWED_HOSTS = [
+        h.strip() for h in _require_env("ALLOWED_HOSTS").split(",") if h.strip()
+    ]
+    if not ALLOWED_HOSTS:
+        raise ImproperlyConfigured("ALLOWED_HOSTS must contain at least one host")
+    FRONTEND_URL = _require_env("FRONTEND_URL")
 # ALLOWED_IPS = ["127.0.0.1"]
 
 INSTALLED_APPS = [
@@ -67,7 +86,7 @@ MIDDLEWARE = [
     "api.middleware.APIActivityLogMiddleware",
 ]
 
-CORS_ALLOWED_ORIGINS = [os.getenv("FRONTEND_URL", "http://localhost:3000")]
+CORS_ALLOWED_ORIGINS = [FRONTEND_URL]
 CORS_ALLOW_CREDENTIALS = True
 
 ROOT_URLCONF = "website.urls"
@@ -96,19 +115,14 @@ AUTHENTICATION_BACKENDS = [
 
 WSGI_APPLICATION = "website.wsgi.application"
 
-if os.getenv("DEBUG_MODE") == "True":
-    DEBUG = True
+if DEBUG:
     CSRF_TRUSTED_ORIGINS = ["http://localhost:8001", "http://localhost:3000"]
     INSTALLED_APPS.append("debug_toolbar")
     MIDDLEWARE.insert(0, "debug_toolbar.middleware.DebugToolbarMiddleware")
 else:
-    DEBUG = False
     APPEND_SLASH = True
     MIDDLEWARE.insert(1, "whitenoise.middleware.WhiteNoiseMiddleware")
-
-    CSRF_TRUSTED_ORIGINS = [os.getenv("FRONTEND_URL", False)]
-    if not CSRF_TRUSTED_ORIGINS:
-        raise ImproperlyConfigured("FRONTEND_URL environmental variable is not set...")
+    CSRF_TRUSTED_ORIGINS = [FRONTEND_URL]
 
     CSRF_COOKIE_SECURE = True
     SESSION_COOKIE_SECURE = True

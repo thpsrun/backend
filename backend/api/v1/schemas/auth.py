@@ -4,11 +4,18 @@ from datetime import date
 from ninja import Schema
 from pydantic import EmailStr, Field, field_validator, model_validator
 
+from api.v1.schemas.common import (
+    BasePlayerInfoSchema,
+    CountrySchema,
+    ModeratedGameEmbedSchema,
+    PlayerSocialsSchema,
+)
 
-class CountryCodeResponse(Schema):
-    id: str
-    name: str
-    flag: str | None = None
+
+CountryCodeResponse = CountrySchema
+CountryEmbed = CountrySchema
+ModeratedGameSchema = ModeratedGameEmbedSchema
+SocialsEmbed = PlayerSocialsSchema
 
 
 class SRCKeyRequest(Schema):
@@ -24,36 +31,14 @@ class SRCKeyStatusResponse(Schema):
     message: str
 
 
-class ModeratedGameSchema(Schema):
-    id: str
-    name: str
-    slug: str
+class PlayerEmbed(BasePlayerInfoSchema):
+    """Player identity shape used in the authenticated /auth/me response;
+    adds the Django `username` and `is_superuser` flag alongside a full
+    embedded country object."""
 
-
-class CountryEmbed(Schema):
-    id: str
-    name: str
-    flag: str | None = None
-
-
-class PlayerEmbed(Schema):
     username: str
-    name: str
-    nickname: str | None = None
-    pronouns: str | None = None
-    country: CountryEmbed | None = None
-    pfp: str | None = None
+    country: CountrySchema | None = None
     is_superuser: bool = False
-    ex_stream: bool = False
-
-
-class SocialsEmbed(Schema):
-    twitch: str | None = None
-    youtube: str | None = None
-    twitter: str | None = None
-    bluesky: str | None = None
-    discord: str | None = None
-    therun_gg: str | None = None
 
 
 class CustomizationsEmbed(Schema):

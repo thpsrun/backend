@@ -1,5 +1,12 @@
 from django.core.exceptions import ValidationError
+from django.db import models
 from django.db.models.fields.files import ImageFieldFile
+
+
+class LeaderboardChoices(models.TextChoices):
+    REALTIME = "realtime", "RTA"
+    REALTIME_NOLOADS = "realtime_noloads", "LRT"
+    INGAME = "ingame", "IGT"
 
 
 def validate_award_image(image: ImageFieldFile) -> None:

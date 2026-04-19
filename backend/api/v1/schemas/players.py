@@ -4,6 +4,13 @@ from typing import Any
 from pydantic import ConfigDict, Field, field_validator
 
 from api.v1.schemas.base import BaseEmbedSchema
+from api.v1.schemas.common import (
+    BasePlayerInfoSchema,
+    BaseSocialsSchema,
+    CountrySchema,
+    ModeratedGameEmbedSchema,
+    PlayerSocialsSchema,
+)
 
 
 class GradientsEmbed(BaseEmbedSchema):
@@ -75,20 +82,6 @@ class PlayerSearchResultSchema(BaseEmbedSchema):
         return None
 
 
-class CountrySchema(BaseEmbedSchema):
-    """Simple schema for country codes.
-
-    Attributes:
-        id (str): Country code ID.
-        name (str): Country name.
-        flag (str | None): Custom flag image URL.
-    """
-
-    id: str
-    name: str
-    flag: str | None = None
-
-
 class AwardSchema(BaseEmbedSchema):
     """Simple schema for awards.
 
@@ -103,44 +96,13 @@ class AwardSchema(BaseEmbedSchema):
     image: str | None = None
 
 
-class ModeratedGameEmbedSchema(BaseEmbedSchema):
-    """Schema for games a player moderates.
+class PlayerInfoEmbed(BasePlayerInfoSchema):
+    """Player identity fields with embedded country object (response context)."""
 
-    Attributes:
-        id (str): Game ID.
-        name (str): Game name.
-        slug (str): Game slug/abbreviation.
-    """
-
-    id: str = Field(..., max_length=10)
-    name: str
-    slug: str
-
-
-class PlayerInfoEmbed(BaseEmbedSchema):
-    name: str = Field(..., max_length=30)
-    nickname: str | None = Field(
-        default=None,
-        max_length=30,
-        description="Displayed instead of name if set",
-    )
-    pronouns: str | None = Field(default=None, max_length=50)
     country: CountrySchema | None = None
-    pfp: str | None = Field(
-        default=None,
-        max_length=100,
-        description="Profile picture URL",
-    )
-    ex_stream: bool = Field(default=False, description="Exclude from streaming bots")
 
 
-class PlayerSocialsEmbed(BaseEmbedSchema):
-    twitch: str | None = None
-    youtube: str | None = None
-    twitter: str | None = None
-    bluesky: str | None = None
-    discord: str | None = None
-    therun_gg: str | None = None
+PlayerSocialsEmbed = PlayerSocialsSchema
 
 
 class PlayerCustomizationsEmbed(BaseEmbedSchema):
@@ -226,29 +188,13 @@ class PlayerResponse(BaseEmbedSchema):
     moderation: PlayerModerationEmbed
 
 
-class PlayerCreateInfoEmbed(BaseEmbedSchema):
-    name: str = Field(..., max_length=30)
-    nickname: str | None = Field(
-        default=None,
-        max_length=30,
-        description="Displayed instead of name if set",
-    )
-    pronouns: str | None = Field(default=None, max_length=50)
+class PlayerCreateInfoEmbed(BasePlayerInfoSchema):
+    """Create payload: identity fields plus a country reference by ID."""
+
     country_id: str | None = None
-    pfp: str | None = Field(
-        default=None,
-        max_length=100,
-        description="Profile picture URL",
-    )
-    ex_stream: bool = Field(default=False, description="Exclude from streaming bots")
 
 
-class PlayerCreateSocialsEmbed(BaseEmbedSchema):
-    twitch: str | None = None
-    youtube: str | None = None
-    twitter: str | None = None
-    bluesky: str | None = None
-    discord: str | None = None
+PlayerCreateSocialsEmbed = BaseSocialsSchema
 
 
 class PlayerCreateSchema(BaseEmbedSchema):
@@ -263,20 +209,17 @@ class PlayerCreateSchema(BaseEmbedSchema):
 
 
 class PlayerUpdateInfoEmbed(BaseEmbedSchema):
+    """Update payload: all fields optional; country referenced by ID."""
+
     name: str | None = Field(default=None, max_length=30)
     nickname: str | None = Field(default=None, max_length=30)
     pronouns: str | None = Field(default=None, max_length=50)
-    country_id: str | None = None
     pfp: str | None = Field(default=None, max_length=100)
     ex_stream: bool | None = None
+    country_id: str | None = None
 
 
-class PlayerUpdateSocialsEmbed(BaseEmbedSchema):
-    twitch: str | None = None
-    youtube: str | None = None
-    twitter: str | None = None
-    bluesky: str | None = None
-    discord: str | None = None
+PlayerUpdateSocialsEmbed = BaseSocialsSchema
 
 
 class PlayerUpdateSchema(BaseEmbedSchema):

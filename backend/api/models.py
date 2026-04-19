@@ -5,17 +5,16 @@ from rest_framework_api_key.models import AbstractAPIKey
 
 
 class RoleAPIKey(AbstractAPIKey):
-    ROLE_CHOICES = [
-        ("read_only", "Read Only"),
-        ("contributor", "Contributor"),
-        ("moderator", "Moderator"),
-        ("admin", "Admin"),
-    ]
+    class Role(models.TextChoices):
+        READ_ONLY = "read_only", "Read Only"
+        CONTRIBUTOR = "contributor", "Contributor"
+        MODERATOR = "moderator", "Moderator"
+        ADMIN = "admin", "Admin"
 
     role = models.CharField(
         max_length=20,
-        choices=ROLE_CHOICES,
-        default="read_only",
+        choices=Role.choices,
+        default=Role.READ_ONLY,
         help_text="Permission level for this API key",
     )
 
@@ -47,7 +46,7 @@ class RoleAPIKey(AbstractAPIKey):
     @property
     def role_display(self) -> str:
         """Get human-readable role name."""
-        return dict(self.ROLE_CHOICES).get(self.role, self.role)
+        return self.get_role_display()
 
     def has_role(
         self,

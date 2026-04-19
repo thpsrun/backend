@@ -78,7 +78,7 @@ class RoleFilter(SimpleListFilter):
     parameter_name = "role"
 
     def lookups(self, request, model_admin):  # type: ignore
-        return RoleAPIKey.ROLE_CHOICES
+        return RoleAPIKey.Role.choices
 
     def queryset(self, request, queryset: QuerySet[RoleAPIKey]) -> QuerySet[RoleAPIKey]:
         if self.value():

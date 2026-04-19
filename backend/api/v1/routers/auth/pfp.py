@@ -1,4 +1,3 @@
-import io
 import logging
 import os
 
@@ -7,10 +6,10 @@ from django.http import HttpRequest
 from ninja import File, Router, Status
 from ninja.files import UploadedFile
 from ninja.responses import codes_4xx
-from PIL import Image
 from srl.models import Players
 
 from api.permissions import player_session_auth
+from api.v1.routers.utils.images import ImageValidationError, validate_image
 from api.v1.schemas.auth import PfpUploadResponse
 from api.v1.schemas.base import ErrorResponse
 
@@ -19,6 +18,7 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 PFP_DIR: str = os.path.join(settings.MEDIA_ROOT, "pfp")
+PFP_MAX_PIXELS: int = 4_000_000
 os.makedirs(PFP_DIR, exist_ok=True)
 
 
@@ -28,7 +28,8 @@ os.makedirs(PFP_DIR, exist_ok=True)
     summary="Upload Profile Picture",
     description=(
         "Uploads a new profile picture for the authenticated player. "
-        "Accepts image files only (max 5 MB). Saves to static/pfp/`playerid`.jpg."
+        "Accepts JPEG, PNG, WEBP, or GIF images up to 5 MB and 4 MP. "
+        "Saves to static/pfp/`playerid`.jpg."
     ),
     auth=player_session_auth,
 )
@@ -37,15 +38,6 @@ def upload_pfp(
     file: UploadedFile = File(...),  # type: ignore
 ) -> Status:
     player: Players = request.auth  # type: ignore
-
-    if not file.content_type or not file.content_type.startswith("image/"):
-        return Status(
-            400,
-            ErrorResponse(
-                error="Uploaded file must be an image",
-                details={"content_type": file.content_type},
-            ),
-        )
 
     if not file.size or file.size > 5 * 1024 * 1024:
         return Status(
@@ -59,14 +51,13 @@ def upload_pfp(
     raw: bytes = b"".join(file.chunks())
 
     try:
-        with Image.open(io.BytesIO(raw)) as img:
-            rgb = img.convert("RGB")
-    except Exception as e:
+        rgb = validate_image(raw, file.content_type, max_pixels=PFP_MAX_PIXELS)
+    except ImageValidationError as e:
         return Status(
             400,
             ErrorResponse(
-                error="Uploaded file is not a valid image",
-                details={"exception": str(e)},
+                error=e.message,
+                details=None,
             ),
         )
 
