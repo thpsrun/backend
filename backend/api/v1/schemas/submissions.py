@@ -163,6 +163,14 @@ class RunSubmitSchema(Schema):
         default=None,
         description="Level ID for IL runs (must exist for the game).",
     )
+    platform_id: str = Field(
+        ...,
+        description="Platform ID (must be one of the game's platforms).",
+    )
+    emulated: bool = Field(
+        default=False,
+        description="Whether the run was played on an emulator.",
+    )
     players: list[SubmitPlayerEntry] = Field(
         ...,
         min_length=1,

@@ -11,6 +11,7 @@ from srl.models import Players, Runs, RunVariableValues, SRCSyncTask
 from srl.models.categories import Categories
 from srl.models.games import Games
 from srl.models.levels import Levels
+from srl.models.platforms import Platforms
 from srl.models.run_players import RunPlayers
 from srl.models.variable_values import VariableValues
 from srl.models.variables import Variables
@@ -110,6 +111,8 @@ def _build_src_run_payload(
         "players": [],
         "times": {},
         "video": body.video,
+        "platform": body.platform_id,
+        "emulated": body.emulated,
     }
 
     if body.level_id:
@@ -540,6 +543,27 @@ def submit_run(
                 ),
             )
 
+    try:
+        platform = Platforms.objects.get(id=body.platform_id)
+    except Platforms.DoesNotExist:
+        return Status(
+            422,
+            ErrorResponse(
+                error=f"Platform not found: {body.platform_id}",
+                details=None,
+            ),
+        )
+    if not game.platforms.filter(id=body.platform_id).exists():
+        return Status(
+            422,
+            ErrorResponse(
+                error=(
+                    f"Platform {body.platform_id} is not valid " f"for game {game.id}"
+                ),
+                details=None,
+            ),
+        )
+
     user_player_map: dict[str, Players] = {}
     for p in body.players:
         if p.rel == "user":
@@ -710,6 +734,8 @@ def submit_run(
             game=game,
             category=category,
             level=level,
+            platform=platform,
+            emulated=body.emulated,
             runtype=runtype,
             place=0,
             url=src_run_url,
