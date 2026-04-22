@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 from django.utils.text import slugify
 from srl.models.games import Games
@@ -36,12 +37,15 @@ class Guides(models.Model):
         verbose_name_plural = "Guides"
         ordering = ["-created_at", "title"]
 
-    # submitted_user = models.ForeignKey(
-    #     User,
-    #     on_delete=models.CASCADE,
-    #     verbose_name="Submitted User",
-    #     help_text="User who submitted this guide",
-    # )
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="authored_guides",
+        verbose_name="Owner",
+        help_text="User who created this guide.",
+    )
 
     title = models.CharField(
         max_length=200,

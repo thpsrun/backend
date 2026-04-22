@@ -28,6 +28,7 @@ python-dotenv==1.2.*
 pytz==2026.*
 redis<6.5,>=4.5.2
 requests==2.*
+rules==3.*
 sentry-sdk==2.*
 tzdata==2026.*
 uritemplate==4.2.*

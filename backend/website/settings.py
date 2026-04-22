@@ -51,6 +51,7 @@ INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
+    "django.contrib.postgres",
     "django.contrib.staticfiles",
     # THIRD-PARTY
     "corsheaders",
@@ -63,6 +64,7 @@ INSTALLED_APPS = [
     "allauth.mfa",
     "allauth.headless",
     "rest_framework_api_key",
+    "rules",
     # LOCAL
     "accounts",
     "srl",
@@ -108,6 +110,7 @@ TEMPLATES = [
 ]
 
 AUTHENTICATION_BACKENDS = [
+    "rules.permissions.ObjectPermissionBackend",
     "django.contrib.auth.backends.ModelBackend",
     "allauth.account.auth_backends.AuthenticationBackend",
 ]
