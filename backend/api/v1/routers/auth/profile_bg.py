@@ -8,7 +8,7 @@ from ninja.files import UploadedFile
 from ninja.responses import codes_4xx
 from srl.models import Players
 
-from api.permissions import player_session_auth
+from api.permissions import authed
 from api.v1.routers.utils.images import ImageValidationError, validate_image
 from api.v1.schemas.auth import ProfileBGUploadResponse
 from api.v1.schemas.base import ErrorResponse
@@ -29,13 +29,13 @@ PROFILE_BG_MAX_PIXELS: int = 12_000_000
         "Accepts JPEG, PNG, WEBP, or GIF images up to 10 MB and 12 MP. "
         "Re-encodes to strip metadata."
     ),
-    auth=player_session_auth,
+    auth=authed("profile.edit_own"),
 )
 def upload_profile_bg(
     request: HttpRequest,
     file: UploadedFile = File(...),  # type: ignore
 ) -> Status:
-    player: Players = request.auth  # type: ignore
+    player: Players = request.auth.player  # type: ignore
 
     if not file.size or file.size > 10 * 1024 * 1024:
         return Status(
@@ -95,12 +95,12 @@ def upload_profile_bg(
     response={200: ProfileBGUploadResponse, codes_4xx: ErrorResponse},
     summary="Remove Profile Background",
     description="Removes the authenticated player's profile background image.",
-    auth=player_session_auth,
+    auth=authed("profile.edit_own"),
 )
 def delete_profile_bg(
     request: HttpRequest,
 ) -> Status:
-    player: Players = request.auth  # type: ignore
+    player: Players = request.auth.player  # type: ignore
 
     if player.user:
         if player.user.profile_bg:

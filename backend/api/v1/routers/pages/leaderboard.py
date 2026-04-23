@@ -6,7 +6,7 @@ from ninja import Query, Router, Status
 from ninja.responses import codes_4xx
 from srl.models import Games
 
-from api.permissions import public_auth
+from api.permissions import public_read
 from api.v1.routers.utils import (
     check_cache_query,
     game_leaderboard_cache_key,
@@ -42,7 +42,7 @@ Only non-obsolete, verified runs are counted toward point totals.
 
 Players are ranked by total_points in descending order.
 """,
-    auth=public_auth,
+    auth=public_read(),
 )
 def get_overall_leaderboard(
     request: HttpRequest,
@@ -83,7 +83,7 @@ Examples:
 - `/website/game/thps4/pointslb?embed=oldest-runs` - THPS4 leaderboard with oldest PBs
 - `/website/game/n2680o1p/pointslb` - Leaderboard by game ID
 """,
-    auth=public_auth,
+    auth=public_read(),
 )
 def get_game_leaderboard(
     request: HttpRequest,

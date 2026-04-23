@@ -6,7 +6,7 @@ from ninja import Query, Router, Status
 from ninja.responses import codes_4xx
 from srl.models import Categories, Games, Levels
 
-from api.permissions import public_auth
+from api.permissions import public_read
 from api.v1.routers.utils import (
     check_cache_query,
     history_cache_key,
@@ -77,7 +77,7 @@ Examples:
 - `/history/thug1/category/any` - Any% WR history for THUG1
 - `/history/thug1/category/any?values=beginner` - Any% Beginner
 """,
-    auth=public_auth,
+    auth=public_read(),
 )
 def get_fg_wr_history(
     request: HttpRequest,
@@ -177,7 +177,7 @@ Examples:
 - `/history/thps1/level/warehouse/agg` - Warehouse AG&G WR history
 - `/history/thps1/level/warehouse/agg?values=console,igt`
 """,
-    auth=public_auth,
+    auth=public_read(),
 )
 def get_il_wr_history(
     request: HttpRequest,

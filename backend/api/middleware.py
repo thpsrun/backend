@@ -6,20 +6,16 @@ import re
 from collections.abc import Callable
 
 from django.contrib.admin.models import ADDITION, CHANGE, DELETION, LogEntry
-from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from django.http import HttpRequest, HttpResponse
 from django.utils import timezone
 
-from api.models import RoleAPIKey
+from api.models import APIKey
 
 logger = logging.getLogger(__name__)
 
-User = get_user_model()
-
 MAX_LOG_BODY_SIZE = 10000
 MAX_BODY_DISPLAY_LENGTH = 500
-MAX_USERNAME_LENGTH = 150
 MAX_CHANGE_MESSAGE_LENGTH = 255
 
 MUTATING_METHODS = frozenset(["POST", "PUT", "PATCH", "DELETE"])
@@ -123,60 +119,36 @@ class APIActivityLogMiddleware:
     def _get_api_key_from_request(
         self,
         request: HttpRequest,
-    ) -> RoleAPIKey | None:
+    ) -> APIKey | None:
         """Extract and validate the API key from the request headers.
 
         Arguments:
             request: The incoming HTTP request.
 
         Returns:
-            The RoleAPIKey object if valid, None otherwise.
+            The APIKey object if valid, None otherwise.
         """
         api_key_header = request.headers.get("X-API-Key")
         if not api_key_header:
             return None
 
         try:
-            return RoleAPIKey.objects.get_from_key(api_key_header)
+            return APIKey.objects.get_from_key(api_key_header)
         except Exception as e:
             logger.warning(f"Failed to retrieve API key: {e}", exc_info=True)
             return None
 
     def _get_or_create_api_user(
         self,
-        api_key: RoleAPIKey,
+        api_key: APIKey,
     ) -> int | None:
-        """Get or create a Django User for the API key.
+        """Return the ID of the user who owns the API key.
 
-        Since API calls don't have traditional Django users, we create
-        a special inactive user account for audit trail purposes.
-
-        Arguments:
-            api_key: The validated RoleAPIKey object.
-
-        Returns:
-            The user ID if successful, None otherwise.
+        The new APIKey model is user-owned, so log entries attribute directly
+        to the owning user instead of a synthetic "api_key_*" stand-in.
         """
-        try:
-            sanitized_name = re.sub(r"[\s\-]+", "_", api_key.name)
-            username = f"api_key_{sanitized_name}"[:MAX_USERNAME_LENGTH]
-
-            user, _ = User.objects.get_or_create(
-                username=username,
-                defaults={
-                    "first_name": "API Key",
-                    "last_name": api_key.name[:30],
-                    "email": f"{username}@api.thpsrun.local",
-                    "is_active": False,
-                    "is_staff": False,
-                },
-            )
-
-            return user.id
-
-        except Exception as e:
-            logger.warning(f"Failed to get/create API user: {e}", exc_info=True)
-            return None
+        owner = getattr(api_key, "user", None)
+        return owner.id if owner else None
 
     def _get_action_flag(self, method: str) -> int | None:
         """Convert HTTP method to Django admin action flag.
@@ -253,20 +225,20 @@ class APIActivityLogMiddleware:
     def _create_change_message(
         self,
         request: HttpRequest,
-        api_key: RoleAPIKey,
+        api_key: APIKey,
     ) -> str:
         """Create a descriptive change message for the log entry.
 
         Arguments:
             request: The incoming HTTP request.
-            api_key: The validated RoleAPIKey object.
+            api_key: The validated APIKey object.
 
         Returns:
             A formatted change message string (max 255 chars).
         """
         try:
             method = request.method
-            api_key_name = api_key.name
+            api_key_name = api_key.label
 
             method_messages: dict[str, str] = {
                 "POST": f"Created via API (Key: {api_key_name})",

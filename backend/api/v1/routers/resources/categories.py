@@ -6,7 +6,8 @@ from ninja import Query, Router, Status
 from ninja.responses import codes_4xx
 from srl.models import Categories, Games, Variables, VariableValues
 
-from api.permissions import admin_auth, moderator_auth, public_auth
+from api.permissions import authed, public_read
+from api.v1.routers.utils.resolvers import game_from_body, game_from_category_path
 from api.v1.routers.utils.embeds import parse_embeds, serialize_game_embed
 from api.v1.schemas.base import CategoryTypeType, ErrorResponse
 from api.v1.schemas.categories import (
@@ -138,7 +139,7 @@ Examples:
 - `/categories/all?type=per-game&limit=20` - Get first 20 full-game categories.
 - `/categories/all?game=thps4&embed=variables` - Get THPS4 categories with variables.
 """,
-    auth=public_auth,
+    auth=public_read(),
 )
 def get_all_categories(
     request: HttpRequest,
@@ -237,7 +238,7 @@ Examples:
 - `/categories/rklge08d?embed=game` - Get category with game info.
 - `/categories/rklge08d?embed=variables,values` - Get category with variables and values.
 """,
-    auth=public_auth,
+    auth=public_read(),
 )
 def get_category(
     request: HttpRequest,
@@ -312,7 +313,7 @@ Request Body:
 - `variables` (list[dict]): Associated variables to the category.
 - `values` (list[dict]): Associated values to the category.
 """,
-    auth=moderator_auth,
+    auth=authed("games.manage", target_resolver=game_from_body),
 )
 def create_category(
     request: HttpRequest,
@@ -382,7 +383,7 @@ Request Body:
 - `variables` (list[dict] | None): Associated variables to the category.
 - `values` (list[dict] | None): Associated values to the category.
 """,
-    auth=moderator_auth,
+    auth=authed("games.manage", target_resolver=game_from_category_path),
 )
 def update_category(
     request: HttpRequest,
@@ -447,7 +448,7 @@ REQUIRES ADMIN ACCESS.
 Supported Parameters:
 - `id` (str): Unique ID of the category being deleted.
 """,
-    auth=admin_auth,
+    auth=authed("users.admin"),
 )
 def delete_category(
     request: HttpRequest,

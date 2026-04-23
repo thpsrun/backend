@@ -32,6 +32,16 @@ def is_superuser(user: UserLike) -> bool:
 
 
 @predicate
+def has_claimed_player(user: UserLike) -> bool:
+    if not user or not getattr(user, "is_authenticated", False):
+        return False
+    player = getattr(user, "player", None)
+    if player is None:
+        return False
+    return getattr(player, "claim_status", None) == "CLAIMED"
+
+
+@predicate
 def is_game_moderator(
     user: UserLike,
     game: "Games | None",

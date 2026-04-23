@@ -9,7 +9,7 @@ from typing import Any
 from django.core.cache import cache
 from django.http import HttpRequest, JsonResponse
 
-from api.models import RoleAPIKey
+from api.models import APIKey
 
 
 @dataclass(frozen=True)
@@ -73,11 +73,11 @@ class RoleBasedRateLimit:
 
         if api_key_header:
             try:
-                api_key_obj = RoleAPIKey.objects.get_from_key(api_key_header)  # type: ignore
+                api_key_obj = APIKey.objects.get_from_key(api_key_header)
                 if api_key_obj:
-                    role = api_key_obj.role
+                    role = "admin" if api_key_obj.user.is_superuser else "read_only"
                     identifier = f"key_{api_key_obj.id}"
-            except RoleAPIKey.DoesNotExist:
+            except APIKey.DoesNotExist:
                 pass
 
         config = self.ROLE_LIMITS[role]

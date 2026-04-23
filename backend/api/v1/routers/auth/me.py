@@ -10,7 +10,7 @@ from ninja import Router, Status
 from ninja.responses import codes_4xx
 from srl.models import CountryCodes, Players
 
-from api.permissions import player_session_auth
+from api.permissions import authed
 from api.v1.schemas.auth import (
     CountryEmbed,
     CustomizationsEmbed,
@@ -110,12 +110,12 @@ def _build_profile_response(
     response={200: PlayerProfileResponse, codes_4xx: ErrorResponse},
     summary="Get My Profile",
     description="Returns the current authenticated player's profile.",
-    auth=player_session_auth,
+    auth=authed("profile.edit_own"),
 )
 def get_me(
     request: HttpRequest,
 ) -> Status:
-    return Status(200, _build_profile_response(request.auth))  # type: ignore
+    return Status(200, _build_profile_response(request.auth.player))  # type: ignore
 
 
 @router.patch(
@@ -126,13 +126,13 @@ def get_me(
 Updates editable fields on the current authenticated player's profile.
 Only non-null fields in the request body will be applied.
 """,
-    auth=player_session_auth,
+    auth=authed("profile.edit_own"),
 )
 def update_me(
     request: HttpRequest,
     body: PlayerUpdateRequest,
 ) -> Status:
-    player: Players = request.auth  # type: ignore
+    player: Players = request.auth.player  # type: ignore
 
     player_update_fields: list[str] = []
     user_update_fields: list[str] = []
@@ -218,12 +218,12 @@ def update_me(
 Deletes the authenticated player's account.
 Blanks the Player record (runs are preserved) and deletes the linked Django User.
 """,
-    auth=player_session_auth,
+    auth=authed("profile.edit_own"),
 )
 def delete_me(
     request: HttpRequest,
 ) -> Status:
-    player: Players = request.auth  # type: ignore
+    player: Players = request.auth.player  # type: ignore
     user = player.user
     user_id: int | None = user.id if user is not None else None
     old_pfp = player.pfp

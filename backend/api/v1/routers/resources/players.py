@@ -6,7 +6,7 @@ from ninja import Query, Router, Status
 from ninja.responses import codes_4xx
 from srl.models import CountryCodes, Players, Runs
 
-from api.permissions import admin_auth, moderator_auth, public_auth
+from api.permissions import authed, public_read
 from api.v1.routers.utils.embeds import parse_embeds
 from api.v1.schemas.base import ErrorResponse
 from api.v1.schemas.players import (
@@ -167,7 +167,7 @@ Examples:
 - `/players/search?q=hawk` - Search for players matching "hawk".
 - `/players/search?q=spe&limit=5` - Search with a custom limit.
 """,
-    auth=public_auth,
+    auth=public_read(),
 )
 def search_players(
     request: HttpRequest,
@@ -226,7 +226,7 @@ Examples:
 - `/players/v8lponvj?embed=country` - Get player with country info.
 - `/players/v8lponvj?embed=country,stats,awards,profile` - Get player with stats and profile.
 """,
-    auth=public_auth,
+    auth=public_read(),
 )
 def get_player(
     request: HttpRequest,
@@ -357,7 +357,7 @@ Request Body:
 - `player` (object): Core player info (name, nickname, pronouns, country_id, pfp, ex_stream).
 - `socials` (object): Social links (twitch, youtube, twitter, bluesky, discord).
 """,
-    auth=moderator_auth,
+    auth=authed("users.admin"),
 )
 def create_player(
     request: HttpRequest,
@@ -468,7 +468,7 @@ Request Body:
 - `socials` (object | None): Social links to update (twitch, youtube, twitter, bluesky,
     discord).
 """,
-    auth=moderator_auth,
+    auth=authed("users.admin"),
 )
 def update_player(
     request: HttpRequest,
@@ -582,7 +582,7 @@ REQUIRES ADMIN ACCESS.
 Supported Parameters:
 - `id` (str): Unique ID of the player being deleted.
 """,
-    auth=admin_auth,
+    auth=authed("users.admin"),
 )
 def delete_player(
     request: HttpRequest,

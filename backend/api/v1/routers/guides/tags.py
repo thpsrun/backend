@@ -5,7 +5,7 @@ from guides.models import Tags
 from ninja import Router, Status
 from ninja.responses import codes_4xx
 
-from api.permissions import contributor_auth, public_auth
+from api.permissions import authed, public_read
 from api.v1.schemas.base import ErrorResponse
 from api.v1.schemas.guides import (
     TagCreateSchema,
@@ -27,7 +27,7 @@ Returns a list of all available tags to categorize guides.
 Examples:
 - `/tags/all` - Get all tags
 """,
-    auth=public_auth,
+    auth=public_read(),
 )
 def list_tags(
     request: HttpRequest,
@@ -50,7 +50,7 @@ Examples:
 - `/tags/tricks` - Get the "Tricks" tag
 - `/tags/glitches` - Get the "Glitches" tag
 """,
-    auth=public_auth,
+    auth=public_read(),
 )
 def get_tag(
     request: HttpRequest,
@@ -79,7 +79,7 @@ Request Body:
 - `name` (str): Name of the tag
 - `description` (str): Description of what this tag represents
 """,
-    auth=contributor_auth,
+    auth=authed("users.admin"),
 )
 def create_tag(
     request: HttpRequest,
@@ -122,7 +122,7 @@ Request Body:
 - `slug` (str | None): Updated URL-friendly slug
 - `description` (str | None): Updated tag description
 """,
-    auth=contributor_auth,
+    auth=authed("users.admin"),
 )
 def update_tag(
     request: HttpRequest,
@@ -179,7 +179,7 @@ REQUIRES CONTRIBUTOR ACCESS OR HIGHER.
 Supported Parameters:
 - `slug` (str): Unique ID or the slug of the tag to remove.
 """,
-    auth=contributor_auth,
+    auth=authed("users.admin"),
 )
 def delete_tag(
     request: HttpRequest,

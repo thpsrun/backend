@@ -2,7 +2,7 @@ from django.http import HttpRequest
 from ninja import Router, Status
 from ninja.responses import codes_4xx
 
-from api.permissions import public_auth
+from api.permissions import public_read
 from api.v1.routers.utils import cache_response, navbar_cache_key
 from api.v1.schemas.base import ErrorResponse
 from api.v1.schemas.nav import NavbarResponse, NavItemSchema, SocialLinkSchema
@@ -69,7 +69,7 @@ def _navbar_cache_key(request: HttpRequest) -> str:
         "This endpoint is heavily cached and only changes when nav items "
         "are modified in the admin."
     ),
-    auth=public_auth,
+    auth=public_read(),
 )
 @cache_response(
     timeout=300,

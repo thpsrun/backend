@@ -266,11 +266,13 @@ class PublicReadTest(TestCase):
     def setUp(self) -> None:
         self.factory = RequestFactory()
 
-    def test_anon_returns_none(self) -> None:
+    def test_anon_returns_anonymous_user(self) -> None:
         request = self.factory.get("/")
         request.user = AnonymousUser()
         dep = public_read()
-        self.assertIsNone(dep(request))
+        result = dep(request)
+        self.assertIsNotNone(result)
+        self.assertFalse(result.is_authenticated)
 
     def test_authenticated_returns_user(self) -> None:
         user = User.objects.create_user(

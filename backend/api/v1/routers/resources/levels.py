@@ -5,7 +5,8 @@ from ninja import Query, Router, Status
 from ninja.responses import codes_4xx
 from srl.models import Games, Levels, Variables, VariableValues
 
-from api.permissions import admin_auth, moderator_auth, public_auth
+from api.permissions import authed, public_read
+from api.v1.routers.utils.resolvers import game_from_body, game_from_level_path
 from api.v1.routers.utils.embeds import parse_embeds, serialize_game_embed
 from api.v1.schemas.base import ErrorResponse
 from api.v1.schemas.levels import LevelCreateSchema, LevelSchema, LevelUpdateSchema
@@ -125,7 +126,7 @@ Examples:
 - `/levels/all?game_id=thps4&embed=game` - Get THPS4 levels with game info.
 - `/levels/all?limit=10&offset=20` - Get levels 21-30 from the overall list.
 """,
-    auth=public_auth,
+    auth=public_read(),
 )
 def get_all_levels(
     request: HttpRequest,
@@ -218,7 +219,7 @@ Examples:
 - `/levels/592pxj8d?embed=game` - Get level with game info
 - `/levels/592pxj8d?embed=variables,values` - Get level with variables and values
 """,
-    auth=public_auth,
+    auth=public_read(),
 )
 def get_level(
     request: HttpRequest,
@@ -294,7 +295,7 @@ Request Body:
 - `variables` (List[dict]): Associated variables to the category.
 - `values` (List[dict]): Associated values to the category.
 """,
-    auth=moderator_auth,
+    auth=authed("games.manage", target_resolver=game_from_body),
 )
 def create_level(
     request: HttpRequest,
@@ -364,7 +365,7 @@ Request Body:
 - `variables` (list[dict]): Associated variables to the category.
 - `values` (list[dict]): Associated values to the category.
 """,
-    auth=moderator_auth,
+    auth=authed("games.manage", target_resolver=game_from_level_path),
 )
 def update_level(
     request: HttpRequest,
@@ -430,7 +431,7 @@ REQUIRES ADMIN ACCESS.
 Supported Parameters:
 - `id` (str): Unique ID of the level being deleted.
 """,
-    auth=admin_auth,
+    auth=authed("users.admin"),
 )
 def delete_level(
     request: HttpRequest,

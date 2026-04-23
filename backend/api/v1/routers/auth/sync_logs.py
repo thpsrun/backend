@@ -1,6 +1,6 @@
 import logging
 
-from api.permissions import superuser_session_auth
+from api.permissions import authed
 from api.v1.schemas.base import ErrorResponse
 from api.v1.schemas.submissions import (
     SyncLogEntry,
@@ -11,7 +11,7 @@ from api.v1.schemas.submissions import (
 from django.http import HttpRequest
 from ninja import Query, Router, Status
 from ninja.responses import codes_4xx
-from srl.models import Players, SRCSyncTask
+from srl.models import SRCSyncTask
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ router = Router()
 
 @router.get(
     "/admin/sync-logs",
-    auth=superuser_session_auth,
+    auth=authed("sync_logs.admin"),
     response={200: SyncLogResponse, codes_4xx: ErrorResponse},
     summary="SRC Sync Logs (Superuser)",
     description=(
@@ -48,8 +48,6 @@ def get_sync_logs(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ) -> Status:
-    player: Players = request.auth  # type: ignore
-
     qs = SRCSyncTask.objects.select_related(
         "run__game",
         "run__category",
@@ -111,7 +109,7 @@ def get_sync_logs(
 
 @router.post(
     "/admin/sync-logs/{task_id}/retry",
-    auth=superuser_session_auth,
+    auth=authed("sync_logs.admin"),
     response={200: SyncRetryResponse, codes_4xx: ErrorResponse},
     summary="Retry Failed Sync Task (Superuser)",
     description=(
@@ -123,8 +121,6 @@ def retry_sync_task(
     request: HttpRequest,
     task_id: int,
 ) -> Status:
-    player: Players = request.auth  # type: ignore
-
     try:
         sync_task = SRCSyncTask.objects.get(id=task_id)
     except SRCSyncTask.DoesNotExist:

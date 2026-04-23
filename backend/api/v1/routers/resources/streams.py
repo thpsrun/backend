@@ -6,7 +6,8 @@ from ninja import Query, Router, Status
 from ninja.responses import codes_4xx
 from srl.models import Games, NowStreaming, Players
 
-from api.permissions import admin_auth, moderator_auth, public_auth
+from api.permissions import authed, public_read
+from api.v1.routers.utils.resolvers import game_from_body, game_from_stream_path
 from api.v1.schemas.base import ErrorResponse
 from api.v1.schemas.streams import StreamCreateSchema, StreamSchema, StreamUpdateSchema
 
@@ -64,7 +65,7 @@ Examples:
 Note: This endpoint provides mock data for demonstration.
 In production, integrate with actual streaming platform APIs.
 """,
-    auth=public_auth,
+    auth=public_read(),
 )
 def get_live_streams(
     request: HttpRequest,
@@ -118,7 +119,7 @@ Request Body:
 - `offline_ct` (int): Offline counter (minutes since last seen).
 - `stream_time` (datetime | None): Stream start time (ISO format).
 """,
-    auth=moderator_auth,
+    auth=authed("games.manage", target_resolver=game_from_body),
 )
 def create_stream(
     request: HttpRequest,
@@ -196,7 +197,7 @@ Request Body:
 - `offline_ct` (int | None): Updated offline counter (minutes since last seen).
 - `stream_time` (datetime | None): Updated stream start time (ISO format).
 """,
-    auth=moderator_auth,
+    auth=authed("games.manage", target_resolver=game_from_stream_path),
 )
 def update_stream(
     request: HttpRequest,
@@ -271,7 +272,7 @@ REQUIRES ADMIN ACCESS OR HIGHER.
 Supported Parameters:
 - `player_id` (str): Unique ID of the player whose stream is being deleted.
 """,
-    auth=admin_auth,
+    auth=authed("users.admin"),
 )
 def delete_stream(
     request: HttpRequest,

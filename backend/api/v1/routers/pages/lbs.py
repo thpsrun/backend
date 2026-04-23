@@ -6,7 +6,7 @@ from ninja import Query, Router, Status
 from ninja.responses import codes_4xx
 from srl.models import Categories, Games, Levels
 
-from api.permissions import public_auth
+from api.permissions import public_read
 from api.v1.routers.utils import (
     check_cache_query,
     lbs_game_recent_cache_key,
@@ -103,7 +103,7 @@ Examples:
 - `/website/lbs/thug1/category/any?values=beginner` - Any% Beginner runs
 - `/website/lbs/thps4/category/any?embed=stats,recent` - With game-wide metadata
 """,
-    auth=public_auth,
+    auth=public_read(),
 )
 def get_category_leaderboard(
     request: HttpRequest,
@@ -229,7 +229,7 @@ Examples:
 - `/website/lbs/thug1/levels?values=normal` - Filtered to Normal difficulty
 - `/website/lbs/thug1/levels?embed=stats,recent` - With game-wide metadata
 """,
-    auth=public_auth,
+    auth=public_read(),
 )
 def get_il_summary(
     request: HttpRequest,
@@ -312,7 +312,7 @@ Examples:
 - `/website/lbs/thug1/level/foundry/any?values=beginner` - Filtered
 - `/website/lbs/thps4/level/manhattan/any?embed=stats` - With stats
 """,
-    auth=public_auth,
+    auth=public_read(),
 )
 def get_il_leaderboard(
     request: HttpRequest,

@@ -1,4 +1,5 @@
-from api.models import RoleAPIKey
+from api.models import APIKey
+from django.contrib.auth import get_user_model
 from django.test import TestCase
 from srl.models import CountryCodes, Games, Platforms
 
@@ -29,9 +30,17 @@ class AuthTestBase(TestCase):
         cls.country = CountryCodes.objects.create(id="usa", name="United States")
 
     def setUp(self) -> None:
-        self.key_obj, self.api_key = RoleAPIKey.objects.create_key(  # type: ignore
-            name="Test Admin Key",
-            role="admin",
+        User = get_user_model()
+        self.admin_user = User.objects.create_user(  # type: ignore
+            username="test_admin",
+            email="test_admin@example.com",
+            password="supersecret123",
+            is_superuser=True,
+            is_staff=True,
+        )
+        self.key_obj, self.api_key = APIKey.objects.create_key(
+            user=self.admin_user,
+            label="Test Admin Key",
             description="Temporary key for automated testing",
         )
 

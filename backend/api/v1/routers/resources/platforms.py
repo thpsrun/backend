@@ -6,7 +6,7 @@ from ninja import Query, Router, Status
 from ninja.responses import codes_4xx
 from srl.models import Platforms
 
-from api.permissions import admin_auth, moderator_auth, public_auth
+from api.permissions import authed, public_read
 from api.v1.schemas.base import ErrorResponse
 from api.v1.schemas.platforms import (
     PlatformCreateSchema,
@@ -34,7 +34,7 @@ Examples:
 - `/platforms/all?limit=20` - Get first 20 platforms
 - `/platforms/all?limit=10&offset=10` - Get platforms 11-20
 """,
-    auth=public_auth,
+    auth=public_read(),
 )
 def get_all_platforms(
     request: HttpRequest,
@@ -72,7 +72,7 @@ Examples:
 - `/platforms/8gej2n3z` - Get platform by ID
 - `/platforms/pc` - Get platform by slug
 """,
-    auth=public_auth,
+    auth=public_read(),
 )
 def get_platform(
     request: HttpRequest,
@@ -117,7 +117,7 @@ Request Body:
 - `name` (str): Platform name (e.g., "PlayStation 2") being created.
 - `slug` (str): URL-friendly version (e.g., "playstation-2").
 """,
-    auth=moderator_auth,
+    auth=authed("users.admin"),
 )
 def create_platform(
     request: HttpRequest,
@@ -163,7 +163,7 @@ Request Body:
 - `name` (str | None): Platform name (e.g., "PlayStation 2") being created.
 - `slug` (str | None): URL-friendly version (e.g., "playstation-2").
 """,
-    auth=moderator_auth,
+    auth=authed("users.admin"),
 )
 def update_platform(
     request: HttpRequest,
@@ -204,7 +204,7 @@ REQUIRES ADMIN ACCESS.
 Supported Parameters:
 - `id (str): Unique ID (usually based on SRC) of the platform being deleted.
 """,
-    auth=admin_auth,
+    auth=authed("users.admin"),
 )
 def delete_platform(
     request: HttpRequest,

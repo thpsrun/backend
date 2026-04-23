@@ -7,7 +7,7 @@ from ninja.responses import codes_4xx
 from srl.encryption import encrypt_src_key
 from srl.models import Players
 
-from api.permissions import player_session_auth
+from api.permissions import authed
 from api.rate_limiting import auth_rate_limit
 from api.v1.schemas.auth import SRCKeyRequest, SRCKeyStatusResponse
 from api.v1.schemas.base import ErrorResponse
@@ -26,14 +26,14 @@ router = Router()
         "The key is verified against the SRC API to confirm it belongs to the "
         "authenticated player before storage."
     ),
-    auth=player_session_auth,
+    auth=authed("profile.edit_own"),
 )
 @auth_rate_limit
 def set_src_key(
     request: HttpRequest,
     body: SRCKeyRequest,
 ) -> Status:
-    player: Players = request.auth  # type: ignore
+    player: Players = request.auth.player  # type: ignore
 
     try:
         src_response = http_requests.get(
@@ -102,12 +102,12 @@ def set_src_key(
         "After removal, the player will not be able to approve runs until "
         "they re-submit their key."
     ),
-    auth=player_session_auth,
+    auth=authed("profile.edit_own"),
 )
 def delete_src_key(
     request: HttpRequest,
 ) -> Status:
-    player: Players = request.auth  # type: ignore
+    player: Players = request.auth.player  # type: ignore
 
     if not player.user or not player.user.encrypted_api_key:
         return Status(

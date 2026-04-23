@@ -4,7 +4,7 @@ from django.http import HttpRequest
 from ninja import Query, Router, Status
 from ninja.responses import codes_4xx
 
-from api.permissions import public_auth
+from api.permissions import public_read
 from api.v1.routers.utils import get_cached_embed
 from api.v1.schemas.base import ErrorResponse
 
@@ -32,7 +32,7 @@ Examples:
 - `/website/main?embed=records` - Current world records
 - `/website/main?embed=latest-wrs,latest-pbs,records,stats` - All data
 """,
-    auth=public_auth,
+    auth=public_read(),
 )
 def get_main_page_data(
     request: HttpRequest,

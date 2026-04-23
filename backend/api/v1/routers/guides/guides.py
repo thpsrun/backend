@@ -8,7 +8,8 @@ from ninja import Query, Router, Status
 from ninja.responses import codes_4xx
 from srl.models.games import Games
 
-from api.permissions import admin_auth, moderator_auth, public_auth
+from api.permissions import authed, public_read
+from api.v1.routers.utils.resolvers import game_from_body, guide_from_path
 from api.v1.routers.utils.embeds import parse_embeds
 from api.v1.schemas.base import ErrorResponse
 from api.v1.schemas.games import GameSchema
@@ -39,7 +40,7 @@ Supported Embeds:
 - `game`: Includes the metadata of the game the tag belongs to.
 - `tags`: Include metadata of the tags belonging to this guide.
 """,
-    auth=public_auth,
+    auth=public_read(),
 )
 def list_guides(
     request: HttpRequest,
@@ -98,7 +99,7 @@ Supported Embeds:
 - `game`: Includes the metadata of the game the tag belongs to.
 - `tags`: Include metadata of the tags belonging to this guide.
 """,
-    auth=public_auth,
+    auth=public_read(),
 )
 def get_guide(
     request: HttpRequest,
@@ -144,7 +145,7 @@ Request Body:
 - `short_description` (str): Brief description of the guide (limit 500 characters).
 - `content` (str): Full guide content (markdown supported).
 """,
-    auth=moderator_auth,
+    auth=authed("games.manage", target_resolver=game_from_body),
 )
 def create_guide(
     request: HttpRequest,
@@ -227,7 +228,7 @@ Request Body:
 - `short_description` (str | None): Brief description of the guide (limit 500 characters).
 - `content` (str | None): Full guide content (markdown supported).
 """,
-    auth=moderator_auth,
+    auth=authed("guides.edit_any", target_resolver=guide_from_path),
 )
 def update_guide(
     request: HttpRequest,
@@ -333,7 +334,7 @@ REQUIRES ADMIN ACCESS OR HIGHER.
 Supported Parameters:
 - `slug` (str): Simplified, URL friendly name of the guide.
 """,
-    auth=admin_auth,
+    auth=authed("guides.delete_any", target_resolver=guide_from_path),
 )
 def delete_guide(
     request: HttpRequest,

@@ -8,79 +8,6 @@ from django.utils import timezone
 from rest_framework_api_key.models import AbstractAPIKey, BaseAPIKeyManager
 
 
-class RoleAPIKey(AbstractAPIKey):
-    class Role(models.TextChoices):
-        READ_ONLY = "read_only", "Read Only"
-        CONTRIBUTOR = "contributor", "Contributor"
-        MODERATOR = "moderator", "Moderator"
-        ADMIN = "admin", "Admin"
-
-    role = models.CharField(
-        max_length=20,
-        choices=Role.choices,
-        default=Role.READ_ONLY,
-        help_text="Permission level for this API key",
-    )
-
-    description = models.TextField(
-        blank=True,
-        help_text="Optional description of what this key is used for",
-    )
-
-    created_by = models.CharField(
-        max_length=100,
-        blank=True,
-        help_text="Who created this API key",
-    )
-
-    last_used = models.DateTimeField(
-        null=True,
-        blank=True,
-        help_text="Last time this key was used",
-    )
-
-    class Meta:
-        verbose_name = "Role API Key"
-        verbose_name_plural = "Role API Keys"
-        ordering = ["-created"]
-
-    def __str__(self) -> str:
-        return f"{self.name} ({self.role})"
-
-    @property
-    def role_display(self) -> str:
-        """Get human-readable role name."""
-        return self.get_role_display()
-
-    def has_role(
-        self,
-        required_role: str,
-    ) -> bool:
-        """Check if this API key has sufficient role permissions.
-
-        Arguments:
-            required_role (str): Minimum required role
-        """
-        role_hierarchy: dict[str, int] = {
-            "read_only": 1,
-            "contributor": 2,
-            "moderator": 3,
-            "admin": 4,
-        }
-
-        user_level = role_hierarchy.get(self.role, 0)
-        required_level = role_hierarchy.get(required_role, 0)
-
-        return user_level >= required_level
-
-    def save(
-        self,
-        *args: Any,
-        **kwargs: Any,
-    ) -> None:
-        super().save(*args, **kwargs)
-
-
 class APIKeyRevokedReason(models.TextChoices):
     NONE = "", "Not revoked"
     USER = "user", "Revoked by owner"
@@ -103,12 +30,15 @@ class APIKeyManager(BaseAPIKeyManager):
             )
         )
 
-    def create_key(self, **kwargs: Any) -> Any:
+    def create_key(self, **kwargs: Any) -> tuple["APIKey", str]:
         # AbstractAPIKey.name is NOT NULL; default it from label so callers
         # only have to provide the user-facing label.
         if "name" not in kwargs and "label" in kwargs:
             kwargs["name"] = str(kwargs["label"])[:50]
-        return super().create_key(**kwargs)
+        return super().create_key(**kwargs)  # type: ignore
+
+    def get_from_key(self, key: str) -> "APIKey":
+        return super().get_from_key(key)  # type: ignore
 
 
 class APIKey(AbstractAPIKey):

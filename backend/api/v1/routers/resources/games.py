@@ -6,7 +6,8 @@ from ninja import Query, Router, Status
 from ninja.responses import codes_4xx
 from srl.models import Categories, Games, Levels, Variables, VariableValues
 
-from api.permissions import admin_auth, moderator_auth, public_auth
+from api.permissions import authed, public_read
+from api.v1.routers.utils.resolvers import game_from_path
 from api.v1.routers.utils.embeds import parse_embeds
 from api.v1.schemas.base import ErrorResponse
 from api.v1.schemas.games import GameCreateSchema, GameSchema, GameUpdateSchema
@@ -227,7 +228,7 @@ Examples:
 - `/games/all?limit=20` - Get first 20 games.
 - `/games/all?embed=categories,platforms` - Get games with categories and platforms.
 """,
-    auth=public_auth,
+    auth=public_read(),
 )
 def get_all_games(
     request: HttpRequest,
@@ -290,7 +291,7 @@ Examples:
 - `/games/n2680o1p` - Get game by ID
 - `/games/thps4?embed=categories,levels` - Get game with categories and levels
 """,
-    auth=public_auth,
+    auth=public_read(),
 )
 def get_game(
     request: HttpRequest,
@@ -361,7 +362,7 @@ Request Body:
 - `pointsmax` (int): Maximum points for world record full-game runs.
 - `ipointsmax` (int): Maximum points for world record individual level runs.
 """,
-    auth=moderator_auth,
+    auth=authed("users.admin"),
 )
 def create_game(
     request: HttpRequest,
@@ -431,7 +432,7 @@ Request Body:
 - `pointsmax` (int | None): Maximum points for world record full-game runs.
 - `ipointsmax` (int | None): Maximum points for world record individual level runs.
 """,
-    auth=moderator_auth,
+    auth=authed("games.manage", target_resolver=game_from_path),
 )
 def update_game(
     request: HttpRequest,
@@ -476,7 +477,7 @@ REQUIRES ADMIN ACCESS.
 Supported Parameters:
 - id (str): Unique ID or slug of the specified game
 """,
-    auth=admin_auth,
+    auth=authed("users.admin"),
 )
 def delete_game(
     request: HttpRequest,

@@ -19,7 +19,8 @@ from srl.tasks import sync_src_action
 from srl.time_parser import parse_time
 from srl.utils import convert_time
 
-from api.permissions import player_session_auth
+from api.permissions import authed
+from api.v1.routers.utils.resolvers import game_from_body, run_from_path
 from api.rate_limiting import auth_rate_limit
 from api.v1.schemas.base import ErrorResponse
 from api.v1.schemas.players import extract_gradients
@@ -152,7 +153,7 @@ def _build_src_run_payload(
 
 @router.get(
     "/submissions",
-    auth=player_session_auth,
+    auth=authed("submissions.list_own"),
     response={200: SubmissionHubResponse, codes_4xx: ErrorResponse},
     summary="Submission Hub",
     description=(
@@ -166,7 +167,7 @@ def _build_src_run_payload(
 def get_submissions(
     request: HttpRequest,
 ) -> SubmissionHubResponse:
-    player: Players = request.auth  # type: ignore
+    player: Players = request.auth.player  # type: ignore
 
     pending_qs = (
         Runs.objects.filter(
@@ -242,7 +243,7 @@ def get_submissions(
 
 @router.put(
     "/submissions/{run_id}/status",
-    auth=player_session_auth,
+    auth=authed("runs.verify", target_resolver=run_from_path),
     response={200: VerifyRejectResponse, codes_4xx: ErrorResponse},
     summary="Verify or Reject a Run",
     description=(
@@ -258,7 +259,16 @@ def update_run_status(
     run_id: str,
     body: VerifyRejectRequest,
 ) -> Status:
-    player: Players = request.auth  # type: ignore
+    try:
+        player: Players = request.auth.player  # type: ignore
+    except Players.DoesNotExist:
+        return Status(
+            403,
+            ErrorResponse(
+                error="This endpoint requires a claimed Player profile.",
+                details=None,
+            ),
+        )
 
     if not _has_src_key(player):
         return Status(
@@ -344,7 +354,7 @@ def update_run_status(
 
 @router.put(
     "/submissions/{run_id}/players",
-    auth=player_session_auth,
+    auth=authed("runs.edit_any", target_resolver=run_from_path),
     response={200: ChangePlayersResponse, codes_4xx: ErrorResponse},
     summary="Change Run Players",
     description=(
@@ -359,7 +369,16 @@ def update_run_players(
     run_id: str,
     body: ChangePlayersRequest,
 ) -> Status:
-    player: Players = request.auth  # type: ignore
+    try:
+        player: Players = request.auth.player  # type: ignore
+    except Players.DoesNotExist:
+        return Status(
+            403,
+            ErrorResponse(
+                error="This endpoint requires a claimed Player profile.",
+                details=None,
+            ),
+        )
 
     if not _has_src_key(player):
         return Status(
@@ -468,7 +487,7 @@ def update_run_players(
         codes_4xx: ErrorResponse,
         503: ErrorResponse,
     },
-    auth=player_session_auth,
+    auth=authed("runs.submit", target_resolver=game_from_body),
     url_name="submit_run",
 )
 @auth_rate_limit
@@ -477,7 +496,7 @@ def submit_run(
     body: RunSubmitSchema,
 ) -> Status:
     """Submit a run to SRC and create a local record on success."""
-    player: Players = request.auth  # type: ignore
+    player: Players = request.auth.player  # type: ignore
 
     if not player.user or not player.user.encrypted_api_key:
         return Status(

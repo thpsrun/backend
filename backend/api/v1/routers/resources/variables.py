@@ -6,7 +6,13 @@ from ninja import Query, Router, Status
 from ninja.responses import codes_4xx
 from srl.models import Categories, Games, Levels, Variables, VariableValues
 
-from api.permissions import admin_auth, moderator_auth, public_auth
+from api.permissions import authed, public_read
+from api.v1.routers.utils.resolvers import (
+    game_from_body,
+    game_from_variable_body,
+    game_from_variable_path,
+    game_from_variable_value_path,
+)
 from api.v1.routers.utils.embeds import (
     parse_embeds,
     serialize_category_embed,
@@ -98,7 +104,7 @@ Examples:
 - `/variables/all?scope=full-game` - Get all full-game variables
 - `/variables/all?game_id=thps4&embed=game,category` - Get THPS4 variables with embeds
 """,
-    auth=public_auth,
+    auth=public_read(),
 )
 def get_all_variables(
     request: HttpRequest,
@@ -197,7 +203,7 @@ Examples:
 - `/variables/values/all?variable_id=5lygdn8q` - Get all values for a variable
 - `/variables/values/all?variable_id=5lygdn8q&embed=variable` - With embeds
 """,
-    auth=public_auth,
+    auth=public_read(),
 )
 def get_all_values(
     request: HttpRequest,
@@ -292,7 +298,7 @@ Request Body:
 - `archive` (bool): Whether value is archived/hidden.
 - `rules` (str | None): Rules specific to this value choice.
 """,
-    auth=moderator_auth,
+    auth=authed("games.manage", target_resolver=game_from_variable_body),
 )
 def create_value(
     request: HttpRequest,
@@ -360,7 +366,7 @@ Examples:
 - `/variables/values/pc` - Get value by ID
 - `/variables/values/pc?embed=variable` - Get value with variable data
 """,
-    auth=public_auth,
+    auth=public_read(),
 )
 def get_value(
     request: HttpRequest,
@@ -443,7 +449,7 @@ Request Body:
 - `archive` (bool | None): Updated archive status.
 - `rules` (str | None): Updated rules.
 """,
-    auth=moderator_auth,
+    auth=authed("games.manage", target_resolver=game_from_variable_value_path),
 )
 def update_value(
     request: HttpRequest,
@@ -507,7 +513,7 @@ REQUIRES ADMIN ACCESS.
 Supported Parameters:
 - `value_id` (str): Unique ID of the value being deleted.
 """,
-    auth=admin_auth,
+    auth=authed("users.admin"),
 )
 def delete_value(
     request: HttpRequest,
@@ -559,7 +565,7 @@ Examples:
 - `/variables/5lygdn8q?embed=game` - Get variable with game data
 - `/variables/5lygdn8q?embed=game,category,level` - Get variable with all embeds
 """,
-    auth=public_auth,
+    auth=public_read(),
 )
 def get_variable(
     request: HttpRequest,
@@ -664,7 +670,7 @@ Request Body:
 - `category_id` (str | None): Specific category ID.
 - `level_id` (str | None): Specific level ID (required if scope is `single-level`).
 """,
-    auth=moderator_auth,
+    auth=authed("games.manage", target_resolver=game_from_body),
 )
 def create_variable(
     request: HttpRequest,
@@ -775,7 +781,7 @@ Request Body:
 - `category_id` (str | None): Updated category ID.
 - `level_id` (str | None): Updated level ID.
 """,
-    auth=moderator_auth,
+    auth=authed("games.manage", target_resolver=game_from_variable_path),
 )
 def update_variable(
     request: HttpRequest,
@@ -890,7 +896,7 @@ REQUIRES ADMIN ACCESS.
 Supported Parameters:
 - `id` (str): Unique ID of the variable being deleted.
 """,
-    auth=admin_auth,
+    auth=authed("users.admin"),
 )
 def delete_variable(
     request: HttpRequest,

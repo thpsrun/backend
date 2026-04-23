@@ -19,7 +19,8 @@ from srl.models import (
     VariableValues,
 )
 
-from api.permissions import admin_auth, moderator_auth, public_auth
+from api.permissions import authed, public_read
+from api.v1.routers.utils.resolvers import game_from_body, run_from_path
 from api.v1.routers.utils.embeds import (
     parse_embeds,
     serialize_category_embed,
@@ -157,7 +158,7 @@ Examples:
 - `/runs/all?search=normal&place=1&status=verified` - Verified WRs with "normal" in cat/level.
 - `/runs/all?game_id=thps4&level_id=alcatraz&embed=player,game` - Alcatraz ILs with embeds
 """,
-    auth=public_auth,
+    auth=public_read(),
 )
 def get_all_runs(
     request: HttpRequest,
@@ -276,7 +277,7 @@ Examples:
 - `/runs/y8dwozoj?embed=game` - Include game metadata.
 - `/runs/y8dwozoj?embed=game,category,variables` - Full run details with embeds.
 """,
-    auth=public_auth,
+    auth=public_read(),
 )
 def get_run(
     request: HttpRequest,
@@ -376,7 +377,7 @@ Variable Values Format:
 }
 ```
 """,
-    auth=moderator_auth,
+    auth=authed("games.manage", target_resolver=game_from_body),
 )
 def create_run(
     request: HttpRequest,
@@ -607,7 +608,7 @@ Request Body:
 - `variable_values` (dict[str, str] | None): Updated variable value selections as key-value
     pairs.
 """,
-    auth=moderator_auth,
+    auth=authed("runs.edit_any", target_resolver=run_from_path),
 )
 def update_run(
     request: HttpRequest,
@@ -841,7 +842,7 @@ REQUIRES ADMIN ACCESS.
 Supported Parameters:
 - `id` (str): Unique ID of the run being deleted.
 """,
-    auth=admin_auth,
+    auth=authed("runs.delete", target_resolver=run_from_path),
 )
 def delete_run(
     request: HttpRequest,

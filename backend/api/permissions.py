@@ -1,12 +1,12 @@
 from collections.abc import Callable
 from typing import Any
 
+from django.contrib.auth.models import AnonymousUser
 from django.http import HttpRequest
 from ninja.errors import HttpError
-from ninja.security import APIKeyHeader, SessionAuth
 from rules.permissions import add_perm
-from srl.models import Players
 from srl.rules import (
+    has_claimed_player,
     is_authenticated,
     is_game_moderator,
     is_guide_game_moderator,
@@ -17,156 +17,7 @@ from srl.rules import (
 )
 
 from api.csrf import enforce_csrf
-from api.models import APIKey, RoleAPIKey
-
-
-class RoleBasedAPIKeyAuth(APIKeyHeader):
-    """Django Ninja authentication class with role-based permissions."""
-
-    param_name = "X-API-Key"
-
-    def __init__(
-        self,
-        required_role: str = "read_only",
-    ) -> None:
-        """
-        Initialize with required role.
-
-        Arguments:
-            required_role: Minimum role required ('read_only', 'contributor', 'moderator', 'admin')
-        """
-        self.required_role: str = required_role
-        super().__init__()
-
-    def authenticate(
-        self,
-        request: HttpRequest,
-        key: str,
-    ) -> dict[str, Any] | None:
-        """Validate API key and check role permissions.
-
-        Arguments:
-            request: HTTP request object
-            key: API key from X-API-Key header
-
-        Returns:
-            Dict with API key info if authorized, None if unauthorized
-        """
-        try:
-            api_key_obj: RoleAPIKey | None = RoleAPIKey.objects.get_from_key(key)  # type: ignore
-            if not api_key_obj:
-                return None
-
-            if not api_key_obj.has_role(self.required_role):
-                return None
-
-            return {
-                "api_key": key,
-                "api_key_obj": api_key_obj,
-                "role": api_key_obj.role,
-                "name": api_key_obj.name,
-                "created_by": api_key_obj.created_by,
-            }
-
-        except RoleAPIKey.DoesNotExist:
-            pass
-
-        return None
-
-
-class PublicOrRoleAuth:
-    """Hybrid authentication: allows public GET requests, requires API key for other methods."""
-
-    def __init__(
-        self,
-        required_role: str = "read_only",
-    ) -> None:
-        """
-        Initialize with required role for non-GET requests.
-
-        Arguments:
-            required_role: Minimum role required for non-GET requests
-        """
-        self.required_role: str = required_role
-        self.role_auth: RoleBasedAPIKeyAuth = RoleBasedAPIKeyAuth(required_role)
-
-    def __call__(
-        self,
-        request: HttpRequest,
-    ) -> dict[str, Any] | None:
-        """Authenticate based on HTTP method.
-
-        Arguments:
-            request: HTTP request object
-
-        Returns:
-            Auth info dict or None if unauthorized
-        """
-        if request.method == "GET":
-            return {"role": "public", "authenticated": False, "public_access": True}
-
-        api_key_header: str | None = request.headers.get("X-API-Key")
-        if not api_key_header:
-            return None
-
-        return self.role_auth.authenticate(request, api_key_header)
-
-
-class PlayerSessionAuth(SessionAuth):
-    def authenticate(
-        self,
-        request: HttpRequest,
-        token: str,
-    ) -> Players | None:
-        """
-        Validate the session and return the associated Players instance.
-
-        Arguments:
-            request: HTTP request with session data.
-            token: Unused for session auth (Django Ninja passes a dummy value).
-
-        Returns:
-            Players instance if authenticated and claimed, else None.
-        """
-        enforce_csrf(request)
-        user = super().authenticate(request, token)
-        if user is None:
-            return None
-        try:
-            player: Players = user.player  # type: ignore
-        except Players.DoesNotExist:
-            return None
-        if player.claim_status != Players.ClaimStatus.CLAIMED:
-            return None
-        return player
-
-
-class SuperuserSessionAuth(PlayerSessionAuth):
-    def authenticate(
-        self,
-        request: HttpRequest,
-        token: str,
-    ) -> Players | None:
-        player = super().authenticate(request, token)
-        if player is None:
-            return None
-        if not hasattr(player, "user") or player.user is None:
-            return None
-        if not player.user.is_superuser:
-            return None
-        return player
-
-
-public_auth: PublicOrRoleAuth = PublicOrRoleAuth("read_only")
-read_only_auth: RoleBasedAPIKeyAuth = RoleBasedAPIKeyAuth("read_only")
-contributor_auth: RoleBasedAPIKeyAuth = RoleBasedAPIKeyAuth("contributor")
-moderator_auth: RoleBasedAPIKeyAuth = RoleBasedAPIKeyAuth("moderator")
-admin_auth: RoleBasedAPIKeyAuth = RoleBasedAPIKeyAuth("admin")
-
-api_key_required: RoleBasedAPIKeyAuth = read_only_auth
-
-player_session_auth: PlayerSessionAuth = PlayerSessionAuth()
-superuser_session_auth: SuperuserSessionAuth = SuperuserSessionAuth()
+from api.models import APIKey
 
 # Map of capabilities/features of the site and whether the capability is scoped to a specific game.
 CAPABILITY_SCOPED: dict[str, bool] = {
@@ -187,19 +38,23 @@ CAPABILITY_SCOPED: dict[str, bool] = {
     "api_keys.admin": False,
     "users.admin": False,
     "users.view_private": False,
+    # Misc
+    "profile.edit_own": False,
+    "submissions.list_own": False,
+    "sync_logs.admin": False,
 }
 
 
 def _register_capabilities() -> None:
     # Runs capabilities
-    add_perm("runs.submit", is_authenticated)
+    add_perm("runs.submit", is_authenticated & has_claimed_player)  # type: ignore
     add_perm("runs.edit_own", is_authenticated & is_run_participant)  # type: ignore
     add_perm("runs.edit_any", is_superuser | is_run_game_moderator)  # type: ignore
     add_perm("runs.verify", is_superuser | is_run_game_moderator)  # type: ignore
     add_perm("runs.delete", is_superuser)
 
     # Guides capabilities
-    add_perm("guides.create", is_authenticated)
+    add_perm("guides.create", is_authenticated & has_claimed_player)  # type: ignore
     add_perm("guides.edit_own", is_authenticated & owns_guide)  # type: ignore
     add_perm("guides.edit_any", is_superuser | is_guide_game_moderator)  # type: ignore
     add_perm("guides.delete_own", is_authenticated & owns_guide)  # type: ignore
@@ -218,6 +73,11 @@ def _register_capabilities() -> None:
     add_perm("users.admin", is_superuser)
     add_perm("users.view_private", is_superuser)
 
+    # Misc
+    add_perm("profile.edit_own", is_authenticated & has_claimed_player)  # type: ignore
+    add_perm("submissions.list_own", is_authenticated & has_claimed_player)  # type: ignore
+    add_perm("sync_logs.admin", is_superuser)
+
 
 _register_capabilities()
 
@@ -226,7 +86,7 @@ def _resolve_caller(request: HttpRequest) -> tuple[Any, "APIKey | None"]:
     api_key_header: str | None = request.headers.get("X-API-Key")
     if api_key_header:
         try:
-            key: APIKey = APIKey.objects.get_from_key(api_key_header)  # type: ignore
+            key: APIKey = APIKey.objects.get_from_key(api_key_header)
         except APIKey.DoesNotExist:
             raise HttpError(401, "Invalid API key")
         if not APIKey.objects.get_usable_keys().filter(pk=key.pk).exists():
@@ -304,6 +164,8 @@ def public_read() -> Callable[[HttpRequest], Any]:
         user = getattr(request, "user", None)
         if user is not None and getattr(user, "is_authenticated", False):
             return user
-        return None
+
+        # Instead of 401'ing anonymous API requests, this will return an AnonymousUser class.
+        return AnonymousUser()
 
     return dependency
