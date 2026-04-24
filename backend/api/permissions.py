@@ -38,7 +38,6 @@ CAPABILITY_SCOPED: dict[str, bool] = {
     "api_keys.admin": False,
     "users.admin": False,
     "users.view_private": False,
-    # Misc
     "profile.edit_own": False,
     "submissions.list_own": False,
     "sync_logs.admin": False,
@@ -119,6 +118,8 @@ def _key_scope_admits(
     capability: str,
     target: Any | None,
 ) -> bool:
+    """Verifies differences between scopes and games, ensuring that the user has no powers than
+    they had requested."""
     caps: list[str] = list(key.scope_capabilities or [])
     if caps and capability not in caps:
         return False
