@@ -795,7 +795,7 @@ def query_wr_history(
             qs = qs.filter(run__runvariablevalues__value__slug=slug)
         qs = qs.distinct()
 
-    qs = qs.order_by("run_id", "start_date").distinct("run_id")
+    qs = qs.order_by("start_date")
 
     seen_run_ids: set[str] = set()
     wr_entries: list[tuple[Any, Runs]] = []
