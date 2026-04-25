@@ -2,6 +2,7 @@ from typing import Any
 
 from celery import shared_task
 from django.db import transaction
+
 from srl.models import (
     Categories,
     Games,

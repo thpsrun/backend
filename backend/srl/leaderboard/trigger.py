@@ -1,5 +1,6 @@
 from celery import chain
 from django.db.models import Min
+
 from srl.leaderboard.recalculation import get_runs_for_leaderboard, get_time_column
 from srl.leaderboard.resolution import resolve_leaderboard
 from srl.models.runs import Runs

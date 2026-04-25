@@ -9,7 +9,9 @@ from tests.test_auth import AuthTestBase
 class PlayersReadTest(TestCase):
 
     @classmethod
-    def setUpTestData(cls) -> None:
+    def setUpTestData(
+        cls,
+    ) -> None:
         from django.contrib.auth import get_user_model
 
         User = get_user_model()
@@ -44,10 +46,14 @@ class PlayersReadTest(TestCase):
             url="https://speedrun.com/user/Unclaimed",
         )
 
-    def setUp(self) -> None:
+    def setUp(
+        self,
+    ) -> None:
         self.client = TestClient(players_router)  # type: ignore
 
-    def test_get_player(self) -> None:
+    def test_get_player(
+        self,
+    ) -> None:
         response = self.client.get("/player1")
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -55,25 +61,33 @@ class PlayersReadTest(TestCase):
         self.assertEqual(data["player"]["name"], "TestPlayer")
         self.assertEqual(data["player"]["nickname"], "Tester")
 
-    def test_get_player_name(self) -> None:
+    def test_get_player_name(
+        self,
+    ) -> None:
         response = self.client.get("/TestPlayer")
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["id"], "player1")
 
-    def test_get_player_nickname(self) -> None:
+    def test_get_player_nickname(
+        self,
+    ) -> None:
         response = self.client.get("/Tester")
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["id"], "player1")
 
-    def test_player_404(self) -> None:
+    def test_player_404(
+        self,
+    ) -> None:
         response = self.client.get("/nonexistent")
         self.assertEqual(response.status_code, 404)
         data = response.json()
         self.assertEqual(data["error"], "Player ID does not exist")
 
-    def test_get_player_exposes_gradients(self) -> None:
+    def test_get_player_exposes_gradients(
+        self,
+    ) -> None:
         response = self.client.get("/player1")
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -81,7 +95,9 @@ class PlayersReadTest(TestCase):
         self.assertEqual(data["customizations"]["gradient_2"], "#ffaa00")
         self.assertIsNone(data["customizations"]["gradient_3"])
 
-    def test_get_player_gradients_null_when_unclaimed(self) -> None:
+    def test_get_player_gradients_null_when_unclaimed(
+        self,
+    ) -> None:
         response = self.client.get("/unclaim1")
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -89,7 +105,9 @@ class PlayersReadTest(TestCase):
         self.assertIsNone(data["customizations"]["gradient_2"])
         self.assertIsNone(data["customizations"]["gradient_3"])
 
-    def test_search_player_exposes_gradients(self) -> None:
+    def test_search_player_exposes_gradients(
+        self,
+    ) -> None:
         response = self.client.get("/search?q=TestPlayer")
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -103,7 +121,9 @@ class PlayersReadTest(TestCase):
             },
         )
 
-    def test_search_player_gradients_null_when_unclaimed(self) -> None:
+    def test_search_player_gradients_null_when_unclaimed(
+        self,
+    ) -> None:
         response = self.client.get("/search?q=Unclaimed")
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -113,11 +133,15 @@ class PlayersReadTest(TestCase):
 
 class PlayersWriteTest(AuthTestBase):
 
-    def setUp(self) -> None:
+    def setUp(
+        self,
+    ) -> None:
         super().setUp()
         self.client = TestClient(players_router)  # type: ignore
 
-    def test_create_player(self) -> None:
+    def test_create_player(
+        self,
+    ) -> None:
         response = self.client.post(
             "/",
             json={
@@ -132,7 +156,9 @@ class PlayersWriteTest(AuthTestBase):
         self.assertIsNotNone(data.get("id"))
         self.assertEqual(len(data["id"]), 8)
 
-    def test_create_player_custom_id(self) -> None:
+    def test_create_player_custom_id(
+        self,
+    ) -> None:
         response = self.client.post(
             "/",
             json={
@@ -146,7 +172,9 @@ class PlayersWriteTest(AuthTestBase):
         data = response.json()
         self.assertEqual(data["id"], "custom01")
 
-    def test_create_player_country(self) -> None:
+    def test_create_player_country(
+        self,
+    ) -> None:
         response = self.client.post(
             "/",
             json={
@@ -164,7 +192,9 @@ class PlayersWriteTest(AuthTestBase):
         player = Players.objects.get(name="PlayerWithCountry")
         self.assertEqual(player.countrycode.id, "usa")  # type: ignore
 
-    def test_create_player_duplicate(self) -> None:
+    def test_create_player_duplicate(
+        self,
+    ) -> None:
         Players.objects.create(
             id="existing",
             name="Existing",
@@ -184,7 +214,9 @@ class PlayersWriteTest(AuthTestBase):
         data = response.json()
         self.assertEqual(data["error"], "ID Already Exists")
 
-    def test_update_player(self) -> None:
+    def test_update_player(
+        self,
+    ) -> None:
         Players.objects.create(
             id="toupdate",
             name="ToUpdate",
@@ -207,7 +239,9 @@ class PlayersWriteTest(AuthTestBase):
         self.assertEqual(data["player"]["nickname"], "UpdatedNick")
         self.assertEqual(data["player"]["pronouns"], "They/Them")
 
-    def test_delete_player(self) -> None:
+    def test_delete_player(
+        self,
+    ) -> None:
         Players.objects.create(
             id="todelete",
             name="ToDelete",
@@ -226,7 +260,9 @@ class PlayersWriteTest(AuthTestBase):
 
 class GradientsEmbedTest(TestCase):
 
-    def test_gradients_embed_accepts_three_hex_strings(self) -> None:
+    def test_gradients_embed_accepts_three_hex_strings(
+        self,
+    ) -> None:
         from api.v1.schemas.players import GradientsEmbed
 
         embed = GradientsEmbed(
@@ -238,7 +274,9 @@ class GradientsEmbedTest(TestCase):
         self.assertEqual(embed.gradient_2, "#ffaa00")
         self.assertEqual(embed.gradient_3, "#00aaff")
 
-    def test_gradients_embed_allows_partial_nulls(self) -> None:
+    def test_gradients_embed_allows_partial_nulls(
+        self,
+    ) -> None:
         from api.v1.schemas.players import GradientsEmbed
 
         embed = GradientsEmbed(gradient_1="#ff0044")
@@ -250,7 +288,9 @@ class GradientsEmbedTest(TestCase):
 class ExtractPlayerGradientsTest(TestCase):
 
     @classmethod
-    def setUpTestData(cls) -> None:
+    def setUpTestData(
+        cls,
+    ) -> None:
         from django.contrib.auth import get_user_model
 
         User = get_user_model()
@@ -289,7 +329,9 @@ class ExtractPlayerGradientsTest(TestCase):
             url="https://speedrun.com/user/unclaimed",
         )
 
-    def test_returns_dict_when_user_has_any_color(self) -> None:
+    def test_returns_dict_when_user_has_any_color(
+        self,
+    ) -> None:
         from api.v1.schemas.players import extract_gradients
 
         result = extract_gradients(self.claimed_player)
@@ -302,13 +344,17 @@ class ExtractPlayerGradientsTest(TestCase):
             },
         )
 
-    def test_returns_none_when_user_has_no_colors(self) -> None:
+    def test_returns_none_when_user_has_no_colors(
+        self,
+    ) -> None:
         from api.v1.schemas.players import extract_gradients
 
         result = extract_gradients(self.claimed_plain)
         self.assertIsNone(result)
 
-    def test_returns_none_when_player_has_no_linked_user(self) -> None:
+    def test_returns_none_when_player_has_no_linked_user(
+        self,
+    ) -> None:
         from api.v1.schemas.players import extract_gradients
 
         result = extract_gradients(self.unclaimed_player)

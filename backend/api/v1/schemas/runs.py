@@ -6,7 +6,9 @@ from pydantic import ConfigDict, Field, field_validator, model_validator
 from api.v1.schemas.base import BaseEmbedSchema, RunTypeType
 
 
-def compute_run_subcategory(data: Any) -> str | None:
+def compute_run_subcategory(
+    data: Any,
+) -> str | None:
     """Compute subcategory display string from a run's prefetched RunVariableValues.
 
     Requires the queryset to have:

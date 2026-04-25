@@ -27,7 +27,10 @@ class SubmissionRunSchema(PlayerRunEmbedSchema):
 
     @field_validator("players", mode="before")
     @classmethod
-    def convert_players_manager(cls, v: Any) -> list[dict]:
+    def convert_players_manager(
+        cls,
+        v: Any,
+    ) -> list[dict]:
         if isinstance(v, list):
             return v
         return []
@@ -140,7 +143,9 @@ class SubmitPlayerEntry(Schema):
     )
 
     @model_validator(mode="after")
-    def validate_rel_fields(self) -> "SubmitPlayerEntry":
+    def validate_rel_fields(
+        self,
+    ) -> "SubmitPlayerEntry":
         if self.rel == "user" and not self.id:
             raise ValueError("id is required when rel=user")
         if self.rel == "guest" and not self.name:
@@ -195,7 +200,10 @@ class RunSubmitSchema(Schema):
 
     @field_validator("video")
     @classmethod
-    def validate_video_url(cls, v: str) -> str:
+    def validate_video_url(
+        cls,
+        v: str,
+    ) -> str:
         from urllib.parse import urlparse
 
         parsed = urlparse(v)
@@ -224,7 +232,9 @@ class RunSubmitSchema(Schema):
     )
 
     @model_validator(mode="after")
-    def validate_at_least_one_time(self) -> "RunSubmitSchema":
+    def validate_at_least_one_time(
+        self,
+    ) -> "RunSubmitSchema":
         if not any([self.time, self.timenl, self.timeigt]):
             raise ValueError(
                 "At least one timing value is required (time, timenl, or timeigt)."
@@ -232,7 +242,9 @@ class RunSubmitSchema(Schema):
         return self
 
     @model_validator(mode="after")
-    def validate_player_fields(self) -> "RunSubmitSchema":
+    def validate_player_fields(
+        self,
+    ) -> "RunSubmitSchema":
         for i, p in enumerate(self.players):
             if p.rel == "user" and not p.id:
                 raise ValueError(f"Player {i}: 'id' is required when rel='user'.")

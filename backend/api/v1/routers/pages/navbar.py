@@ -1,4 +1,5 @@
 from django.http import HttpRequest
+from nav.models import NavItem, SocialLink
 from ninja import Router, Status
 from ninja.responses import codes_4xx
 
@@ -6,15 +7,19 @@ from api.permissions import public_read
 from api.v1.routers.utils import cache_response, navbar_cache_key
 from api.v1.schemas.base import ErrorResponse
 from api.v1.schemas.nav import NavbarResponse, NavItemSchema, SocialLinkSchema
-from nav.models import NavItem, SocialLink
 
 router = Router()
 
 
-def _sorted_for_display(items: list, key: str = "name") -> list:
+def _sorted_for_display(
+    items: list,
+    key: str = "name",
+) -> list:
     """Sort items: order>=1 first ascending, then order=0 alphabetically by key."""
     ordered = sorted([i for i in items if i.order > 0], key=lambda x: x.order)
-    unordered = sorted([i for i in items if i.order == 0], key=lambda x: getattr(x, key))
+    unordered = sorted(
+        [i for i in items if i.order == 0], key=lambda x: getattr(x, key)
+    )
     return ordered + unordered
 
 
@@ -26,7 +31,9 @@ def _build_nav_tree() -> list[NavItemSchema]:
     for item in all_items:
         children_map.setdefault(item.parent_id, []).append(item)
 
-    def build_children(parent_id: int | None) -> list[NavItemSchema]:
+    def build_children(
+        parent_id: int | None,
+    ) -> list[NavItemSchema]:
         items = children_map.get(parent_id, [])
         sorted_items = _sorted_for_display(items)
         return [
@@ -54,7 +61,9 @@ def _build_social_links() -> list[SocialLinkSchema]:
     ]
 
 
-def _navbar_cache_key(request: HttpRequest) -> str:
+def _navbar_cache_key(
+    request: HttpRequest,
+) -> str:
     """Wrapper matching the cache_response key_function signature."""
     return navbar_cache_key()
 

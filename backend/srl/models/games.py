@@ -106,7 +106,9 @@ class Games(models.Model):
     )
 
     @property
-    def is_ce(self) -> bool:
+    def is_ce(
+        self,
+    ) -> bool:
         return "category extension" in self.name.lower()
 
     def save(self, *args, **kwargs):

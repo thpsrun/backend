@@ -43,6 +43,42 @@ CAPABILITY_SCOPED: dict[str, bool] = {
     "sync_logs.admin": False,
 }
 
+# Categorization of the game-scoped capabilities by the natural power a user needs to exercise
+# them. Source of truth for both the /me/capabilities advisory endpoint and the backability
+# check used by the revocation signals and nightly sweep.
+PLAYER_SCOPES: frozenset[str] = frozenset(
+    {
+        "runs.submit",
+        "runs.edit_own",
+        "guides.create",
+        "guides.edit_own",
+        "guides.delete_own",
+    },
+)
+MOD_SCOPES: frozenset[str] = frozenset(
+    {
+        "runs.edit_any",
+        "runs.verify",
+        "guides.edit_any",
+        "guides.delete_any",
+        "games.manage",
+    },
+)
+SU_ONLY_SCOPES: frozenset[str] = frozenset({"runs.delete"})
+
+# Fail fast at import time if a new scoped capability is added to CAPABILITY_SCOPED without
+# being categorized above. Keeps /me/capabilities and the backability check from silently
+# diverging from the registry.
+_SCOPED_CAPS: frozenset[str] = frozenset(
+    cap for cap, scoped in CAPABILITY_SCOPED.items() if scoped
+)
+_CATEGORIZED_SCOPED_CAPS: frozenset[str] = PLAYER_SCOPES | MOD_SCOPES | SU_ONLY_SCOPES
+assert _CATEGORIZED_SCOPED_CAPS == _SCOPED_CAPS, (
+    "Scoped capability categorization drift. "
+    f"Uncategorized: {sorted(_SCOPED_CAPS - _CATEGORIZED_SCOPED_CAPS)}. "
+    f"Unknown: {sorted(_CATEGORIZED_SCOPED_CAPS - _SCOPED_CAPS)}."
+)
+
 
 def _register_capabilities() -> None:
     # Runs capabilities
@@ -81,15 +117,18 @@ def _register_capabilities() -> None:
 _register_capabilities()
 
 
-def _resolve_caller(request: HttpRequest) -> tuple[Any, "APIKey | None"]:
+def _resolve_caller(
+    request: HttpRequest,
+) -> tuple[Any, "APIKey | None"]:
     api_key_header: str | None = request.headers.get("X-API-Key")
     if api_key_header:
+        # APIKeyManager.get_usable_keys (see api/models.py) filters out revoked, expired,
+        # and inactive-owner keys. get_from_key routes through it, so a successful lookup
+        # means the key is fully usable; no second check needed.
         try:
             key: APIKey = APIKey.objects.get_from_key(api_key_header)
         except APIKey.DoesNotExist:
-            raise HttpError(401, "Invalid API key")
-        if not APIKey.objects.get_usable_keys().filter(pk=key.pk).exists():
-            raise HttpError(401, "API key not usable")
+            raise HttpError(401, "Invalid or unusable API key")
         return key.user, key
 
     user = getattr(request, "user", None)
@@ -101,7 +140,9 @@ def _resolve_caller(request: HttpRequest) -> tuple[Any, "APIKey | None"]:
     return user, None
 
 
-def _extract_target_game_id(target: Any) -> Any:
+def _extract_target_game_id(
+    target: Any,
+) -> Any:
     if target is None:
         return None
     if hasattr(target, "moderators") and not hasattr(target, "game"):
@@ -161,7 +202,9 @@ def authed(
 
 
 def public_read() -> Callable[[HttpRequest], Any]:
-    def dependency(request: HttpRequest) -> Any:
+    def dependency(
+        request: HttpRequest,
+    ) -> Any:
         user = getattr(request, "user", None)
         if user is not None and getattr(user, "is_authenticated", False):
             return user

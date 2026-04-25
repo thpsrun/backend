@@ -146,7 +146,9 @@ class SrcLevelsModel(BaseModel):
     links: List[SrcCategoriesLevelsLinks]
 
     @property
-    def game(self) -> str | None:
+    def game(
+        self,
+    ) -> str | None:
         for link in self.links:
             if link.rel == "game":
                 return link.uri.rstrip("/").split("/")[-1]
@@ -190,7 +192,9 @@ class SrcVariablesModel(BaseModel):
     links: List[SrcCategoriesLevelsLinks]
 
     @property
-    def game(self) -> str | None:
+    def game(
+        self,
+    ) -> str | None:
         for link in self.links:
             if link.rel == "game":
                 return link.uri.rstrip("/").split("/")[-1]
@@ -264,7 +268,9 @@ class SrcRunsModel(BaseModel):
     values: dict[str, str]
 
     @property
-    def video_uri(self) -> str | None:
+    def video_uri(
+        self,
+    ) -> str | None:
         if self.videos and self.videos.links:
             return self.videos.links[0].uri
         return None
@@ -311,13 +317,17 @@ class SrcPlayersModel(BaseModel):
     assets: dict | None = None
 
     @property
-    def country_code(self) -> str | None:
+    def country_code(
+        self,
+    ) -> str | None:
         if self.location and self.location.get("country"):
             return self.location["country"].get("code")
         return None
 
     @property
-    def country_name(self) -> str | None:
+    def country_name(
+        self,
+    ) -> str | None:
         if self.location and self.location.get("country"):
             names = self.location["country"].get("names")
             if names:
@@ -325,19 +335,25 @@ class SrcPlayersModel(BaseModel):
         return None
 
     @property
-    def twitch_url(self) -> str | None:
+    def twitch_url(
+        self,
+    ) -> str | None:
         if self.twitch:
             return self.twitch.get("uri")
         return None
 
     @property
-    def youtube_url(self) -> str | None:
+    def youtube_url(
+        self,
+    ) -> str | None:
         if self.youtube:
             return self.youtube.get("uri")
         return None
 
     @property
-    def pfp(self) -> str | None:
+    def pfp(
+        self,
+    ) -> str | None:
         if self.assets and self.assets.get("image"):
             return self.assets["image"].get("uri")
         return None

@@ -11,13 +11,14 @@ from rest_framework_api_key.models import AbstractAPIKey, BaseAPIKeyManager
 class APIKeyRevokedReason(models.TextChoices):
     NONE = "", "Not revoked"
     USER = "user", "Revoked by owner"
-    EXPIRED = "expired", "Expired"
     PERMISSION_REVOKED = "permission_revoked", "Permission revoked"
     ADMIN = "admin", "Revoked by admin"
 
 
 class APIKeyManager(BaseAPIKeyManager):
-    def get_usable_keys(self) -> models.QuerySet:
+    def get_usable_keys(
+        self,
+    ) -> models.QuerySet:
         # BaseAPIKeyManager only filters revoked=False. For this project's
         # "usable" semantics we also require the owning user active and the
         # key not past its expiry_date.
@@ -30,14 +31,20 @@ class APIKeyManager(BaseAPIKeyManager):
             )
         )
 
-    def create_key(self, **kwargs: Any) -> tuple["APIKey", str]:
+    def create_key(
+        self,
+        **kwargs: Any,
+    ) -> tuple["APIKey", str]:
         # AbstractAPIKey.name is NOT NULL; default it from label so callers
         # only have to provide the user-facing label.
         if "name" not in kwargs and "label" in kwargs:
             kwargs["name"] = str(kwargs["label"])[:50]
         return super().create_key(**kwargs)  # type: ignore
 
-    def get_from_key(self, key: str) -> "APIKey":
+    def get_from_key(
+        self,
+        key: str,
+    ) -> "APIKey":
         return super().get_from_key(key)  # type: ignore
 
 
@@ -69,6 +76,7 @@ class APIKey(AbstractAPIKey):
         default="",
         choices=APIKeyRevokedReason.choices,
     )
+    revoked_at = models.DateTimeField(null=True, blank=True, db_index=True)
 
     class Meta(AbstractAPIKey.Meta):
         indexes = [
@@ -78,5 +86,22 @@ class APIKey(AbstractAPIKey):
         verbose_name = "API Key"
         verbose_name_plural = "API Keys"
 
-    def __str__(self) -> str:
+    def __str__(
+        self,
+    ) -> str:
         return f"{self.label} ({self.user})"
+
+    def revoke(
+        self,
+        reason: "APIKeyRevokedReason | str",
+    ) -> bool:
+        """Mark this key as revoked with a reason and timestamp. Idempotent:
+        returns False if the key was already revoked, True if this call did it.
+        """
+        if self.revoked:
+            return False
+        self.revoked = True
+        self.revoked_reason = reason
+        self.revoked_at = timezone.now()
+        self.save(update_fields=["revoked", "revoked_reason", "revoked_at"])
+        return True

@@ -50,12 +50,17 @@ def get_all_platforms(
 ) -> Status:
     try:
         platforms = Platforms.objects.all().order_by("name")[offset : offset + limit]
-        return Status(200, [PlatformSchema.model_validate(platform) for platform in platforms])
+        return Status(
+            200, [PlatformSchema.model_validate(platform) for platform in platforms]
+        )
     except Exception as e:
-        return Status(500, ErrorResponse(
-            error="Failed to retrieve platforms",
-            details={"exception": str(e)},
-        ))
+        return Status(
+            500,
+            ErrorResponse(
+                error="Failed to retrieve platforms",
+                details={"exception": str(e)},
+            ),
+        )
 
 
 @router.get(
@@ -79,28 +84,37 @@ def get_platform(
     id: str,
 ) -> Status:
     if len(id) > 15:
-        return Status(400, ErrorResponse(
-            error="ID must be 15 characters or less",
-            details=None,
-        ))
+        return Status(
+            400,
+            ErrorResponse(
+                error="ID must be 15 characters or less",
+                details=None,
+            ),
+        )
 
     try:
         platform = Platforms.objects.filter(
             Q(id__iexact=id) | Q(slug__iexact=id)
         ).first()
         if not platform:
-            return Status(404, ErrorResponse(
-                error="Platform ID does not exist",
-                details=None,
-            ))
+            return Status(
+                404,
+                ErrorResponse(
+                    error="Platform ID does not exist",
+                    details=None,
+                ),
+            )
 
         return Status(200, PlatformSchema.model_validate(platform))
 
     except Exception as e:
-        return Status(500, ErrorResponse(
-            error="Failed to retrieve platform",
-            details={"exception": str(e)},
-        ))
+        return Status(
+            500,
+            ErrorResponse(
+                error="Failed to retrieve platform",
+                details={"exception": str(e)},
+            ),
+        )
 
 
 @router.post(
@@ -130,10 +144,13 @@ def create_platform(
                 lambda id: Platforms.objects.filter(id=id).exists(),
             )
         except ValueError as e:
-            return Status(400, ErrorResponse(
-                error="ID Already Exists",
-                details={"exception": str(e)},
-            ))
+            return Status(
+                400,
+                ErrorResponse(
+                    error="ID Already Exists",
+                    details={"exception": str(e)},
+                ),
+            )
 
         create_data = platform_data.model_dump()
         create_data["id"] = platform_id
@@ -141,10 +158,13 @@ def create_platform(
         return Status(201, PlatformSchema.model_validate(platform))
 
     except Exception as e:
-        return Status(500, ErrorResponse(
-            error="Failed to create platform",
-            details={"exception": str(e)},
-        ))
+        return Status(
+            500,
+            ErrorResponse(
+                error="Failed to create platform",
+                details={"exception": str(e)},
+            ),
+        )
 
 
 @router.put(
@@ -173,10 +193,13 @@ def update_platform(
     try:
         platform = Platforms.objects.filter(id__iexact=id).first()
         if not platform:
-            return Status(404, ErrorResponse(
-                error="Platform does not exist",
-                details=None,
-            ))
+            return Status(
+                404,
+                ErrorResponse(
+                    error="Platform does not exist",
+                    details=None,
+                ),
+            )
 
         update_data = platform_data.model_dump(exclude_unset=True)
         for field, value in update_data.items():
@@ -186,10 +209,13 @@ def update_platform(
         return Status(200, PlatformSchema.model_validate(platform))
 
     except Exception as e:
-        return Status(500, ErrorResponse(
-            error="Failed to update platform",
-            details={"exception": str(e)},
-        ))
+        return Status(
+            500,
+            ErrorResponse(
+                error="Failed to update platform",
+                details={"exception": str(e)},
+            ),
+        )
 
 
 @router.delete(
@@ -213,17 +239,23 @@ def delete_platform(
     try:
         platform = Platforms.objects.filter(id__iexact=id).first()
         if not platform:
-            return Status(404, ErrorResponse(
-                error="Platform does not exist",
-                details=None,
-            ))
+            return Status(
+                404,
+                ErrorResponse(
+                    error="Platform does not exist",
+                    details=None,
+                ),
+            )
 
         name = platform.name
         platform.delete()
         return Status(200, {"message": f"Platform '{name}' deleted successfully"})
 
     except Exception as e:
-        return Status(500, ErrorResponse(
-            error="Failed to delete platform",
-            details={"exception": str(e)},
-        ))
+        return Status(
+            500,
+            ErrorResponse(
+                error="Failed to delete platform",
+                details={"exception": str(e)},
+            ),
+        )

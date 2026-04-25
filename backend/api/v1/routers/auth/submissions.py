@@ -20,8 +20,8 @@ from srl.time_parser import parse_time
 from srl.utils import convert_time
 
 from api.permissions import authed
-from api.v1.routers.utils.resolvers import game_from_body, run_from_path
 from api.rate_limiting import auth_rate_limit
+from api.v1.routers.utils.resolvers import game_from_body, run_from_path
 from api.v1.schemas.base import ErrorResponse
 from api.v1.schemas.players import extract_gradients
 from api.v1.schemas.submissions import (
@@ -74,7 +74,9 @@ def _get_sync_statuses(
     return result
 
 
-def _build_run_players(run: Runs) -> list[dict]:
+def _build_run_players(
+    run: Runs,
+) -> list[dict]:
     """Build ordered player list from prefetched RunPlayers."""
     rps = sorted(run.run_players.all(), key=lambda rp: rp.order)
     return [
@@ -90,7 +92,9 @@ def _build_run_players(run: Runs) -> list[dict]:
     ]
 
 
-def _has_src_key(player: Players) -> bool:
+def _has_src_key(
+    player: Players,
+) -> bool:
     """Check if the player has a stored SRC API key."""
     if not player.user:
         return False

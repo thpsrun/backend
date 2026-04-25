@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, TypeAlias
 
 from rules.predicates import predicate
 
+from srl.models.players import Players
 from srl.models.run_players import RunPlayers
 
 if TYPE_CHECKING:
@@ -18,12 +19,16 @@ UserLike: TypeAlias = "AbstractBaseUser | AnonymousUser | None"
 
 
 @predicate
-def is_authenticated(user: UserLike) -> bool:
+def is_authenticated(
+    user: UserLike,
+) -> bool:
     return bool(user and getattr(user, "is_authenticated", False))
 
 
 @predicate
-def is_superuser(user: UserLike) -> bool:
+def is_superuser(
+    user: UserLike,
+) -> bool:
     return bool(
         user
         and getattr(user, "is_authenticated", False)
@@ -32,13 +37,15 @@ def is_superuser(user: UserLike) -> bool:
 
 
 @predicate
-def has_claimed_player(user: UserLike) -> bool:
+def has_claimed_player(
+    user: UserLike,
+) -> bool:
     if not user or not getattr(user, "is_authenticated", False):
         return False
     player = getattr(user, "player", None)
     if player is None:
         return False
-    return getattr(player, "claim_status", None) == "CLAIMED"
+    return getattr(player, "claim_status", None) == Players.ClaimStatus.CLAIMED
 
 
 @predicate

@@ -41,18 +41,24 @@ class ManageNavOrderingView(View):
                     great_grandchildren = sorted_for_display(
                         NavItem.objects.filter(parent=gc),
                     )
-                    grandchildren.append({
-                        "item": gc,
-                        "great_grandchildren": great_grandchildren,
-                    })
-                children.append({
-                    "item": child,
-                    "grandchildren": grandchildren,
-                })
-            groups.append({
-                "item": item,
-                "children": children,
-            })
+                    grandchildren.append(
+                        {
+                            "item": gc,
+                            "great_grandchildren": great_grandchildren,
+                        }
+                    )
+                children.append(
+                    {
+                        "item": child,
+                        "grandchildren": grandchildren,
+                    }
+                )
+            groups.append(
+                {
+                    "item": item,
+                    "children": children,
+                }
+            )
 
         return {
             "top_level": top_level,

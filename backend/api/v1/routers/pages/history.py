@@ -7,11 +7,7 @@ from ninja.responses import codes_4xx
 from srl.models import Categories, Games, Levels
 
 from api.permissions import public_read
-from api.v1.routers.utils import (
-    check_cache_query,
-    history_cache_key,
-    query_wr_history,
-)
+from api.v1.routers.utils import check_cache_query, history_cache_key, query_wr_history
 from api.v1.schemas.base import ErrorResponse
 
 router = Router()
@@ -143,13 +139,16 @@ def get_fg_wr_history(
             timeout=CACHE_TIMEOUT,
         )
 
-        return Status(200, {
-            "game": game.name,
-            "category": category.name,
-            "subcategory": result["subcategory"] or category.name,
-            "level": None,
-            "entries": result["entries"],
-        })
+        return Status(
+            200,
+            {
+                "game": game.name,
+                "category": category.name,
+                "subcategory": result["subcategory"] or category.name,
+                "level": None,
+                "entries": result["entries"],
+            },
+        )
 
     except Exception as e:
         return Status(
@@ -265,13 +264,16 @@ def get_il_wr_history(
             timeout=CACHE_TIMEOUT,
         )
 
-        return Status(200, {
-            "game": game.name,
-            "category": category.name,
-            "subcategory": result["subcategory"] or level.name,
-            "level": level.name,
-            "entries": result["entries"],
-        })
+        return Status(
+            200,
+            {
+                "game": game.name,
+                "category": category.name,
+                "subcategory": result["subcategory"] or level.name,
+                "level": level.name,
+                "entries": result["entries"],
+            },
+        )
 
     except Exception as e:
         return Status(

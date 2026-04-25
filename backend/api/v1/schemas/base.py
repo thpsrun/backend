@@ -28,7 +28,9 @@ class ErrorResponse(BaseModel):
     # development, but strip them in production since `details` could provide sensitive
     # data on the environment in some cases.
     @model_validator(mode="after")
-    def strip_exception_details_in_production(self) -> Self:
+    def strip_exception_details_in_production(
+        self,
+    ) -> Self:
         if not settings.DEBUG and self.details:
             for key in self._SENSITIVE_KEYS:
                 self.details.pop(key, None)
@@ -89,7 +91,10 @@ class TimestampMixin(BaseModel):
 
     @field_serializer("created_at", "updated_at")
     @classmethod
-    def serialize_datetime(cls, value: datetime | None) -> str | None:
+    def serialize_datetime(
+        cls,
+        value: datetime | None,
+    ) -> str | None:
         return value.isoformat() if value else None
 
 

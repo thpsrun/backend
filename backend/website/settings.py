@@ -12,7 +12,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DEBUG = os.getenv("DEBUG_MODE") == "True"
 
 
-def _require_env(name: str) -> str:
+def _require_env(
+    name: str,
+) -> str:
     value: str | None = os.getenv(name)
     if not value:
         raise ImproperlyConfigured(f"{name} environmental variable is not set")

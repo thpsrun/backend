@@ -43,7 +43,9 @@ class NavItem(models.Model):
         auto_now=True,
     )
 
-    def clean(self) -> None:
+    def clean(
+        self,
+    ) -> None:
         """Enforce max depth of 4 by walking the parent chain."""
         super().clean()
         depth = 1
@@ -56,7 +58,9 @@ class NavItem(models.Model):
                 )
             current = current.parent
 
-    def __str__(self) -> str:
+    def __str__(
+        self,
+    ) -> str:
         return self.name
 
 
@@ -90,5 +94,7 @@ class SocialLink(models.Model):
         auto_now=True,
     )
 
-    def __str__(self) -> str:
+    def __str__(
+        self,
+    ) -> str:
         return self.platform

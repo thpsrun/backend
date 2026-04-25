@@ -54,7 +54,10 @@ class RoleBasedRateLimit:
         """Generate cache key for rate limiting."""
         return f"{self.cache_prefix}:{identifier}:{window}"
 
-    def _get_public_identifier(self, request: HttpRequest) -> str:
+    def _get_public_identifier(
+        self,
+        request: HttpRequest,
+    ) -> str:
         """Get IP-based identifier for unauthenticated requests."""
         return f"ip_{request.META.get('REMOTE_ADDR', 'unknown')}"
 

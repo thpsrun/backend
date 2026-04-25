@@ -9,7 +9,9 @@ from tests.test_auth import AuthTestBase
 class GamesReadTest(TestCase):
 
     @classmethod
-    def setUpTestData(cls) -> None:
+    def setUpTestData(
+        cls,
+    ) -> None:
         cls.platform = Platforms.objects.create(
             id="pc",
             name="PC",
@@ -29,10 +31,14 @@ class GamesReadTest(TestCase):
         )
         cls.game.platforms.add("pc")
 
-    def setUp(self) -> None:
+    def setUp(
+        self,
+    ) -> None:
         self.client = TestClient(games_router)  # type: ignore
 
-    def test_list_games(self) -> None:
+    def test_list_games(
+        self,
+    ) -> None:
         response = self.client.get("/all")
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -41,7 +47,9 @@ class GamesReadTest(TestCase):
         self.assertEqual(data[0]["id"], "game1")
         self.assertEqual(data[0]["name"], "Test Game")
 
-    def test_get_game(self) -> None:
+    def test_get_game(
+        self,
+    ) -> None:
         response = self.client.get("/game1")
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -49,13 +57,17 @@ class GamesReadTest(TestCase):
         self.assertEqual(data["name"], "Test Game")
         self.assertEqual(data["slug"], "test-game")
 
-    def test_get_game_slug(self) -> None:
+    def test_get_game_slug(
+        self,
+    ) -> None:
         response = self.client.get("/test-game")
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["id"], "game1")
 
-    def test_game_404(self) -> None:
+    def test_game_404(
+        self,
+    ) -> None:
         response = self.client.get("/nonexistent")
         self.assertEqual(response.status_code, 404)
         data = response.json()
@@ -64,11 +76,15 @@ class GamesReadTest(TestCase):
 
 class GamesWriteTest(AuthTestBase):
 
-    def setUp(self) -> None:
+    def setUp(
+        self,
+    ) -> None:
         super().setUp()
         self.client = TestClient(games_router)  # type: ignore
 
-    def test_create_game(self) -> None:
+    def test_create_game(
+        self,
+    ) -> None:
         response = self.client.post(
             "/",
             json={
@@ -82,14 +98,16 @@ class GamesWriteTest(AuthTestBase):
             },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 201)
         data = response.json()
         self.assertEqual(data["name"], "New Test Game")
         self.assertEqual(data["slug"], "new-test-game")
         self.assertIsNotNone(data.get("id"))
         self.assertEqual(len(data["id"]), 8)
 
-    def test_create_game_custom_id(self) -> None:
+    def test_create_game_custom_id(
+        self,
+    ) -> None:
         response = self.client.post(
             "/",
             json={
@@ -104,11 +122,13 @@ class GamesWriteTest(AuthTestBase):
             },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 201)
         data = response.json()
         self.assertEqual(data["id"], "customid")
 
-    def test_game_duplicate(self) -> None:
+    def test_game_duplicate(
+        self,
+    ) -> None:
         response = self.client.post(
             "/",
             json={
@@ -127,7 +147,9 @@ class GamesWriteTest(AuthTestBase):
         data = response.json()
         self.assertEqual(data["error"], "ID Already Exists")
 
-    def test_create_unauthenticated(self) -> None:
+    def test_create_unauthenticated(
+        self,
+    ) -> None:
         full_client = Client()
         response = full_client.post(
             "/api/v1/games/",
@@ -146,7 +168,9 @@ class GamesWriteTest(AuthTestBase):
         self.assertEqual(response.status_code, 401)
         self.assertFalse(Games.objects.filter(name="Unauthorized Game").exists())
 
-    def test_update_game(self) -> None:
+    def test_update_game(
+        self,
+    ) -> None:
         response = self.client.put(
             "/game1",
             json={
@@ -161,7 +185,9 @@ class GamesWriteTest(AuthTestBase):
         self.assertEqual(data["name"], "Updated Game Name")
         self.assertEqual(data["slug"], "updated-game")
 
-    def test_update_game_404(self) -> None:
+    def test_update_game_404(
+        self,
+    ) -> None:
         response = self.client.put(
             "/nonexistent",
             json={"name": "Updated Name", "slug": "updated"},  # type: ignore
@@ -169,7 +195,9 @@ class GamesWriteTest(AuthTestBase):
         )
         self.assertEqual(response.status_code, 404)
 
-    def test_delete_game(self) -> None:
+    def test_delete_game(
+        self,
+    ) -> None:
         Games.objects.create(
             id="todelete",
             name="To Delete",
@@ -191,7 +219,9 @@ class GamesWriteTest(AuthTestBase):
 
         self.assertFalse(Games.objects.filter(id="todelete").exists())
 
-    def test_delete_game_404(self) -> None:
+    def test_delete_game_404(
+        self,
+    ) -> None:
         response = self.client.delete(
             "/nonexistent",
             headers={"X-API-Key": self.api_key},

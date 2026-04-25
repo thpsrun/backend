@@ -308,7 +308,15 @@ admin.site.register(NowStreaming)
 
 
 class SRCSyncTaskAdmin(admin.ModelAdmin):
-    list_display = ["id", "run", "action", "status", "moderator", "attempts", "created_at"]
+    list_display = [
+        "id",
+        "run",
+        "action",
+        "status",
+        "moderator",
+        "attempts",
+        "created_at",
+    ]
     list_filter = ["action", "status"]
     search_fields = ["run__id"]
     readonly_fields = ["created_at", "updated_at"]

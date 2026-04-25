@@ -3,6 +3,7 @@ from typing import Any, Iterator
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
+
 from srl.leaderboard.recalculation import TIME_COLUMN_MAP, process_leaderboard
 from srl.models import Games, RunHistory, Runs
 

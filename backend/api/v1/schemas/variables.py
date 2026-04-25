@@ -44,7 +44,10 @@ class VariableValueSchema(BaseEmbedSchema):
 
     @field_validator("variable", mode="before")
     @classmethod
-    def convert_model_to_none(cls, v: Any) -> dict | None:
+    def convert_model_to_none(
+        cls,
+        v: Any,
+    ) -> dict | None:
         if v is None:
             return None
         if isinstance(v, dict):
@@ -101,7 +104,10 @@ class VariableSchema(VariableBaseSchema):
 
     @field_validator("game", "category", "level", mode="before")
     @classmethod
-    def convert_model_to_none(cls, v: Any) -> dict | None:
+    def convert_model_to_none(
+        cls,
+        v: Any,
+    ) -> dict | None:
         if v is None:
             return None
         if isinstance(v, dict):

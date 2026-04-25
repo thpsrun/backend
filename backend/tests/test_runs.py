@@ -21,7 +21,9 @@ from tests.test_auth import AuthTestBase
 class RunsReadTest(TestCase):
 
     @classmethod
-    def setUpTestData(cls) -> None:
+    def setUpTestData(
+        cls,
+    ) -> None:
         cls.platform = Platforms.objects.create(
             id="pc",
             name="PC",
@@ -81,10 +83,14 @@ class RunsReadTest(TestCase):
             order=1,
         )
 
-    def setUp(self) -> None:
+    def setUp(
+        self,
+    ) -> None:
         self.client = TestClient(runs_router)  # type: ignore
 
-    def test_list_runs(self) -> None:
+    def test_list_runs(
+        self,
+    ) -> None:
         response = self.client.get("/all")
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -92,7 +98,9 @@ class RunsReadTest(TestCase):
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]["id"], "run1")
 
-    def test_list_runs_game_filter(self) -> None:
+    def test_list_runs_game_filter(
+        self,
+    ) -> None:
         response = self.client.get("/all?game_id=game1")
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -100,15 +108,19 @@ class RunsReadTest(TestCase):
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]["id"], "run1")
 
-    def test_get_run(self) -> None:
+    def test_get_run(
+        self,
+    ) -> None:
         response = self.client.get("/run1")
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["id"], "run1")
-        self.assertEqual(data["time"], "5m 30s")
+        self.assertEqual(data["times"]["time"], "5m 30s")
         self.assertEqual(data["place"], 1)
 
-    def test_get_run_embed_game(self) -> None:
+    def test_get_run_embed_game(
+        self,
+    ) -> None:
         response = self.client.get("/run1?embed=game")
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -117,7 +129,9 @@ class RunsReadTest(TestCase):
         self.assertEqual(data["game"]["id"], "game1")
         self.assertEqual(data["game"]["name"], "Test Game")
 
-    def test_get_run_players(self) -> None:
+    def test_get_run_players(
+        self,
+    ) -> None:
         response = self.client.get("/run1")
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -126,13 +140,17 @@ class RunsReadTest(TestCase):
         self.assertEqual(len(data["players"]), 1)
         self.assertEqual(data["players"][0]["id"], "player1")
 
-    def test_run_404(self) -> None:
+    def test_run_404(
+        self,
+    ) -> None:
         response = self.client.get("/nonexistent")
         self.assertEqual(response.status_code, 404)
         data = response.json()
         self.assertEqual(data["error"], "Run ID does not exist")
 
-    def test_run_bad_embed(self) -> None:
+    def test_run_bad_embed(
+        self,
+    ) -> None:
         response = self.client.get("/run1?embed=invalid")
         self.assertEqual(response.status_code, 400)
         data = response.json()
@@ -142,7 +160,9 @@ class RunsReadTest(TestCase):
 class RunsWriteTest(AuthTestBase):
 
     @classmethod
-    def setUpTestData(cls) -> None:
+    def setUpTestData(
+        cls,
+    ) -> None:
         super().setUpTestData()
         cls.category = Categories.objects.create(
             id="cat1",
@@ -173,11 +193,15 @@ class RunsWriteTest(AuthTestBase):
             url="https://speedrun.com/user/TestPlayer",
         )
 
-    def setUp(self) -> None:
+    def setUp(
+        self,
+    ) -> None:
         super().setUp()
         self.client = TestClient(runs_router)  # type: ignore
 
-    def test_create_run(self) -> None:
+    def test_create_run(
+        self,
+    ) -> None:
         response = self.client.post(
             "/",
             json={
@@ -192,14 +216,16 @@ class RunsWriteTest(AuthTestBase):
             },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 201)
         data = response.json()
-        self.assertEqual(data["time"], "5m 30s")
+        self.assertEqual(data["times"]["time"], "5m 30s")
         self.assertEqual(data["place"], 1)
         self.assertIsNotNone(data.get("id"))
         self.assertEqual(len(data["id"]), 8)
 
-    def test_create_run_custom_id(self) -> None:
+    def test_create_run_custom_id(
+        self,
+    ) -> None:
         response = self.client.post(
             "/",
             json={
@@ -214,11 +240,13 @@ class RunsWriteTest(AuthTestBase):
             },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 201)
         data = response.json()
         self.assertEqual(data["id"], "run001")
 
-    def test_create_run_bad_game(self) -> None:
+    def test_create_run_bad_game(
+        self,
+    ) -> None:
         response = self.client.post(
             "/",
             json={
@@ -233,7 +261,9 @@ class RunsWriteTest(AuthTestBase):
         data = response.json()
         self.assertEqual(data["error"], "Game does not exist")
 
-    def test_update_run(self) -> None:
+    def test_update_run(
+        self,
+    ) -> None:
         Runs.objects.create(
             id="toupdate",
             game=self.game,
@@ -258,9 +288,11 @@ class RunsWriteTest(AuthTestBase):
         data = response.json()
         self.assertEqual(data["id"], "toupdate")
         self.assertEqual(data["place"], 1)
-        self.assertEqual(data["time"], "5m 00s")
+        self.assertEqual(data["times"]["time"], "5m 00s")
 
-    def test_delete_run(self) -> None:
+    def test_delete_run(
+        self,
+    ) -> None:
         Runs.objects.create(
             id="todelete",
             game=self.game,

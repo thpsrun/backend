@@ -7,6 +7,8 @@ from django.http import HttpRequest, HttpResponse
 from ninja import NinjaAPI, Redoc
 from ninja.errors import ValidationError
 
+from api.v1.routers.auth.admin_api_keys import router as admin_api_keys_router
+from api.v1.routers.auth.api_keys import router as api_keys_router
 from api.v1.routers.auth.me import router as me_router
 from api.v1.routers.auth.pfp import router as pfp_router
 from api.v1.routers.auth.profile_bg import router as profile_bg_router
@@ -159,6 +161,16 @@ ninja_api: NinjaAPI = NinjaAPI(
             {
                 "name": "Auth - Sync Logs",
                 "description": "Administrative sync log endpoints.",
+            },
+            {
+                "name": "Auth - API Keys",
+                "description": "Self-service endpoints for managing the "
+                "authenticated user's API keys.",
+            },
+            {
+                "name": "Auth - Admin API Keys",
+                "description": "Superuser-only endpoints for inspecting and "
+                "revoking any user's API keys.",
             },
         ],
     },
@@ -316,3 +328,5 @@ ninja_api.add_router("/auth", profile_bg_router, tags=["Auth - Profile Backgroun
 ninja_api.add_router("/auth", src_key_router, tags=["Auth - SRC API Key"])
 ninja_api.add_router("/auth", submissions_router, tags=["Auth - Submissions"])
 ninja_api.add_router("/auth", sync_logs_router, tags=["Auth - Sync Logs"])
+ninja_api.add_router("/auth", api_keys_router, tags=["Auth - API Keys"])
+ninja_api.add_router("/auth", admin_api_keys_router, tags=["Auth - Admin API Keys"])

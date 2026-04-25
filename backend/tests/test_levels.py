@@ -9,7 +9,9 @@ from tests.test_auth import AuthTestBase
 class LevelsReadTest(TestCase):
 
     @classmethod
-    def setUpTestData(cls) -> None:
+    def setUpTestData(
+        cls,
+    ) -> None:
         cls.platform = Platforms.objects.create(
             id="pc",
             name="PC",
@@ -37,10 +39,14 @@ class LevelsReadTest(TestCase):
             url="https://speedrun.com/test-game/Warehouse",
         )
 
-    def setUp(self) -> None:
+    def setUp(
+        self,
+    ) -> None:
         self.client = TestClient(levels_router)  # type: ignore
 
-    def test_list_levels(self) -> None:
+    def test_list_levels(
+        self,
+    ) -> None:
         response = self.client.get("/all")
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -49,14 +55,18 @@ class LevelsReadTest(TestCase):
         self.assertEqual(data[0]["id"], "level1")
         self.assertEqual(data[0]["name"], "Warehouse")
 
-    def test_get_level(self) -> None:
+    def test_get_level(
+        self,
+    ) -> None:
         response = self.client.get("/level1")
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["id"], "level1")
         self.assertEqual(data["name"], "Warehouse")
 
-    def test_level_404(self) -> None:
+    def test_level_404(
+        self,
+    ) -> None:
         response = self.client.get("/nonexistent")
         self.assertEqual(response.status_code, 404)
         data = response.json()
@@ -65,11 +75,15 @@ class LevelsReadTest(TestCase):
 
 class LevelsWriteTest(AuthTestBase):
 
-    def setUp(self) -> None:
+    def setUp(
+        self,
+    ) -> None:
         super().setUp()
         self.client = TestClient(levels_router)  # type: ignore
 
-    def test_create_level(self) -> None:
+    def test_create_level(
+        self,
+    ) -> None:
         response = self.client.post(
             "/",
             json={
@@ -80,13 +94,15 @@ class LevelsWriteTest(AuthTestBase):
             },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 201)
         data = response.json()
         self.assertEqual(data["name"], "School")
         self.assertIsNotNone(data.get("id"))
         self.assertEqual(len(data["id"]), 8)
 
-    def test_create_level_custom_id(self) -> None:
+    def test_create_level_custom_id(
+        self,
+    ) -> None:
         response = self.client.post(
             "/",
             json={
@@ -98,11 +114,13 @@ class LevelsWriteTest(AuthTestBase):
             },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 201)
         data = response.json()
         self.assertEqual(data["id"], "lvl001")
 
-    def test_create_level_bad_game(self) -> None:
+    def test_create_level_bad_game(
+        self,
+    ) -> None:
         response = self.client.post(
             "/",
             json={
@@ -115,7 +133,9 @@ class LevelsWriteTest(AuthTestBase):
         )
         self.assertEqual(response.status_code, 404)
 
-    def test_update_level(self) -> None:
+    def test_update_level(
+        self,
+    ) -> None:
         Levels.objects.create(
             id="toupdate",
             game=self.game,
@@ -134,7 +154,9 @@ class LevelsWriteTest(AuthTestBase):
         self.assertEqual(data["id"], "toupdate")
         self.assertEqual(data["name"], "Updated Level")
 
-    def test_delete_level(self) -> None:
+    def test_delete_level(
+        self,
+    ) -> None:
         Levels.objects.create(
             id="todelete",
             game=self.game,

@@ -65,7 +65,9 @@ def _apply_value_slug_filters(
     return qs
 
 
-def _build_lbs_run_dict(run: Runs) -> dict[str, Any]:
+def _build_lbs_run_dict(
+    run: Runs,
+) -> dict[str, Any]:
     """Build the slim run dict used across all leaderboard endpoints."""
     return {
         "id": run.id,

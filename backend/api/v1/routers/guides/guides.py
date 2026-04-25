@@ -9,8 +9,8 @@ from ninja.responses import codes_4xx
 from srl.models.games import Games
 
 from api.permissions import authed, public_read
-from api.v1.routers.utils.resolvers import game_from_body, guide_from_path
 from api.v1.routers.utils.embeds import parse_embeds
+from api.v1.routers.utils.resolvers import game_from_body, guide_from_path
 from api.v1.schemas.base import ErrorResponse
 from api.v1.schemas.games import GameSchema
 from api.v1.schemas.guides import (

@@ -1,5 +1,10 @@
 import logging
 
+from django.http import HttpRequest
+from ninja import Query, Router, Status
+from ninja.responses import codes_4xx
+from srl.models import SRCSyncTask
+
 from api.permissions import authed
 from api.v1.schemas.base import ErrorResponse
 from api.v1.schemas.submissions import (
@@ -8,10 +13,6 @@ from api.v1.schemas.submissions import (
     SyncLogRunSchema,
     SyncRetryResponse,
 )
-from django.http import HttpRequest
-from ninja import Query, Router, Status
-from ninja.responses import codes_4xx
-from srl.models import SRCSyncTask
 
 logger = logging.getLogger(__name__)
 
@@ -37,9 +38,7 @@ def get_sync_logs(
     ),
     action: str | None = Query(
         None,
-        description=(
-            "Filter by action: verify, reject, or change_players"
-        ),
+        description=("Filter by action: verify, reject, or change_players"),
     ),
     game_id: str | None = Query(
         None,
@@ -63,7 +62,7 @@ def get_sync_logs(
         qs = qs.filter(run__game_id=game_id)
 
     total = qs.count()
-    tasks = qs[offset:offset + limit]
+    tasks = qs[offset : offset + limit]
 
     results = []
     for task in tasks:
@@ -75,24 +74,14 @@ def get_sync_logs(
                     id=run.id,
                     game_name=run.game.name,
                     game_slug=run.game.slug,
-                    category_name=(
-                        run.category.name
-                        if run.category
-                        else None
-                    ),
-                    level_name=(
-                        run.level.name if run.level else None
-                    ),
+                    category_name=(run.category.name if run.category else None),
+                    level_name=(run.level.name if run.level else None),
                     url=run.url,
                 ),
                 action=task.action,
                 status=task.status,
                 payload=task.payload,
-                moderator_name=(
-                    task.moderator.name
-                    if task.moderator
-                    else None
-                ),
+                moderator_name=(task.moderator.name if task.moderator else None),
                 attempts=task.attempts,
                 max_attempts=task.max_attempts,
                 last_error=task.last_error,

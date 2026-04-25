@@ -9,7 +9,9 @@ class LeaderboardChoices(models.TextChoices):
     INGAME = "ingame", "IGT"
 
 
-def validate_award_image(image: ImageFieldFile) -> None:
+def validate_award_image(
+    image: ImageFieldFile,
+) -> None:
     file_size = image.file.size
     if file_size > 3 * 1024 * 1024:
         raise ValidationError("Max size of file is 3 MB")
@@ -22,7 +24,9 @@ def validate_award_image(image: ImageFieldFile) -> None:
         )
 
 
-def validate_flag_image(image: ImageFieldFile) -> None:
+def validate_flag_image(
+    image: ImageFieldFile,
+) -> None:
     file_size = image.file.size
     if file_size > 3 * 1024 * 1024:
         raise ValidationError("Max size of file is 3 MB")
@@ -37,7 +41,9 @@ def validate_flag_image(image: ImageFieldFile) -> None:
         )
 
 
-def validate_profile_bg(image: ImageFieldFile) -> None:
+def validate_profile_bg(
+    image: ImageFieldFile,
+) -> None:
     file_size = image.file.size
     if file_size > 10 * 1024 * 1024:
         raise ValidationError("Max size of file is 10 MB")

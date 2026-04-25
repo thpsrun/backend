@@ -54,10 +54,13 @@ def get_overall_leaderboard(
         )
         return Status(200, [PointLeaderboardEntrySchema(**entry) for entry in data])
     except Exception as e:
-        return Status(500, ErrorResponse(
-            error="Failed to retrieve overall leaderboard",
-            details={"exception": str(e)},
-        ))
+        return Status(
+            500,
+            ErrorResponse(
+                error="Failed to retrieve overall leaderboard",
+                details={"exception": str(e)},
+            ),
+        )
 
 
 @router.get(
@@ -94,30 +97,39 @@ def get_game_leaderboard(
     ] = None,
 ) -> Status:
     if len(game_id) > 15:
-        return Status(400, ErrorResponse(
-            error="ID must be 15 characters or less",
-            details=None,
-        ))
+        return Status(
+            400,
+            ErrorResponse(
+                error="ID must be 15 characters or less",
+                details=None,
+            ),
+        )
 
     try:
         game = Games.objects.filter(
             Q(id__iexact=game_id) | Q(slug__iexact=game_id)
         ).first()
         if not game:
-            return Status(404, ErrorResponse(
-                error="Game not found",
-                details=None,
-            ))
+            return Status(
+                404,
+                ErrorResponse(
+                    error="Game not found",
+                    details=None,
+                ),
+            )
 
         embed_fields = [e.strip() for e in embed.split(",")] if embed else []
 
         valid_embed_types = {"oldest-runs"}
         invalid_embeds = [e for e in embed_fields if e not in valid_embed_types]
         if invalid_embeds:
-            return Status(400, ErrorResponse(
-                error=f"Invalid embed type(s): {', '.join(invalid_embeds)}",
-                details={"valid_embed_types": list(valid_embed_types)},
-            ))
+            return Status(
+                400,
+                ErrorResponse(
+                    error=f"Invalid embed type(s): {', '.join(invalid_embeds)}",
+                    details={"valid_embed_types": list(valid_embed_types)},
+                ),
+            )
 
         leaderboard_data = check_cache_query(
             game_leaderboard_cache_key(game.id),
@@ -143,7 +155,10 @@ def get_game_leaderboard(
         return Status(200, response)
 
     except Exception as e:
-        return Status(500, ErrorResponse(
-            error="Failed to retrieve game leaderboard",
-            details={"exception": str(e)},
-        ))
+        return Status(
+            500,
+            ErrorResponse(
+                error="Failed to retrieve game leaderboard",
+                details={"exception": str(e)},
+            ),
+        )

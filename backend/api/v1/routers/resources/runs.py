@@ -20,13 +20,14 @@ from srl.models import (
 )
 
 from api.permissions import authed, public_read
-from api.v1.routers.utils.resolvers import game_from_body, run_from_path
 from api.v1.routers.utils.embeds import (
+    InvalidEmbedsError,
     parse_embeds,
     serialize_category_embed,
     serialize_game_embed,
     serialize_level_embed,
 )
+from api.v1.routers.utils.resolvers import game_from_body, run_from_path
 from api.v1.schemas.base import ErrorResponse, RunStatusType, RunTypeType
 from api.v1.schemas.runs import RunCreateSchema, RunSchema, RunUpdateSchema
 from api.v1.utils import get_or_generate_id
@@ -293,7 +294,16 @@ def get_run(
             ),
         )
 
-    embed_fields = parse_embeds(embed, "runs")
+    try:
+        embed_fields = parse_embeds(embed, "runs")
+    except InvalidEmbedsError as e:
+        return Status(
+            400,
+            ErrorResponse(
+                error=str(e),
+                details={"valid_embeds": sorted(e.valid)},
+            ),
+        )
 
     try:
         run = (

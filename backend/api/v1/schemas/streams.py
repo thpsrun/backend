@@ -25,7 +25,10 @@ class StreamSchema(BaseEmbedSchema):
 
     @model_validator(mode="before")
     @classmethod
-    def transform_nowstreaming_model(cls, data: Any) -> Any:
+    def transform_nowstreaming_model(
+        cls,
+        data: Any,
+    ) -> Any:
         if hasattr(data, "streamer"):
             streamer = data.streamer
             game = data.game

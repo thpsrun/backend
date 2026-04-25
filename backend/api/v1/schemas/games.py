@@ -88,7 +88,10 @@ class GameSchema(GameBaseSchema):
 
     @field_validator("platforms", "categories", "levels", mode="before")
     @classmethod
-    def convert_manager_to_list(cls, v: Any) -> list[dict] | None:
+    def convert_manager_to_list(
+        cls,
+        v: Any,
+    ) -> list[dict] | None:
         if v is None:
             return None
         if isinstance(v, list):

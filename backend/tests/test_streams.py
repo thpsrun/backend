@@ -10,7 +10,9 @@ from tests.test_auth import AuthTestBase
 class StreamsReadTest(TestCase):
 
     @classmethod
-    def setUpTestData(cls) -> None:
+    def setUpTestData(
+        cls,
+    ) -> None:
         cls.platform = Platforms.objects.create(
             id="pc",
             name="PC",
@@ -46,10 +48,14 @@ class StreamsReadTest(TestCase):
             stream_time=timezone.now(),
         )
 
-    def setUp(self) -> None:
+    def setUp(
+        self,
+    ) -> None:
         self.client = TestClient(streams_router)  # type: ignore
 
-    def test_live_streams(self) -> None:
+    def test_live_streams(
+        self,
+    ) -> None:
         response = self.client.get("/live")
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -64,7 +70,9 @@ class StreamsReadTest(TestCase):
 class StreamsWriteTest(AuthTestBase):
 
     @classmethod
-    def setUpTestData(cls) -> None:
+    def setUpTestData(
+        cls,
+    ) -> None:
         super().setUpTestData()
         cls.player = Players.objects.create(
             id="streamer1",
@@ -79,11 +87,15 @@ class StreamsWriteTest(AuthTestBase):
             twitch="https://twitch.tv/streamerplayer2",
         )
 
-    def setUp(self) -> None:
+    def setUp(
+        self,
+    ) -> None:
         super().setUp()
         self.client = TestClient(streams_router)  # type: ignore
 
-    def test_create_stream(self) -> None:
+    def test_create_stream(
+        self,
+    ) -> None:
         response = self.client.post(
             "/",
             json={
@@ -94,12 +106,14 @@ class StreamsWriteTest(AuthTestBase):
             },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 201)
         data = response.json()
         self.assertEqual(data["title"], "Test Stream!")
         self.assertIsNotNone(data.get("player"))
 
-    def test_create_stream_duplicate(self) -> None:
+    def test_create_stream_duplicate(
+        self,
+    ) -> None:
         NowStreaming.objects.create(
             streamer=self.player2,
             game=self.game,
@@ -122,7 +136,9 @@ class StreamsWriteTest(AuthTestBase):
         data = response.json()
         self.assertIn("already has an active stream", data["error"])
 
-    def test_update_stream(self) -> None:
+    def test_update_stream(
+        self,
+    ) -> None:
         NowStreaming.objects.create(
             streamer=self.player,
             game=self.game,
@@ -140,7 +156,9 @@ class StreamsWriteTest(AuthTestBase):
         data = response.json()
         self.assertEqual(data["title"], "Updated Title")
 
-    def test_delete_stream(self) -> None:
+    def test_delete_stream(
+        self,
+    ) -> None:
         NowStreaming.objects.create(
             streamer=self.player,
             game=self.game,

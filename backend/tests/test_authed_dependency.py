@@ -11,7 +11,9 @@ User = get_user_model()
 
 
 def run_target_resolver_factory(run: Runs):
-    def _resolver(_request) -> Runs:
+    def _resolver(
+        _request,
+    ) -> Runs:
         return run
 
     return _resolver
@@ -19,7 +21,9 @@ def run_target_resolver_factory(run: Runs):
 
 class AuthedDependencyTest(TestCase):
     @classmethod
-    def setUpTestData(cls) -> None:
+    def setUpTestData(
+        cls,
+    ) -> None:
         cls.factory = RequestFactory()
         cls.country = CountryCodes.objects.create(id="usa", name="United States")
         cls.platform = Platforms.objects.create(id="pc", name="PC", slug="pc")
@@ -102,7 +106,9 @@ class AuthedDependencyTest(TestCase):
             obsolete=False,
         )
 
-    def test_401_when_no_credential_present(self) -> None:
+    def test_401_when_no_credential_present(
+        self,
+    ) -> None:
         request = self.factory.get("/")
         request.user = AnonymousUser()
         dep = authed("runs.submit")
@@ -110,7 +116,9 @@ class AuthedDependencyTest(TestCase):
             dep(request)
         self.assertEqual(ctx.exception.status_code, 401)
 
-    def test_403_when_user_lacks_permission(self) -> None:
+    def test_403_when_user_lacks_permission(
+        self,
+    ) -> None:
         request = self.factory.get("/")
         request.user = self.regular_user
         dep = authed(
@@ -121,7 +129,9 @@ class AuthedDependencyTest(TestCase):
             dep(request)
         self.assertEqual(ctx.exception.status_code, 403)
 
-    def test_mod_allowed_on_own_game(self) -> None:
+    def test_mod_allowed_on_own_game(
+        self,
+    ) -> None:
         request = self.factory.get("/")
         request.user = self.mod_user
         dep = authed(
@@ -131,7 +141,9 @@ class AuthedDependencyTest(TestCase):
         self.assertEqual(dep(request), self.mod_user)
         self.assertIsNone(getattr(request, "api_key", None))
 
-    def test_api_key_no_scope_allows_authorized_action(self) -> None:
+    def test_api_key_no_scope_allows_authorized_action(
+        self,
+    ) -> None:
         key_obj, raw = APIKey.objects.create_key(
             user=self.super_user,
             label="admin-key",
@@ -142,7 +154,9 @@ class AuthedDependencyTest(TestCase):
         self.assertEqual(dep(request), self.super_user)
         self.assertEqual(request.api_key.pk, key_obj.pk)
 
-    def test_invalid_api_key_returns_401(self) -> None:
+    def test_invalid_api_key_returns_401(
+        self,
+    ) -> None:
         request = self.factory.get("/", HTTP_X_API_KEY="not-a-real-key")
         request.user = AnonymousUser()
         dep = authed("runs.submit")
@@ -150,7 +164,9 @@ class AuthedDependencyTest(TestCase):
             dep(request)
         self.assertEqual(ctx.exception.status_code, 401)
 
-    def test_revoked_key_returns_401(self) -> None:
+    def test_revoked_key_returns_401(
+        self,
+    ) -> None:
         key_obj, raw = APIKey.objects.create_key(
             user=self.super_user,
             label="revoked",
@@ -165,7 +181,9 @@ class AuthedDependencyTest(TestCase):
             dep(request)
         self.assertEqual(ctx.exception.status_code, 401)
 
-    def test_inactive_owner_key_returns_401(self) -> None:
+    def test_inactive_owner_key_returns_401(
+        self,
+    ) -> None:
         ghost = User.objects.create_user(
             username="ghost-owner",
             email="ghost-owner@example.com",
@@ -183,7 +201,9 @@ class AuthedDependencyTest(TestCase):
             dep(request)
         self.assertEqual(ctx.exception.status_code, 401)
 
-    def test_key_capability_scope_denies_out_of_scope(self) -> None:
+    def test_key_capability_scope_denies_out_of_scope(
+        self,
+    ) -> None:
         key_obj, raw = APIKey.objects.create_key(
             user=self.super_user,
             label="narrow-cap",
@@ -196,7 +216,9 @@ class AuthedDependencyTest(TestCase):
             dep(request)
         self.assertEqual(ctx.exception.status_code, 403)
 
-    def test_key_capability_scope_admits_listed(self) -> None:
+    def test_key_capability_scope_admits_listed(
+        self,
+    ) -> None:
         key_obj, raw = APIKey.objects.create_key(
             user=self.super_user,
             label="narrow-cap",
@@ -207,7 +229,9 @@ class AuthedDependencyTest(TestCase):
         dep = authed("api_keys.admin")
         self.assertEqual(dep(request), self.super_user)
 
-    def test_key_game_scope_denies_out_of_scope_game(self) -> None:
+    def test_key_game_scope_denies_out_of_scope_game(
+        self,
+    ) -> None:
         key_obj, raw = APIKey.objects.create_key(
             user=self.mod_user,
             label="other-only",
@@ -223,7 +247,9 @@ class AuthedDependencyTest(TestCase):
             dep(request)
         self.assertEqual(ctx.exception.status_code, 403)
 
-    def test_key_game_scope_admits_matching_game(self) -> None:
+    def test_key_game_scope_admits_matching_game(
+        self,
+    ) -> None:
         key_obj, raw = APIKey.objects.create_key(
             user=self.mod_user,
             label="own-only",
@@ -237,7 +263,9 @@ class AuthedDependencyTest(TestCase):
         )
         self.assertEqual(dep(request), self.mod_user)
 
-    def test_game_scoped_cap_with_no_target_and_scoped_key_denies(self) -> None:
+    def test_game_scoped_cap_with_no_target_and_scoped_key_denies(
+        self,
+    ) -> None:
         key_obj, raw = APIKey.objects.create_key(
             user=self.mod_user,
             label="game-scoped",
@@ -250,7 +278,9 @@ class AuthedDependencyTest(TestCase):
             dep(request)
         self.assertEqual(ctx.exception.status_code, 403)
 
-    def test_non_scoped_capability_ignores_scope_games(self) -> None:
+    def test_non_scoped_capability_ignores_scope_games(
+        self,
+    ) -> None:
         key_obj, raw = APIKey.objects.create_key(
             user=self.super_user,
             label="admin-narrow",
@@ -263,10 +293,14 @@ class AuthedDependencyTest(TestCase):
 
 
 class PublicReadTest(TestCase):
-    def setUp(self) -> None:
+    def setUp(
+        self,
+    ) -> None:
         self.factory = RequestFactory()
 
-    def test_anon_returns_anonymous_user(self) -> None:
+    def test_anon_returns_anonymous_user(
+        self,
+    ) -> None:
         request = self.factory.get("/")
         request.user = AnonymousUser()
         dep = public_read()
@@ -274,7 +308,9 @@ class PublicReadTest(TestCase):
         self.assertIsNotNone(result)
         self.assertFalse(result.is_authenticated)
 
-    def test_authenticated_returns_user(self) -> None:
+    def test_authenticated_returns_user(
+        self,
+    ) -> None:
         user = User.objects.create_user(
             username="pr",
             email="pr@example.com",

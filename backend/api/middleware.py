@@ -55,6 +55,7 @@ class APIActivityLogMiddleware:
         request: HttpRequest,
     ) -> HttpResponse:
         response = self.get_response(request)
+        self._update_api_key_usage(request)
 
         if (
             request.path.startswith("/api/v1/")
@@ -64,6 +65,38 @@ class APIActivityLogMiddleware:
             self._log_api_activity(request)
 
         return response
+
+    def _update_api_key_usage(
+        self,
+        request: HttpRequest,
+    ) -> None:
+        api_key: APIKey | None = getattr(request, "api_key", None)
+        if api_key is None:
+            return
+        try:
+            APIKey.objects.filter(pk=api_key.pk).update(
+                last_used=timezone.now(),
+                last_used_ip=self._client_ip(request),
+            )
+        except Exception:
+            logger.warning(
+                "Failed to update API key last_used",
+                exc_info=True,
+                extra={"path": request.path, "key_id": api_key.pk},
+            )
+
+    @staticmethod
+    def _client_ip(
+        request: HttpRequest,
+    ) -> str | None:
+        """Returns the client IP, preferring X-Forwarded-For from the reverse proxy over
+        REMOTE_ADDR so requests can record the real client."""
+        xff = request.META.get("HTTP_X_FORWARDED_FOR")
+        if xff:
+            parts = [p.strip() for p in xff.split(",") if p.strip()]
+            if parts:
+                return parts[0]
+        return request.META.get("REMOTE_ADDR")
 
     def _log_api_activity(
         self,
@@ -150,7 +183,10 @@ class APIActivityLogMiddleware:
         owner = getattr(api_key, "user", None)
         return owner.id if owner else None
 
-    def _get_action_flag(self, method: str) -> int | None:
+    def _get_action_flag(
+        self,
+        method: str,
+    ) -> int | None:
         """Convert HTTP method to Django admin action flag.
 
         Arguments:
@@ -177,7 +213,7 @@ class APIActivityLogMiddleware:
             request: The incoming HTTP request.
 
         Returns:
-            Tuple of (ContentType, object_id, object_repr) or None if extraction fails.
+            Tuple: (ContentType, object_id, object_repr) or None if extraction fails.
         """
         try:
             path = request.path
@@ -234,7 +270,7 @@ class APIActivityLogMiddleware:
             api_key: The validated APIKey object.
 
         Returns:
-            A formatted change message string (max 255 chars).
+            str: Formatted API key message.
         """
         try:
             method = request.method
@@ -266,7 +302,10 @@ class APIActivityLogMiddleware:
             )
             return f"API {request.method} operation"
 
-    def _get_sanitized_body_summary(self, request: HttpRequest) -> str | None:
+    def _get_sanitized_body_summary(
+        self,
+        request: HttpRequest,
+    ) -> str | None:
         """Extract and sanitize request body for logging.
 
         Filters out sensitive fields and truncates large payloads.
@@ -275,7 +314,7 @@ class APIActivityLogMiddleware:
             request: The incoming HTTP request.
 
         Returns:
-            A sanitized JSON string of the body, or None if not applicable.
+            json: A sanitized JSON string of the body, or None if not applicable.
         """
         if not hasattr(request, "body") or not request.body:
             return None

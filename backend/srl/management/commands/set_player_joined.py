@@ -45,8 +45,7 @@ class Command(BaseCommand):
         )
 
         date_map: dict[str, datetime.date] = {
-            row["players__id"]: row["earliest"].date()
-            for row in earliest_dates
+            row["players__id"]: row["earliest"].date() for row in earliest_dates
         }
 
         players = Players.objects.filter(id__in=date_map.keys())

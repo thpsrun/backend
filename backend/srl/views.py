@@ -201,8 +201,10 @@ class ManageOrderingView(View):
             Levels.objects.filter(game=game),
         )
         variable_groups: list[dict[str, Any]] = []
-        for var in Variables.objects.filter(game=game).order_by("name").prefetch_related(
-            "variablevalues_set"
+        for var in (
+            Variables.objects.filter(game=game)
+            .order_by("name")
+            .prefetch_related("variablevalues_set")
         ):
             vv_list = self._sorted_for_display(var.variablevalues_set.all())  # type: ignore
             if vv_list:

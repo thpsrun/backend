@@ -28,7 +28,9 @@ class ImageValidationError(Exception):
         super().__init__(message)
 
 
-def _detect_format(raw: bytes) -> str | None:
+def _detect_format(
+    raw: bytes,
+) -> str | None:
     for prefix, fmt in _MAGIC_PREFIXES:
         if raw.startswith(prefix):
             return fmt

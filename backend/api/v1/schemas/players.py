@@ -72,7 +72,10 @@ class PlayerSearchResultSchema(BaseEmbedSchema):
 
     @field_validator("country_id", mode="before")
     @classmethod
-    def convert_country_to_id(cls, v: Any) -> str | None:
+    def convert_country_to_id(
+        cls,
+        v: Any,
+    ) -> str | None:
         if v is None:
             return None
         if isinstance(v, str):

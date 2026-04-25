@@ -8,7 +8,10 @@ from srl.models import RunPlayers, Runs
 class Command(BaseCommand):
     help = "Verify and optionally repair RunPlayers associations for all runs."
 
-    def add_arguments(self, parser) -> None:
+    def add_arguments(
+        self,
+        parser,
+    ) -> None:
         parser.add_argument(
             "--fix",
             action="store_true",
@@ -20,7 +23,11 @@ class Command(BaseCommand):
             help="Show detailed output for each run processed",
         )
 
-    def handle(self, *args, **options) -> None:
+    def handle(
+        self,
+        *args,
+        **options,
+    ) -> None:
         fix_mode = options["fix"]
         verbose = options["verbose"]
 

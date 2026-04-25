@@ -5,21 +5,13 @@ from typing import Any
 from srl.models.games import Games
 
 from api.models import APIKey
-from api.permissions import CAPABILITY_SCOPED
-
-# Scopes that check if the user owns the guide or the run; if they do, then it wil give the ability
-# to modify as needed.
-_OWNED_SCOPES = frozenset(
-    {
-        "runs.edit_own",
-        "guides.edit_own",
-        "guides.delete_own",
-    }
-)
+from api.permissions import CAPABILITY_SCOPED, MOD_SCOPES, PLAYER_SCOPES, SU_ONLY_SCOPES
 
 
-def is_key_backable(key: APIKey) -> bool:
-    """Can the key's owner still do everything this key was issued to do?"""
+def is_key_backable(
+    key: APIKey,
+) -> bool:
+    """Used to determine if the keys owner can still do everything or not."""
     user = key.user
     if not user.is_active:
         return False
@@ -31,8 +23,6 @@ def is_key_backable(key: APIKey) -> bool:
         return True
 
     if not caps:
-        # No capabilities listed means the key piggybacks on whatever the owner can do on these
-        # games. If they're no longer a mod, every power is gone.
         return all(user.has_perm("games.manage", g) for g in games)
 
     for cap in caps:
@@ -40,24 +30,32 @@ def is_key_backable(key: APIKey) -> bool:
             if not user.has_perm(cap):
                 return False
             continue
-        if cap in _OWNED_SCOPES:
+        if cap in PLAYER_SCOPES:
             if not user.has_perm("profile.edit_own"):
                 return False
             continue
-        if games:
-            # Everything not mentioned requires game-mod powers.
-            if not all(user.has_perm("games.manage", g) for g in games):
+        if cap in SU_ONLY_SCOPES:
+            if not user.is_superuser:
                 return False
-        else:
-            if not _has_cap_somewhere(user, cap):
-                return False
+            continue
+        if cap in MOD_SCOPES:
+            if games:
+                if not all(user.has_perm("games.manage", g) for g in games):
+                    return False
+            else:
+                if not _user_moderates_any_game(user):
+                    return False
+            continue
+        return False
     return True
 
 
-def _has_cap_somewhere(user: Any, capability: str) -> bool:
-    if capability in _OWNED_SCOPES:
-        return user.has_perm("profile.edit_own")
-    for g in Games.objects.all().iterator():
-        if user.has_perm("games.manage", g):
-            return True
-    return False
+def _user_moderates_any_game(
+    user: Any,
+) -> bool:
+    if getattr(user, "is_superuser", False):
+        return True
+    player = getattr(user, "player", None)
+    if player is None:
+        return False
+    return Games.objects.filter(moderators=player).exists()

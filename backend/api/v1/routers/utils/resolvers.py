@@ -15,12 +15,16 @@ from srl.models.variable_values import VariableValues
 from srl.models.variables import Variables
 
 
-def _path_kwargs(request: HttpRequest) -> dict[str, Any]:
+def _path_kwargs(
+    request: HttpRequest,
+) -> dict[str, Any]:
     match = getattr(request, "resolver_match", None)
     return dict(match.kwargs) if match is not None else {}
 
 
-def _json_body(request: HttpRequest) -> dict[str, Any]:
+def _json_body(
+    request: HttpRequest,
+) -> dict[str, Any]:
     cached = getattr(request, "_resolved_body_json", None)
     if isinstance(cached, dict):
         return cached
@@ -37,7 +41,9 @@ def _json_body(request: HttpRequest) -> dict[str, Any]:
     return parsed
 
 
-def run_from_path(request: HttpRequest) -> Runs:
+def run_from_path(
+    request: HttpRequest,
+) -> Runs:
     kwargs = _path_kwargs(request)
     run_id = kwargs.get("run_id") or kwargs.get("id")
     if run_id is None:
@@ -45,7 +51,9 @@ def run_from_path(request: HttpRequest) -> Runs:
     return get_object_or_404(Runs, pk=run_id)
 
 
-def game_from_path(request: HttpRequest) -> Games:
+def game_from_path(
+    request: HttpRequest,
+) -> Games:
     # Order: explicit game_id > game_slug > id fallback. The id fallback only
     # makes sense on routers whose {id} is a Games PK (i.e. games.py).
     kwargs = _path_kwargs(request)
@@ -58,7 +66,9 @@ def game_from_path(request: HttpRequest) -> Games:
     return None  # type: ignore
 
 
-def guide_from_path(request: HttpRequest) -> Guides:
+def guide_from_path(
+    request: HttpRequest,
+) -> Guides:
     kwargs = _path_kwargs(request)
     if "slug" in kwargs:
         return get_object_or_404(Guides, slug=kwargs["slug"])
@@ -67,7 +77,9 @@ def guide_from_path(request: HttpRequest) -> Guides:
     return None  # type: ignore
 
 
-def game_from_body(request: HttpRequest) -> Games | None:
+def game_from_body(
+    request: HttpRequest,
+) -> Games | None:
     body = _json_body(request)
     game_ref = body.get("game_id") or body.get("game")
     if not game_ref:
@@ -75,7 +87,9 @@ def game_from_body(request: HttpRequest) -> Games | None:
     return Games.objects.filter(pk=game_ref).first()
 
 
-def game_from_variable_body(request: HttpRequest) -> Games | None:
+def game_from_variable_body(
+    request: HttpRequest,
+) -> Games | None:
     body = _json_body(request)
     variable_ref = body.get("variable_id") or body.get("variable")
     if not variable_ref:
@@ -84,7 +98,9 @@ def game_from_variable_body(request: HttpRequest) -> Games | None:
     return variable.game if variable else None
 
 
-def game_from_category_path(request: HttpRequest) -> Games | None:
+def game_from_category_path(
+    request: HttpRequest,
+) -> Games | None:
     kwargs = _path_kwargs(request)
     pk = kwargs.get("id") or kwargs.get("category_id")
     if pk is None:
@@ -93,7 +109,9 @@ def game_from_category_path(request: HttpRequest) -> Games | None:
     return category.game if category else None
 
 
-def game_from_level_path(request: HttpRequest) -> Games | None:
+def game_from_level_path(
+    request: HttpRequest,
+) -> Games | None:
     kwargs = _path_kwargs(request)
     pk = kwargs.get("id") or kwargs.get("level_id")
     if pk is None:
@@ -102,7 +120,9 @@ def game_from_level_path(request: HttpRequest) -> Games | None:
     return level.game if level else None
 
 
-def game_from_variable_path(request: HttpRequest) -> Games | None:
+def game_from_variable_path(
+    request: HttpRequest,
+) -> Games | None:
     kwargs = _path_kwargs(request)
     pk = kwargs.get("id") or kwargs.get("variable_id")
     if pk is None:
@@ -111,7 +131,9 @@ def game_from_variable_path(request: HttpRequest) -> Games | None:
     return variable.game if variable else None
 
 
-def game_from_variable_value_path(request: HttpRequest) -> Games | None:
+def game_from_variable_value_path(
+    request: HttpRequest,
+) -> Games | None:
     kwargs = _path_kwargs(request)
     pk = kwargs.get("value_id") or kwargs.get("id")
     if pk is None:
@@ -120,7 +142,9 @@ def game_from_variable_value_path(request: HttpRequest) -> Games | None:
     return value.var.game if value and value.var else None
 
 
-def game_from_stream_path(request: HttpRequest) -> Games | None:
+def game_from_stream_path(
+    request: HttpRequest,
+) -> Games | None:
     kwargs = _path_kwargs(request)
     player_id = kwargs.get("player_id")
     if player_id is None:

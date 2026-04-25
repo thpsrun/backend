@@ -1,10 +1,9 @@
 from datetime import timedelta
 
+from api.models import APIKey
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
-
-from api.models import APIKey
 from srl.models import Games
 
 User = get_user_model()
@@ -12,7 +11,9 @@ User = get_user_model()
 
 class APIKeyModelTest(TestCase):
     @classmethod
-    def setUpTestData(cls) -> None:
+    def setUpTestData(
+        cls,
+    ) -> None:
         cls.user = User.objects.create_user(
             username="alice",
             email="alice@example.com",
@@ -37,21 +38,27 @@ class APIKeyModelTest(TestCase):
             ipointsmax=100,
         )
 
-    def test_apikey_has_user_fk(self) -> None:
+    def test_apikey_has_user_fk(
+        self,
+    ) -> None:
         key_obj, _raw = APIKey.objects.create_key(
             user=self.user,
             label="test",
         )
         self.assertEqual(key_obj.user, self.user)
 
-    def test_apikey_label_required(self) -> None:
+    def test_apikey_label_required(
+        self,
+    ) -> None:
         key_obj, _raw = APIKey.objects.create_key(
             user=self.user,
             label="my key",
         )
         self.assertEqual(key_obj.label, "my key")
 
-    def test_apikey_default_scope_is_empty(self) -> None:
+    def test_apikey_default_scope_is_empty(
+        self,
+    ) -> None:
         key_obj, _raw = APIKey.objects.create_key(
             user=self.user,
             label="unrestricted",
@@ -59,7 +66,9 @@ class APIKeyModelTest(TestCase):
         self.assertEqual(list(key_obj.scope_games.all()), [])
         self.assertEqual(key_obj.scope_capabilities, [])
 
-    def test_apikey_scope_games_m2m(self) -> None:
+    def test_apikey_scope_games_m2m(
+        self,
+    ) -> None:
         key_obj, _raw = APIKey.objects.create_key(
             user=self.user,
             label="scoped",
@@ -67,7 +76,9 @@ class APIKeyModelTest(TestCase):
         key_obj.scope_games.add(self.game)
         self.assertIn(self.game, key_obj.scope_games.all())
 
-    def test_apikey_scope_capabilities_array(self) -> None:
+    def test_apikey_scope_capabilities_array(
+        self,
+    ) -> None:
         key_obj, _raw = APIKey.objects.create_key(
             user=self.user,
             label="runs only",
@@ -75,14 +86,18 @@ class APIKeyModelTest(TestCase):
         )
         self.assertEqual(key_obj.scope_capabilities, ["runs.verify"])
 
-    def test_apikey_related_name_reverse_lookup(self) -> None:
+    def test_apikey_related_name_reverse_lookup(
+        self,
+    ) -> None:
         key_obj, _raw = APIKey.objects.create_key(
             user=self.user,
             label="reverse",
         )
         self.assertIn(key_obj, self.user.api_keys.all())
 
-    def test_apikey_game_deletion_cleans_m2m(self) -> None:
+    def test_apikey_game_deletion_cleans_m2m(
+        self,
+    ) -> None:
         key_obj, _raw = APIKey.objects.create_key(
             user=self.user,
             label="game-scoped",
@@ -92,7 +107,9 @@ class APIKeyModelTest(TestCase):
         key_obj.refresh_from_db()
         self.assertEqual(list(key_obj.scope_games.all()), [])
 
-    def test_get_usable_keys_excludes_inactive_user_owner(self) -> None:
+    def test_get_usable_keys_excludes_inactive_user_owner(
+        self,
+    ) -> None:
         key_obj, _raw = APIKey.objects.create_key(
             user=self.inactive_user,
             label="inactive-owner",
@@ -101,7 +118,9 @@ class APIKeyModelTest(TestCase):
             APIKey.objects.get_usable_keys().filter(pk=key_obj.pk).exists(),
         )
 
-    def test_get_usable_keys_excludes_revoked(self) -> None:
+    def test_get_usable_keys_excludes_revoked(
+        self,
+    ) -> None:
         key_obj, _raw = APIKey.objects.create_key(
             user=self.user,
             label="revoked-key",
@@ -113,7 +132,9 @@ class APIKeyModelTest(TestCase):
             APIKey.objects.get_usable_keys().filter(pk=key_obj.pk).exists(),
         )
 
-    def test_get_usable_keys_excludes_expired(self) -> None:
+    def test_get_usable_keys_excludes_expired(
+        self,
+    ) -> None:
         key_obj, _raw = APIKey.objects.create_key(
             user=self.user,
             label="expired-key",
@@ -123,7 +144,9 @@ class APIKeyModelTest(TestCase):
             APIKey.objects.get_usable_keys().filter(pk=key_obj.pk).exists(),
         )
 
-    def test_get_usable_keys_includes_active_key(self) -> None:
+    def test_get_usable_keys_includes_active_key(
+        self,
+    ) -> None:
         key_obj, _raw = APIKey.objects.create_key(
             user=self.user,
             label="active-key",
@@ -132,14 +155,18 @@ class APIKeyModelTest(TestCase):
             APIKey.objects.get_usable_keys().filter(pk=key_obj.pk).exists(),
         )
 
-    def test_revoked_reason_choices_accept_empty(self) -> None:
+    def test_revoked_reason_choices_accept_empty(
+        self,
+    ) -> None:
         key_obj, _raw = APIKey.objects.create_key(
             user=self.user,
             label="fresh",
         )
         self.assertEqual(key_obj.revoked_reason, "")
 
-    def test_str_representation(self) -> None:
+    def test_str_representation(
+        self,
+    ) -> None:
         key_obj, _raw = APIKey.objects.create_key(
             user=self.user,
             label="test label",

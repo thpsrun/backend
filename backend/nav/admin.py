@@ -16,13 +16,16 @@ class NavItemAdmin(admin.ModelAdmin):
     actions = ("manage_ordering",)
 
     @admin.display(description="Name")
-    def indented_name(self, obj: NavItem) -> str:
+    def indented_name(
+        self,
+        obj: NavItem,
+    ) -> str:
         depth = 0
         current = obj.parent
         while current is not None:
             depth += 1
             current = current.parent
-        prefix = "\u00A0\u00A0\u00A0\u00A0" * depth
+        prefix = "\u00a0\u00a0\u00a0\u00a0" * depth
         return f"{prefix}{obj.name}" if depth > 0 else obj.name
 
     @admin.action(description="Manage Nav Item Ordering")
@@ -33,7 +36,9 @@ class NavItemAdmin(admin.ModelAdmin):
     ) -> HttpResponse:
         return redirect(reverse("admin:manage_nav_ordering"))
 
-    def get_urls(self) -> list[URLPattern]:
+    def get_urls(
+        self,
+    ) -> list[URLPattern]:
         custom_urls = [
             path(
                 "manage-ordering/",

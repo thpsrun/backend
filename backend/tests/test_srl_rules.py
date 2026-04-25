@@ -26,7 +26,9 @@ User = get_user_model()
 
 class SrlRulesTest(TestCase):
     @classmethod
-    def setUpTestData(cls) -> None:
+    def setUpTestData(
+        cls,
+    ) -> None:
         cls.country = CountryCodes.objects.create(id="usa", name="United States")
 
         cls.platform = Platforms.objects.create(
@@ -137,67 +139,109 @@ class SrlRulesTest(TestCase):
             order=1,
         )
 
-    def test_is_authenticated_with_authenticated_user(self) -> None:
+    def test_is_authenticated_with_authenticated_user(
+        self,
+    ) -> None:
         self.assertTrue(is_authenticated(self.regular_user))
 
-    def test_is_authenticated_with_none(self) -> None:
+    def test_is_authenticated_with_none(
+        self,
+    ) -> None:
         self.assertFalse(is_authenticated(None))
 
-    def test_is_superuser_with_superuser(self) -> None:
+    def test_is_superuser_with_superuser(
+        self,
+    ) -> None:
         self.assertTrue(is_superuser(self.super_user))
 
-    def test_is_superuser_with_regular_user(self) -> None:
+    def test_is_superuser_with_regular_user(
+        self,
+    ) -> None:
         self.assertFalse(is_superuser(self.regular_user))
 
-    def test_is_superuser_with_none(self) -> None:
+    def test_is_superuser_with_none(
+        self,
+    ) -> None:
         self.assertFalse(is_superuser(None))
 
-    def test_is_game_moderator_true_when_player_is_mod(self) -> None:
+    def test_is_game_moderator_true_when_player_is_mod(
+        self,
+    ) -> None:
         self.assertTrue(is_game_moderator(self.mod_user, self.game))
 
-    def test_is_game_moderator_false_for_different_game(self) -> None:
+    def test_is_game_moderator_false_for_different_game(
+        self,
+    ) -> None:
         self.assertFalse(is_game_moderator(self.mod_user, self.other_game))
 
-    def test_is_game_moderator_false_for_regular_user(self) -> None:
+    def test_is_game_moderator_false_for_regular_user(
+        self,
+    ) -> None:
         self.assertFalse(is_game_moderator(self.regular_user, self.game))
 
-    def test_is_game_moderator_false_without_player_link(self) -> None:
+    def test_is_game_moderator_false_without_player_link(
+        self,
+    ) -> None:
         self.assertFalse(is_game_moderator(self.unlinked_user, self.game))
 
-    def test_is_game_moderator_false_for_anon(self) -> None:
+    def test_is_game_moderator_false_for_anon(
+        self,
+    ) -> None:
         self.assertFalse(is_game_moderator(None, self.game))
 
-    def test_is_game_moderator_false_when_game_is_none(self) -> None:
+    def test_is_game_moderator_false_when_game_is_none(
+        self,
+    ) -> None:
         self.assertFalse(is_game_moderator(self.mod_user, None))
 
-    def test_is_run_participant_true_for_run_player(self) -> None:
+    def test_is_run_participant_true_for_run_player(
+        self,
+    ) -> None:
         self.assertTrue(is_run_participant(self.regular_user, self.test_run))
 
-    def test_is_run_participant_false_for_non_participant(self) -> None:
+    def test_is_run_participant_false_for_non_participant(
+        self,
+    ) -> None:
         self.assertFalse(is_run_participant(self.mod_user, self.test_run))
 
-    def test_is_run_participant_false_without_player_link(self) -> None:
+    def test_is_run_participant_false_without_player_link(
+        self,
+    ) -> None:
         self.assertFalse(is_run_participant(self.unlinked_user, self.test_run))
 
-    def test_is_run_participant_false_for_anon(self) -> None:
+    def test_is_run_participant_false_for_anon(
+        self,
+    ) -> None:
         self.assertFalse(is_run_participant(None, self.test_run))
 
-    def test_is_run_participant_false_when_run_is_none(self) -> None:
+    def test_is_run_participant_false_when_run_is_none(
+        self,
+    ) -> None:
         self.assertFalse(is_run_participant(self.regular_user, None))
 
-    def test_is_run_game_moderator_true_for_game_mod(self) -> None:
+    def test_is_run_game_moderator_true_for_game_mod(
+        self,
+    ) -> None:
         self.assertTrue(is_run_game_moderator(self.mod_user, self.test_run))
 
-    def test_is_run_game_moderator_false_for_non_mod(self) -> None:
+    def test_is_run_game_moderator_false_for_non_mod(
+        self,
+    ) -> None:
         self.assertFalse(is_run_game_moderator(self.regular_user, self.test_run))
 
-    def test_is_run_game_moderator_false_for_anon(self) -> None:
+    def test_is_run_game_moderator_false_for_anon(
+        self,
+    ) -> None:
         self.assertFalse(is_run_game_moderator(None, self.test_run))
 
-    def test_is_run_game_moderator_false_when_run_is_none(self) -> None:
+    def test_is_run_game_moderator_false_when_run_is_none(
+        self,
+    ) -> None:
         self.assertFalse(is_run_game_moderator(self.mod_user, None))
 
-    def test_owns_guide_true_for_owner(self) -> None:
+    def test_owns_guide_true_for_owner(
+        self,
+    ) -> None:
         guide = Guides.objects.create(
             title="My Guide",
             slug="my-guide",
@@ -208,7 +252,9 @@ class SrlRulesTest(TestCase):
         )
         self.assertTrue(owns_guide(self.regular_user, guide))
 
-    def test_owns_guide_false_for_other_user(self) -> None:
+    def test_owns_guide_false_for_other_user(
+        self,
+    ) -> None:
         guide = Guides.objects.create(
             title="Their Guide",
             slug="their-guide",
@@ -219,7 +265,9 @@ class SrlRulesTest(TestCase):
         )
         self.assertFalse(owns_guide(self.regular_user, guide))
 
-    def test_owns_guide_false_when_guide_has_no_owner(self) -> None:
+    def test_owns_guide_false_when_guide_has_no_owner(
+        self,
+    ) -> None:
         guide = Guides.objects.create(
             title="Orphan Guide",
             slug="orphan-guide",
@@ -230,7 +278,9 @@ class SrlRulesTest(TestCase):
         )
         self.assertFalse(owns_guide(self.regular_user, guide))
 
-    def test_owns_guide_false_for_anon(self) -> None:
+    def test_owns_guide_false_for_anon(
+        self,
+    ) -> None:
         guide = Guides.objects.create(
             title="Anon Guide",
             slug="anon-guide",
@@ -241,7 +291,9 @@ class SrlRulesTest(TestCase):
         )
         self.assertFalse(owns_guide(None, guide))
 
-    def test_is_guide_game_moderator_true_for_mod(self) -> None:
+    def test_is_guide_game_moderator_true_for_mod(
+        self,
+    ) -> None:
         guide = Guides.objects.create(
             title="Mod Guide",
             slug="mod-guide",
@@ -252,7 +304,9 @@ class SrlRulesTest(TestCase):
         )
         self.assertTrue(is_guide_game_moderator(self.mod_user, guide))
 
-    def test_is_guide_game_moderator_false_for_other_game(self) -> None:
+    def test_is_guide_game_moderator_false_for_other_game(
+        self,
+    ) -> None:
         guide = Guides.objects.create(
             title="Other-Game Guide",
             slug="other-game-guide",
@@ -263,7 +317,9 @@ class SrlRulesTest(TestCase):
         )
         self.assertFalse(is_guide_game_moderator(self.mod_user, guide))
 
-    def test_is_guide_game_moderator_false_for_anon(self) -> None:
+    def test_is_guide_game_moderator_false_for_anon(
+        self,
+    ) -> None:
         guide = Guides.objects.create(
             title="Anon Mod Guide",
             slug="anon-mod-guide",
@@ -274,5 +330,7 @@ class SrlRulesTest(TestCase):
         )
         self.assertFalse(is_guide_game_moderator(None, guide))
 
-    def test_is_guide_game_moderator_false_when_guide_is_none(self) -> None:
+    def test_is_guide_game_moderator_false_when_guide_is_none(
+        self,
+    ) -> None:
         self.assertFalse(is_guide_game_moderator(self.mod_user, None))

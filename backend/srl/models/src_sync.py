@@ -59,5 +59,7 @@ class SRCSyncTask(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    def __str__(self) -> str:
+    def __str__(
+        self,
+    ) -> str:
         return f"SRCSync {self.action} run={self.run_id} [{self.status}]"

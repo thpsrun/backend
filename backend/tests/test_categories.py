@@ -9,7 +9,9 @@ from tests.test_auth import AuthTestBase
 class CategoriesReadTest(TestCase):
 
     @classmethod
-    def setUpTestData(cls) -> None:
+    def setUpTestData(
+        cls,
+    ) -> None:
         cls.platform = Platforms.objects.create(
             id="pc",
             name="PC",
@@ -39,16 +41,22 @@ class CategoriesReadTest(TestCase):
             archive=False,
         )
 
-    def setUp(self) -> None:
+    def setUp(
+        self,
+    ) -> None:
         self.client = TestClient(categories_router)  # type: ignore
 
-    def test_list_categories_requires_game(self) -> None:
+    def test_list_categories_requires_game(
+        self,
+    ) -> None:
         response = self.client.get("/all")
         self.assertEqual(response.status_code, 400)
         data = response.json()
         self.assertEqual(data["error"], "Please provide the game's unique ID or slug.")
 
-    def test_list_categories(self) -> None:
+    def test_list_categories(
+        self,
+    ) -> None:
         response = self.client.get("/all?game=game1")
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -57,14 +65,18 @@ class CategoriesReadTest(TestCase):
         self.assertEqual(data[0]["id"], "cat1")
         self.assertEqual(data[0]["name"], "Any%")
 
-    def test_get_category(self) -> None:
+    def test_get_category(
+        self,
+    ) -> None:
         response = self.client.get("/cat1")
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["id"], "cat1")
         self.assertEqual(data["name"], "Any%")
 
-    def test_category_404(self) -> None:
+    def test_category_404(
+        self,
+    ) -> None:
         response = self.client.get("/nonexistent")
         self.assertEqual(response.status_code, 404)
         data = response.json()
@@ -73,11 +85,15 @@ class CategoriesReadTest(TestCase):
 
 class CategoriesWriteTest(AuthTestBase):
 
-    def setUp(self) -> None:
+    def setUp(
+        self,
+    ) -> None:
         super().setUp()
         self.client = TestClient(categories_router)  # type: ignore
 
-    def test_create_category(self) -> None:
+    def test_create_category(
+        self,
+    ) -> None:
         response = self.client.post(
             "/",
             json={
@@ -89,14 +105,16 @@ class CategoriesWriteTest(AuthTestBase):
             },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 201)
         data = response.json()
         self.assertEqual(data["name"], "100%")
         self.assertEqual(data["slug"], "100-percent")
         self.assertIsNotNone(data.get("id"))
         self.assertEqual(len(data["id"]), 8)
 
-    def test_create_category_custom_id(self) -> None:
+    def test_create_category_custom_id(
+        self,
+    ) -> None:
         response = self.client.post(
             "/",
             json={
@@ -109,11 +127,13 @@ class CategoriesWriteTest(AuthTestBase):
             },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 201)
         data = response.json()
         self.assertEqual(data["id"], "anyper")
 
-    def test_create_category_bad_game(self) -> None:
+    def test_create_category_bad_game(
+        self,
+    ) -> None:
         response = self.client.post(
             "/",
             json={
@@ -127,7 +147,9 @@ class CategoriesWriteTest(AuthTestBase):
         )
         self.assertEqual(response.status_code, 404)
 
-    def test_update_category(self) -> None:
+    def test_update_category(
+        self,
+    ) -> None:
         Categories.objects.create(
             id="toupdate",
             game=self.game,
@@ -147,7 +169,9 @@ class CategoriesWriteTest(AuthTestBase):
         self.assertEqual(data["id"], "toupdate")
         self.assertEqual(data["name"], "Updated Category")
 
-    def test_delete_category(self) -> None:
+    def test_delete_category(
+        self,
+    ) -> None:
         Categories.objects.create(
             id="todelete",
             game=self.game,

@@ -7,8 +7,8 @@ from ninja.responses import codes_4xx
 from srl.models import Categories, Games, Levels, Variables, VariableValues
 
 from api.permissions import authed, public_read
-from api.v1.routers.utils.resolvers import game_from_path
 from api.v1.routers.utils.embeds import parse_embeds
+from api.v1.routers.utils.resolvers import game_from_path
 from api.v1.schemas.base import ErrorResponse
 from api.v1.schemas.games import GameCreateSchema, GameSchema, GameUpdateSchema
 from api.v1.utils import get_or_generate_id

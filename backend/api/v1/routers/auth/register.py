@@ -1,6 +1,5 @@
 import requests as http_requests
-from django.contrib.auth import login
-from django.contrib.auth import get_user_model
+from django.contrib.auth import get_user_model, login
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
@@ -65,7 +64,7 @@ def register(
     try:
         src_data = src_response.json()
         src_user_id: str = src_data["data"]["id"]
-    except (KeyError, ValueError) as e:
+    except (KeyError, ValueError):
         return Status(
             400,
             ErrorResponse(

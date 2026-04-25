@@ -15,7 +15,9 @@ _DANGEROUS_URL_ATTR: re.Pattern[str] = re.compile(
 )
 
 
-def _reject_dangerous_links(cleaned: str) -> None:
+def _reject_dangerous_links(
+    cleaned: str,
+) -> None:
     """Render markdown to HTML and raise if any link or image uses a blocked scheme.
 
     Bleach strips raw HTML tags, but cannot see inside markdown syntax easily."""
@@ -26,7 +28,9 @@ def _reject_dangerous_links(cleaned: str) -> None:
         )
 
 
-def _sanitize_markdown_source(value: str) -> str:
+def _sanitize_markdown_source(
+    value: str,
+) -> str:
     """Strip every HTML tag and comment, then reject dangerous markdown links."""
     cleaned: str = bleach.clean(value, tags=[], strip=True, strip_comments=True)
     if not cleaned.strip():
@@ -124,7 +128,10 @@ class GuideCreateSchema(BaseEmbedSchema):
 
     @field_validator("content", mode="after")
     @classmethod
-    def _strip_content_html(cls, value: str) -> str:
+    def _strip_content_html(
+        cls,
+        value: str,
+    ) -> str:
         return _sanitize_markdown_source(value)
 
 
@@ -155,7 +162,10 @@ class GuideUpdateSchema(BaseEmbedSchema):
 
     @field_validator("content", mode="after")
     @classmethod
-    def _strip_content_html(cls, value: str | None) -> str | None:
+    def _strip_content_html(
+        cls,
+        value: str | None,
+    ) -> str | None:
         if value is None:
             return None
         return _sanitize_markdown_source(value)

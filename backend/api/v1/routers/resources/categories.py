@@ -7,8 +7,8 @@ from ninja.responses import codes_4xx
 from srl.models import Categories, Games, Variables, VariableValues
 
 from api.permissions import authed, public_read
-from api.v1.routers.utils.resolvers import game_from_body, game_from_category_path
 from api.v1.routers.utils.embeds import parse_embeds, serialize_game_embed
+from api.v1.routers.utils.resolvers import game_from_body, game_from_category_path
 from api.v1.schemas.base import CategoryTypeType, ErrorResponse
 from api.v1.schemas.categories import (
     CategoryCreateSchema,
@@ -143,7 +143,7 @@ Examples:
 )
 def get_all_categories(
     request: HttpRequest,
-    game: Annotated[str, Query(description="Filter by game ID or slug")],
+    game: Annotated[str | None, Query(description="Filter by game ID or slug")] = None,
     type: Annotated[
         CategoryTypeType | None, Query(description="Filter by type")
     ] = None,
@@ -158,6 +158,15 @@ def get_all_categories(
     ] = 50,
     offset: Annotated[int, Query(ge=0, description="Offset from 0")] = 0,
 ) -> Status:
+    if not game:
+        return Status(
+            400,
+            ErrorResponse(
+                error="Please provide the game's unique ID or slug.",
+                details=None,
+            ),
+        )
+
     embed_fields = parse_embeds(embed, "categories")
 
     try:

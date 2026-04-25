@@ -15,14 +15,21 @@ logger = logging.getLogger(__name__)
 class Command(BaseCommand):
     help = "Revoke any active APIKey that the owner can no longer back."
 
-    def add_arguments(self, parser: ArgumentParser) -> None:
+    def add_arguments(
+        self,
+        parser: ArgumentParser,
+    ) -> None:
         parser.add_argument(
             "--dry-run",
             action="store_true",
             default=False,
         )
 
-    def handle(self, *args: Any, **options: Any) -> None:
+    def handle(
+        self,
+        *args: Any,
+        **options: Any,
+    ) -> None:
         dry_run: bool = options["dry_run"]
         revoked = 0
         for key in APIKey.objects.filter(revoked=False).iterator():
@@ -33,10 +40,7 @@ class Command(BaseCommand):
                     f"DRY-RUN would revoke id={key.pk} "
                     f"user={key.user_id} label={key.label!r}",
                 )
-            else:
-                key.revoked = True
-                key.revoked_reason = APIKeyRevokedReason.PERMISSION_REVOKED
-                key.save(update_fields=["revoked", "revoked_reason"])
+            elif key.revoke(APIKeyRevokedReason.PERMISSION_REVOKED):
                 logger.info(
                     "sweep revoked key id=%s user=%s",
                     key.pk,

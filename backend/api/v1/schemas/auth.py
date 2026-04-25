@@ -11,7 +11,6 @@ from api.v1.schemas.common import (
     PlayerSocialsSchema,
 )
 
-
 CountryCodeResponse = CountrySchema
 CountryEmbed = CountrySchema
 ModeratedGameSchema = ModeratedGameEmbedSchema

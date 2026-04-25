@@ -3,6 +3,7 @@ from typing import Any
 from celery import shared_task
 from django.conf import settings
 from django.db import transaction
+
 from srl.models import Games
 from srl.srcom.schema.src import SrcGamesModel
 from srl.utils import src_api

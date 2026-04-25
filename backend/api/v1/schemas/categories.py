@@ -68,7 +68,10 @@ class CategorySchema(CategoryBaseSchema):
 
     @field_validator("game", mode="before")
     @classmethod
-    def convert_model_to_none(cls, v: Any) -> dict | None:
+    def convert_model_to_none(
+        cls,
+        v: Any,
+    ) -> dict | None:
         if v is None:
             return None
         if isinstance(v, dict):
@@ -77,7 +80,10 @@ class CategorySchema(CategoryBaseSchema):
 
     @field_validator("variables", "values", mode="before")
     @classmethod
-    def convert_list_to_none(cls, v: Any) -> list[dict] | None:
+    def convert_list_to_none(
+        cls,
+        v: Any,
+    ) -> list[dict] | None:
         if v is None:
             return None
         if isinstance(v, list):

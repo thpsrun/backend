@@ -7,7 +7,9 @@ from srl.models import CountryCodes, Games, Platforms
 class AuthTestBase(TestCase):
 
     @classmethod
-    def setUpTestData(cls) -> None:
+    def setUpTestData(
+        cls,
+    ) -> None:
         cls.platform = Platforms.objects.create(
             id="pc",
             name="PC",
@@ -29,7 +31,9 @@ class AuthTestBase(TestCase):
 
         cls.country = CountryCodes.objects.create(id="usa", name="United States")
 
-    def setUp(self) -> None:
+    def setUp(
+        self,
+    ) -> None:
         User = get_user_model()
         self.admin_user = User.objects.create_user(  # type: ignore
             username="test_admin",
@@ -45,7 +49,6 @@ class AuthTestBase(TestCase):
         )
 
 
-from django.contrib.auth import get_user_model
 from django.test import Client
 from srl.models import Players
 
@@ -53,7 +56,9 @@ from srl.models import Players
 class AuthMeTestBase(TestCase):
 
     @classmethod
-    def setUpTestData(cls) -> None:
+    def setUpTestData(
+        cls,
+    ) -> None:
         cls.country = CountryCodes.objects.create(
             id="can",
             name="Canada",
@@ -70,7 +75,7 @@ class AuthMeTestBase(TestCase):
         cls.user.save()
 
         cls.player = Players.objects.create(
-            id="testplayer01",
+            id="testplayer",
             name="TestPlayer",
             nickname="Tester",
             url="https://speedrun.com/user/TestPlayer",
@@ -86,19 +91,23 @@ class AuthMeTestBase(TestCase):
             user=cls.user,
         )
 
-    def setUp(self) -> None:
+    def setUp(
+        self,
+    ) -> None:
         self.client = Client()
         self.client.force_login(self.user)
 
 
 class AuthMeReadTest(AuthMeTestBase):
 
-    def test_get_me_returns_nested_shape(self) -> None:
+    def test_get_me_returns_nested_shape(
+        self,
+    ) -> None:
         response = self.client.get("/api/v1/auth/me")
         self.assertEqual(response.status_code, 200)
         data = response.json()
 
-        self.assertEqual(data["player_id"], "testplayer01")
+        self.assertEqual(data["player_id"], "testplayer")
         self.assertEqual(data["claim_status"], Players.ClaimStatus.CLAIMED)
         self.assertIn("joined", data)
 
@@ -125,8 +134,7 @@ class AuthMeReadTest(AuthMeTestBase):
 
         self.assertIn("customizations", data)
         custom = data["customizations"]
-        self.assertEqual(custom["bio"], "hello world")
-        self.assertEqual(custom["short_bio"], "hi")
+        self.assertEqual(custom["tagline"], "hi")
         self.assertEqual(custom["gradient_1"], "#ff0000")
         self.assertIsNone(custom["gradient_2"])
         self.assertIsNone(custom["gradient_3"])
@@ -136,12 +144,16 @@ class AuthMeReadTest(AuthMeTestBase):
         self.assertEqual(moderation["has_src_key"], False)
         self.assertEqual(moderation["moderated_games"], [])
 
-    def test_get_me_unauthenticated(self) -> None:
+    def test_get_me_unauthenticated(
+        self,
+    ) -> None:
         self.client.logout()
         response = self.client.get("/api/v1/auth/me")
         self.assertEqual(response.status_code, 401)
 
-    def test_get_me_null_country(self) -> None:
+    def test_get_me_null_country(
+        self,
+    ) -> None:
         self.player.countrycode = None
         self.player.save(update_fields=["countrycode"])
         response = self.client.get("/api/v1/auth/me")
@@ -151,7 +163,9 @@ class AuthMeReadTest(AuthMeTestBase):
 
 class AuthMeUpdateTest(AuthMeTestBase):
 
-    def test_patch_player_group(self) -> None:
+    def test_patch_player_group(
+        self,
+    ) -> None:
         response = self.client.patch(
             "/api/v1/auth/me",
             data={"player": {"nickname": "NewNick", "pronouns": "she/her"}},
@@ -163,9 +177,11 @@ class AuthMeUpdateTest(AuthMeTestBase):
         self.assertEqual(data["player"]["pronouns"], "she/her")
         self.assertEqual(data["player"]["name"], "TestPlayer")
         self.assertEqual(data["socials"]["twitch"], "https://twitch.tv/testplayer")
-        self.assertEqual(data["customizations"]["bio"], "hello world")
+        self.assertEqual(data["customizations"]["tagline"], "hi")
 
-    def test_patch_socials_group_with_therun_gg(self) -> None:
+    def test_patch_socials_group_with_therun_gg(
+        self,
+    ) -> None:
         response = self.client.patch(
             "/api/v1/auth/me",
             data={
@@ -181,7 +197,9 @@ class AuthMeUpdateTest(AuthMeTestBase):
         self.assertEqual(data["socials"]["twitch"], "https://twitch.tv/newhandle")
         self.assertEqual(data["socials"]["therun_gg"], "newhandle")
 
-    def test_patch_explicit_null_clears_field(self) -> None:
+    def test_patch_explicit_null_clears_field(
+        self,
+    ) -> None:
         response = self.client.patch(
             "/api/v1/auth/me",
             data={"player": {"nickname": None}},
@@ -190,19 +208,23 @@ class AuthMeUpdateTest(AuthMeTestBase):
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.json()["player"]["nickname"])
 
-    def test_patch_omitted_group_untouched(self) -> None:
+    def test_patch_omitted_group_untouched(
+        self,
+    ) -> None:
         response = self.client.patch(
             "/api/v1/auth/me",
-            data={"customizations": {"bio": "changed"}},
+            data={"customizations": {"tagline": "changed"}},
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertEqual(data["customizations"]["bio"], "changed")
+        self.assertEqual(data["customizations"]["tagline"], "changed")
         self.assertEqual(data["player"]["nickname"], "Tester")
         self.assertEqual(data["socials"]["twitch"], "https://twitch.tv/testplayer")
 
-    def test_patch_invalid_country_returns_400(self) -> None:
+    def test_patch_invalid_country_returns_400(
+        self,
+    ) -> None:
         response = self.client.patch(
             "/api/v1/auth/me",
             data={"player": {"country": "zzz"}},
@@ -211,7 +233,9 @@ class AuthMeUpdateTest(AuthMeTestBase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("country", response.json()["error"].lower())
 
-    def test_patch_invalid_gradient_hex_returns_422(self) -> None:
+    def test_patch_invalid_gradient_hex_returns_422(
+        self,
+    ) -> None:
         response = self.client.patch(
             "/api/v1/auth/me",
             data={"customizations": {"gradient_1": "not-a-hex"}},
@@ -219,7 +243,9 @@ class AuthMeUpdateTest(AuthMeTestBase):
         )
         self.assertEqual(response.status_code, 422)
 
-    def test_patch_gradient_2_without_gradient_1_returns_400(self) -> None:
+    def test_patch_gradient_2_without_gradient_1_returns_400(
+        self,
+    ) -> None:
         self.user.gradient_1 = None
         self.user.save(update_fields=["gradient_1"])
         response = self.client.patch(
@@ -230,7 +256,9 @@ class AuthMeUpdateTest(AuthMeTestBase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("gradient_1", response.json()["error"])
 
-    def test_patch_discord_field_not_accepted(self) -> None:
+    def test_patch_discord_field_not_accepted(
+        self,
+    ) -> None:
         response = self.client.patch(
             "/api/v1/auth/me",
             data={"socials": {"discord": "something"}},

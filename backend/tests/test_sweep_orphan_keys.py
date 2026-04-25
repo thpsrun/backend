@@ -10,7 +10,9 @@ from srl.models.games import Games
 from srl.models.players import Players
 
 
-def _make_game(game_id: str) -> Games:
+def _make_game(
+    game_id: str,
+) -> Games:
     return Games.objects.create(
         id=game_id,
         name=game_id,
@@ -26,7 +28,9 @@ def _make_game(game_id: str) -> Games:
 
 
 class SweepOrphanKeysTests(TestCase):
-    def test_sweep_revokes_unbackable_keys(self) -> None:
+    def test_sweep_revokes_unbackable_keys(
+        self,
+    ) -> None:
         User = get_user_model()
         user = User.objects.create_user(  # type: ignore
             username="swu",
@@ -68,7 +72,9 @@ class SweepOrphanKeysTests(TestCase):
         )
         self.assertIn("revoked 1", out.getvalue().lower())
 
-    def test_sweep_leaves_backable_keys_alone(self) -> None:
+    def test_sweep_leaves_backable_keys_alone(
+        self,
+    ) -> None:
         User = get_user_model()
         user = User.objects.create_user(  # type: ignore
             username="swokay",
@@ -84,7 +90,9 @@ class SweepOrphanKeysTests(TestCase):
         self.assertFalse(key.revoked)
         self.assertIn("revoked 0", out.getvalue().lower())
 
-    def test_sweep_dry_run_does_not_mutate(self) -> None:
+    def test_sweep_dry_run_does_not_mutate(
+        self,
+    ) -> None:
         User = get_user_model()
         user = User.objects.create_user(  # type: ignore
             username="swdry",

@@ -9,17 +9,23 @@ from tests.test_auth import AuthTestBase
 class PlatformsReadTest(TestCase):
 
     @classmethod
-    def setUpTestData(cls) -> None:
+    def setUpTestData(
+        cls,
+    ) -> None:
         cls.platform = Platforms.objects.create(
             id="pc",
             name="PC",
             slug="pc",
         )
 
-    def setUp(self) -> None:
+    def setUp(
+        self,
+    ) -> None:
         self.client = TestClient(platforms_router)  # type: ignore
 
-    def test_list_platforms(self) -> None:
+    def test_list_platforms(
+        self,
+    ) -> None:
         response = self.client.get("/all")
         self.assertEqual(response.status_code, 200)
         data = response.json()
@@ -28,14 +34,18 @@ class PlatformsReadTest(TestCase):
         self.assertEqual(data[0]["id"], "pc")
         self.assertEqual(data[0]["name"], "PC")
 
-    def test_get_platform(self) -> None:
+    def test_get_platform(
+        self,
+    ) -> None:
         response = self.client.get("/pc")
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["id"], "pc")
         self.assertEqual(data["name"], "PC")
 
-    def test_platform_404(self) -> None:
+    def test_platform_404(
+        self,
+    ) -> None:
         response = self.client.get("/nonexistent")
         self.assertEqual(response.status_code, 404)
         data = response.json()
@@ -44,11 +54,15 @@ class PlatformsReadTest(TestCase):
 
 class PlatformsWriteTest(AuthTestBase):
 
-    def setUp(self) -> None:
+    def setUp(
+        self,
+    ) -> None:
         super().setUp()
         self.client = TestClient(platforms_router)  # type: ignore
 
-    def test_create_platform(self) -> None:
+    def test_create_platform(
+        self,
+    ) -> None:
         response = self.client.post(
             "/",
             json={
@@ -57,14 +71,16 @@ class PlatformsWriteTest(AuthTestBase):
             },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 201)
         data = response.json()
         self.assertEqual(data["name"], "PlayStation 5")
         self.assertEqual(data["slug"], "ps5")
         self.assertIsNotNone(data.get("id"))
         self.assertEqual(len(data["id"]), 8)
 
-    def test_create_platform_custom_id(self) -> None:
+    def test_create_platform_custom_id(
+        self,
+    ) -> None:
         response = self.client.post(
             "/",
             json={
@@ -74,11 +90,13 @@ class PlatformsWriteTest(AuthTestBase):
             },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 201)
         data = response.json()
         self.assertEqual(data["id"], "xbox360")
 
-    def test_create_platform_duplicate(self) -> None:
+    def test_create_platform_duplicate(
+        self,
+    ) -> None:
         response = self.client.post(
             "/",
             json={
@@ -92,7 +110,9 @@ class PlatformsWriteTest(AuthTestBase):
         data = response.json()
         self.assertEqual(data["error"], "ID Already Exists")
 
-    def test_update_platform(self) -> None:
+    def test_update_platform(
+        self,
+    ) -> None:
         response = self.client.put(
             "/pc",
             json={"name": "Personal Computer"},  # type: ignore
@@ -103,7 +123,9 @@ class PlatformsWriteTest(AuthTestBase):
         self.assertEqual(data["id"], "pc")
         self.assertEqual(data["name"], "Personal Computer")
 
-    def test_delete_platform(self) -> None:
+    def test_delete_platform(
+        self,
+    ) -> None:
         Platforms.objects.create(id="todelete", name="To Delete", slug="to-delete")
 
         response = self.client.delete(

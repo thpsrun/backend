@@ -2,6 +2,7 @@ import argparse
 from datetime import date
 from typing import Any
 
+from api.v1.schemas.runs import compute_run_subcategory
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.core.management.base import BaseCommand
@@ -10,7 +11,6 @@ from django.db.models import Q
 
 from srl.models import Games, Runs
 from srl.utils import calculate_bonus, get_anniversary, get_streak_start_date
-from api.v1.schemas.runs import compute_run_subcategory
 
 
 class Command(BaseCommand):
@@ -195,7 +195,7 @@ class Command(BaseCommand):
 
             if verbose:
                 self.stdout.write(
-                    f"[{game.slug.upper()}] {run_subcat}: {run.id} ({player_names}) -> "
+                    f"[{game.slug.upper()}] {run_subcat}: {run.id} ({player_names}) ->  "
                     f"streak started {streak_start}, {new_bonus} month(s) "
                     f"({max_points} + {streak_bonus} bonus = {new_points} points)"
                 )

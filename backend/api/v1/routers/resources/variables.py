@@ -7,17 +7,17 @@ from ninja.responses import codes_4xx
 from srl.models import Categories, Games, Levels, Variables, VariableValues
 
 from api.permissions import authed, public_read
-from api.v1.routers.utils.resolvers import (
-    game_from_body,
-    game_from_variable_body,
-    game_from_variable_path,
-    game_from_variable_value_path,
-)
 from api.v1.routers.utils.embeds import (
     parse_embeds,
     serialize_category_embed,
     serialize_game_embed,
     serialize_level_embed,
+)
+from api.v1.routers.utils.resolvers import (
+    game_from_body,
+    game_from_variable_body,
+    game_from_variable_path,
+    game_from_variable_value_path,
 )
 from api.v1.schemas.base import ErrorResponse, VariableScopeType
 from api.v1.schemas.variables import (

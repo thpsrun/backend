@@ -7,7 +7,9 @@ from srl.models.games import Games
 from srl.models.players import Players
 
 
-def _make_game(game_id: str) -> Games:
+def _make_game(
+    game_id: str,
+) -> Games:
     return Games.objects.create(
         id=game_id,
         name=game_id,
@@ -23,7 +25,9 @@ def _make_game(game_id: str) -> Games:
 
 
 class ApiSignalTests(TestCase):
-    def test_removing_mod_revokes_scoped_key(self) -> None:
+    def test_removing_mod_revokes_scoped_key(
+        self,
+    ) -> None:
         User = get_user_model()
         user = User.objects.create_user(  # type: ignore
             username="modsig",
@@ -54,8 +58,11 @@ class ApiSignalTests(TestCase):
             key.revoked_reason,
             APIKeyRevokedReason.PERMISSION_REVOKED,
         )
+        self.assertIsNotNone(key.revoked_at)
 
-    def test_superuser_demotion_revokes_admin_scoped_key(self) -> None:
+    def test_superuser_demotion_revokes_admin_scoped_key(
+        self,
+    ) -> None:
         User = get_user_model()
         user = User.objects.create_user(  # type: ignore
             username="admsig",
@@ -79,7 +86,9 @@ class ApiSignalTests(TestCase):
             APIKeyRevokedReason.PERMISSION_REVOKED,
         )
 
-    def test_empty_scope_key_not_revoked_on_unrelated_mod_change(self) -> None:
+    def test_empty_scope_key_not_revoked_on_unrelated_mod_change(
+        self,
+    ) -> None:
         User = get_user_model()
         alice = User.objects.create_user(  # type: ignore
             username="alicesig",
@@ -106,7 +115,9 @@ class ApiSignalTests(TestCase):
         key.refresh_from_db()
         self.assertFalse(key.revoked)
 
-    def test_saving_user_without_change_leaves_backable_key_untouched(self) -> None:
+    def test_saving_user_without_change_leaves_backable_key_untouched(
+        self,
+    ) -> None:
         User = get_user_model()
         user = User.objects.create_user(  # type: ignore
             username="resave",
@@ -120,7 +131,9 @@ class ApiSignalTests(TestCase):
         key.refresh_from_db()
         self.assertFalse(key.revoked)
 
-    def test_deactivating_user_revokes_unscoped_key(self) -> None:
+    def test_deactivating_user_revokes_unscoped_key(
+        self,
+    ) -> None:
         User = get_user_model()
         user = User.objects.create_user(  # type: ignore
             username="deact",
@@ -137,4 +150,135 @@ class ApiSignalTests(TestCase):
         self.assertEqual(
             key.revoked_reason,
             APIKeyRevokedReason.PERMISSION_REVOKED,
+        )
+
+    def test_user_save_does_not_revoke_player_scoped_submit_key(
+        self,
+    ) -> None:
+        """Regression: saving a claimed player's CustomUser must not revoke a
+        game-scoped runs.submit key owned by a non-mod player. The previous
+        backability logic mis-classified this case as unbackable.
+        """
+        User = get_user_model()
+        user = User.objects.create_user(  # type: ignore
+            username="submitter",
+            email="submitter@example.com",
+            password="supersecret123",
+        )
+        Players.objects.create(
+            id="psig2",
+            name="p",
+            claim_status=Players.ClaimStatus.CLAIMED,
+            user=user,
+        )
+        game = _make_game("sggm3")
+        key, _ = APIKey.objects.create_key(
+            user=user,
+            label="x",
+            scope_capabilities=["runs.submit"],
+        )
+        key.scope_games.add(game)
+
+        user.save()
+
+        key.refresh_from_db()
+        self.assertFalse(key.revoked)
+
+    def test_reverse_m2m_remove_revokes_scoped_key(
+        self,
+    ) -> None:
+        """Removing a moderator via the reverse side of the M2M should still
+        drive auto-revocation.
+        """
+        User = get_user_model()
+        user = User.objects.create_user(  # type: ignore
+            username="revmod",
+            email="revmod@example.com",
+            password="supersecret123",
+        )
+        player = Players.objects.create(
+            id="psig3",
+            name="m",
+            claim_status=Players.ClaimStatus.CLAIMED,
+            user=user,
+        )
+        game = _make_game("sggm4")
+        game.moderators.add(player)
+
+        key, _ = APIKey.objects.create_key(
+            user=user,
+            label="x",
+            scope_capabilities=["runs.verify"],
+        )
+        key.scope_games.add(game)
+
+        # Reverse side: Games.moderators has related_name="moderated_games" on Players.
+        player.moderated_games.remove(game)  # type: ignore[attr-defined]
+
+        key.refresh_from_db()
+        self.assertTrue(key.revoked)
+        self.assertEqual(
+            key.revoked_reason,
+            APIKeyRevokedReason.PERMISSION_REVOKED,
+        )
+
+    def test_deleting_last_scope_game_revokes_key(
+        self,
+    ) -> None:
+        """When a key's only scope game is deleted, the M2M cascade would silently
+        empty scope_games and broaden the key. The pre_delete signal revokes it.
+        """
+        User = get_user_model()
+        user = User.objects.create_user(  # type: ignore
+            username="gdel",
+            email="gdel@example.com",
+            password="supersecret123",
+            is_superuser=True,
+        )
+        game = _make_game("sggm5")
+        key, _ = APIKey.objects.create_key(
+            user=user,
+            label="x",
+            scope_capabilities=["games.manage"],
+        )
+        key.scope_games.add(game)
+
+        game.delete()
+
+        key.refresh_from_db()
+        self.assertTrue(key.revoked)
+        self.assertEqual(
+            key.revoked_reason,
+            APIKeyRevokedReason.PERMISSION_REVOKED,
+        )
+
+    def test_deleting_one_of_several_scope_games_does_not_revoke(
+        self,
+    ) -> None:
+        """If the deleted game was one of several in the key's scope, the key is
+        still game-restricted to the remaining set - leave it alone.
+        """
+        User = get_user_model()
+        user = User.objects.create_user(  # type: ignore
+            username="gdel2",
+            email="gdel2@example.com",
+            password="supersecret123",
+            is_superuser=True,
+        )
+        g1 = _make_game("sggm6")
+        g2 = _make_game("sggm7")
+        key, _ = APIKey.objects.create_key(
+            user=user,
+            label="x",
+            scope_capabilities=["games.manage"],
+        )
+        key.scope_games.add(g1, g2)
+
+        g1.delete()
+
+        key.refresh_from_db()
+        self.assertFalse(key.revoked)
+        self.assertEqual(
+            list(key.scope_games.values_list("pk", flat=True)),
+            [g2.pk],
         )

@@ -5,7 +5,7 @@ from typing import Any
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.db.models.signals import m2m_changed, post_save
+from django.db.models.signals import m2m_changed, post_save, pre_delete
 from django.dispatch import receiver
 from srl.models.games import Games
 from srl.models.players import Players
@@ -16,7 +16,9 @@ from api.models import APIKey, APIKeyRevokedReason
 logger = logging.getLogger(__name__)
 
 
-def _revoke_unbackable_keys(users: list[Any]) -> None:
+def _revoke_unbackable_keys(
+    users: list[Any],
+) -> None:
     """Drop any live APIKey whose owner can no longer back it.
 
     Touches APIKey rows only - never auth_user or Games.moderators - so the
@@ -26,15 +28,28 @@ def _revoke_unbackable_keys(users: list[Any]) -> None:
         return
     keys = APIKey.objects.filter(user__in=users, revoked=False)
     for key in keys:
-        if not is_key_backable(key):
-            key.revoked = True
-            key.revoked_reason = APIKeyRevokedReason.PERMISSION_REVOKED
-            key.save(update_fields=["revoked", "revoked_reason"])
+        if is_key_backable(key):
+            continue
+        if key.revoke(APIKeyRevokedReason.PERMISSION_REVOKED):
             logger.info(
                 "auto-revoked key id=%s user=%s reason=permission_revoked",
                 key.pk,
                 key.user_id,
             )
+
+
+def _users_from_player_pks(
+    pk_set: set[Any],
+) -> list[Any]:
+    user_ids = list(
+        Players.objects.filter(pk__in=pk_set)
+        .exclude(user__isnull=True)
+        .values_list("user_id", flat=True),
+    )
+    if not user_ids:
+        return []
+    User = get_user_model()
+    return list(User.objects.filter(pk__in=user_ids))
 
 
 @receiver(m2m_changed, sender=Games.moderators.through)
@@ -48,19 +63,22 @@ def on_moderators_changed(
 ) -> None:
     if action not in ("post_add", "post_remove"):
         return
-    if not pk_set or reverse:
+    if not pk_set:
         return
 
-    user_ids = list(
-        Players.objects.filter(pk__in=pk_set)
-        .exclude(user__isnull=True)
-        .values_list("user_id", flat=True),
-    )
-    if not user_ids:
-        return
+    if reverse:
+        # Reverse-side: `player.games_moderated.add(game)` or similar. instance is the
+        # Player, pk_set is Game PKs. Only the player's owning user needs checking.
+        user_id = getattr(instance, "user_id", None)
+        if user_id is None:
+            return
+        User = get_user_model()
+        users = list(User.objects.filter(pk=user_id))
+    else:
+        # Forward-side: `game.moderators.add(player)`. instance is the Game, pk_set is
+        # Player PKs. Fan out to each affected player's owning user.
+        users = _users_from_player_pks(pk_set)
 
-    User = get_user_model()
-    users = list(User.objects.filter(pk__in=user_ids))
     _revoke_unbackable_keys(users)
 
 
@@ -74,3 +92,33 @@ def on_user_saved(
     if created:
         return
     _revoke_unbackable_keys([instance])
+
+
+@receiver(pre_delete, sender=Games)
+def on_game_deleted(
+    sender: Any,
+    instance: Any,
+    **kwargs: Any,
+) -> None:
+    """Revoke keys that scope to *only* this game. Without this, the M2M cascade
+    silently empties their scope_games and the key's game restriction vanishes
+    (effectively broadening the key beyond what the owner asked for).
+    """
+    try:
+        for key in APIKey.objects.filter(scope_games=instance, revoked=False):
+            if key.scope_games.count() != 1:
+                continue
+            if key.revoke(APIKeyRevokedReason.PERMISSION_REVOKED):
+                logger.info(
+                    "auto-revoked key id=%s user=%s reason=permission_revoked "
+                    "cause=last_scope_game_deleted game=%s",
+                    key.pk,
+                    key.user_id,
+                    instance.pk,
+                )
+    except Exception:
+        logger.warning(
+            "Failed to revoke keys on game deletion",
+            exc_info=True,
+            extra={"game_id": getattr(instance, "pk", None)},
+        )

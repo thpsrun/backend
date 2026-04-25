@@ -19,17 +19,23 @@ from srl.models import (
 
 
 class HomepageTest(TestCase):
-    def setUp(self) -> None:
+    def setUp(
+        self,
+    ) -> None:
         self.client = Client()
 
-    def test_homepage_404(self) -> None:
+    def test_homepage_404(
+        self,
+    ) -> None:
         response = self.client.get("/")
         self.assertEqual(response.status_code, 404)
 
 
 class ModelTest(TestCase):
     @classmethod
-    def setUpTestData(cls) -> None:
+    def setUpTestData(
+        cls,
+    ) -> None:
         cls.series = Series.objects.create(
             id="123abc",
             name="Tony Hank",
@@ -182,34 +188,54 @@ class ModelTest(TestCase):
             stream_time=timezone.now(),
         )
 
-    def test_series(self) -> None:
+    def test_series(
+        self,
+    ) -> None:
         self.assertTrue(Series.objects.filter(id="123abc").exists())
 
-    def test_platforms(self) -> None:
+    def test_platforms(
+        self,
+    ) -> None:
         self.assertTrue(Platforms.objects.filter(id="xbox").exists())
 
-    def test_games(self) -> None:
+    def test_games(
+        self,
+    ) -> None:
         self.assertTrue(Games.objects.filter(id="asdef").exists())
 
-    def test_categories(self) -> None:
+    def test_categories(
+        self,
+    ) -> None:
         self.assertTrue(Categories.objects.filter(id="category").exists())
 
-    def test_levels(self) -> None:
+    def test_levels(
+        self,
+    ) -> None:
         self.assertTrue(Levels.objects.filter(id="level").exists())
 
-    def test_variables(self) -> None:
+    def test_variables(
+        self,
+    ) -> None:
         self.assertTrue(Variables.objects.filter(id="var1").exists())
 
-    def test_variable_values(self) -> None:
+    def test_variable_values(
+        self,
+    ) -> None:
         self.assertTrue(VariableValues.objects.filter(value="val1").exists())
 
-    def test_players(self) -> None:
+    def test_players(
+        self,
+    ) -> None:
         self.assertTrue(Players.objects.filter(id="player1").exists())
         self.assertTrue(Players.objects.filter(id="player2").exists())
 
-    def test_runs(self) -> None:
+    def test_runs(
+        self,
+    ) -> None:
         self.assertTrue(Runs.objects.filter(id="run123").exists())
         self.assertTrue(RunVariableValues.objects.filter(id=1).exists())
 
-    def test_streaming(self) -> None:
+    def test_streaming(
+        self,
+    ) -> None:
         self.assertTrue(NowStreaming.objects.all().exists())
