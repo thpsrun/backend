@@ -2,7 +2,7 @@ import re
 from datetime import date
 
 from ninja import Schema
-from pydantic import EmailStr, Field, field_validator, model_validator
+from pydantic import ConfigDict, EmailStr, Field, field_validator, model_validator
 
 from api.v1.schemas.common import (
     BasePlayerInfoSchema,
@@ -18,6 +18,14 @@ SocialsEmbed = PlayerSocialsSchema
 
 
 class SRCKeyRequest(Schema):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "src_api_key": "abcd1234efgh5678ijkl9012mnop3456",
+            },
+        },
+    )
+
     src_api_key: str = Field(
         ...,
         min_length=1,
@@ -26,6 +34,15 @@ class SRCKeyRequest(Schema):
 
 
 class SRCKeyStatusResponse(Schema):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "has_src_key": True,
+                "message": "SRC API key is set.",
+            },
+        },
+    )
+
     has_src_key: bool
     message: str
 
@@ -54,6 +71,19 @@ class ModerationEmbed(Schema):
 
 
 class RegisterRequest(Schema):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "src_api_key": "abcd1234efgh5678ijkl9012mnop3456",
+                "save_key": False,
+                "username": "ThePackle",
+                "email": "user@example.com",
+                "password1": "S3cure!Pass",
+                "password2": "S3cure!Pass",
+            },
+        },
+    )
+
     src_api_key: str = Field(
         ...,
         min_length=1,
@@ -100,12 +130,68 @@ class RegisterRequest(Schema):
 
 
 class RegisterResponse(Schema):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "player_id": "v8lponvj",
+                "player_name": "ThePackle",
+                "username": "thepackle",
+            },
+        },
+    )
+
     player_id: str
     player_name: str
     username: str
 
 
 class PlayerProfileResponse(Schema):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "player_id": "v8lponvj",
+                "claim_status": "claimed",
+                "joined": "2015-06-22",
+                "player": {
+                    "id": "v8lponvj",
+                    "name": "ThePackle",
+                    "nickname": None,
+                    "pronouns": "he/him",
+                    "pfp": None,
+                    "ex_stream": False,
+                    "username": "thepackle",
+                    "country": {"id": "us", "name": "United States", "flag": None},
+                    "is_superuser": False,
+                },
+                "socials": {
+                    "twitch": "https://twitch.tv/thepackle",
+                    "youtube": None,
+                    "twitter": None,
+                    "bluesky": None,
+                    "discord": None,
+                    "therun_gg": None,
+                },
+                "customizations": {
+                    "tagline": "Skate or die",
+                    "gradient_1": "#ff0000",
+                    "gradient_2": "#00ff00",
+                    "gradient_3": "#0000ff",
+                    "profile_bg": None,
+                },
+                "moderation": {
+                    "has_src_key": True,
+                    "moderated_games": [
+                        {
+                            "id": "n2680o1p",
+                            "name": "Tony Hawk's Pro Skater 4",
+                            "slug": "thps4",
+                        },
+                    ],
+                },
+            },
+        },
+    )
+
     player_id: str
     claim_status: str
     joined: date | None
@@ -116,10 +202,22 @@ class PlayerProfileResponse(Schema):
 
 
 class PfpUploadResponse(Schema):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {"pfp": "/static/pfp/v8lponvj.png"},
+        },
+    )
+
     pfp: str
 
 
 class ProfileBGUploadResponse(Schema):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {"profile_bg": "/static/bg/v8lponvj.jpg"},
+        },
+    )
+
     profile_bg: str | None
 
 
@@ -183,6 +281,32 @@ class CustomizationsUpdateEmbed(Schema):
 
 
 class PlayerUpdateRequest(Schema):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "player": {
+                    "nickname": "Pack",
+                    "pronouns": "he/him",
+                    "country": "us",
+                    "ex_stream": False,
+                },
+                "socials": {
+                    "twitch": "https://twitch.tv/thepackle",
+                    "youtube": None,
+                    "twitter": None,
+                    "bluesky": None,
+                    "therun_gg": None,
+                },
+                "customizations": {
+                    "tagline": "Skate or die",
+                    "gradient_1": "#ff0000",
+                    "gradient_2": "#00ff00",
+                    "gradient_3": "#0000ff",
+                },
+            },
+        },
+    )
+
     player: PlayerUpdateEmbed | None = None
     socials: SocialsUpdateEmbed | None = None
     customizations: CustomizationsUpdateEmbed | None = None

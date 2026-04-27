@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import Field, model_validator
+from pydantic import ConfigDict, Field, model_validator
 
 from api.v1.schemas.base import BaseEmbedSchema
 
@@ -16,6 +16,20 @@ class StreamSchema(BaseEmbedSchema):
         offline_ct (int): Minutes since last seen online.
         stream_time (datetime | None): When the stream started.
     """
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        arbitrary_types_allowed=True,
+        json_schema_extra={
+            "example": {
+                "player": {"id": "v8lponvj", "name": "ThePackle"},
+                "game": {"id": "n2680o1p", "name": "Tony Hawk's Pro Skater 4"},
+                "title": "THPS4 Any% attempts",
+                "offline_ct": 0,
+                "stream_time": "2026-04-26T22:30:00Z",
+            },
+        },
+    )
 
     player: dict
     game: dict | None = None
@@ -56,6 +70,18 @@ class StreamCreateSchema(BaseEmbedSchema):
         stream_time (datetime | None): Stream start time.
     """
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "player_id": "v8lponvj",
+                "game_id": "n2680o1p",
+                "title": "THPS4 Any% practice",
+                "offline_ct": 0,
+                "stream_time": "2026-04-26T22:30:00Z",
+            },
+        },
+    )
+
     player_id: str
     game_id: str | None = None
     title: str
@@ -74,6 +100,17 @@ class StreamUpdateSchema(BaseEmbedSchema):
         offline_ct (int | None): Updated offline counter (minutes since last seen).
         stream_time (datetime | None): Updated stream start time.
     """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "game_id": "n2680o1p",
+                "title": "THPS4 100% attempts",
+                "offline_ct": 5,
+                "stream_time": None,
+            },
+        },
+    )
 
     game_id: str | None = None
     title: str | None = None

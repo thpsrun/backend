@@ -1,12 +1,24 @@
 from datetime import datetime
 
 from ninja import Schema
-from pydantic import Field, field_validator
+from pydantic import ConfigDict, Field, field_validator
 
 ALLOWED_EXPIRY_DAYS: tuple[int, ...] = (30, 90, 180, 365)
 
 
 class APIKeyCreateRequest(Schema):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "label": "CI bot",
+                "description": "Posts run results from CI",
+                "expiry_days": 180,
+                "scope_capabilities": ["runs.create", "runs.update"],
+                "scope_games": ["n2680o1p"],
+            },
+        },
+    )
+
     label: str = Field(
         ...,
         min_length=1,
@@ -46,11 +58,40 @@ class APIKeyCreateRequest(Schema):
 
 
 class APIKeyPatchRequest(Schema):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "label": "CI bot (renamed)",
+                "description": "Updated description",
+            },
+        },
+    )
+
     label: str | None = Field(default=None, min_length=1, max_length=100)
     description: str | None = None
 
 
 class APIKeyResponse(Schema):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "id": "key_01HXYZABC123",
+                "label": "CI bot",
+                "description": "Posts run results from CI",
+                "prefix": "thps_pk_abcd",
+                "scope_capabilities": ["runs.create", "runs.update"],
+                "scope_games": ["n2680o1p"],
+                "created": "2026-04-26T10:00:00Z",
+                "expiry_date": "2026-10-23T10:00:00Z",
+                "last_used": "2026-04-26T11:30:00Z",
+                "last_used_ip": "192.0.2.10",
+                "revoked": False,
+                "revoked_reason": "",
+                "revoked_at": None,
+            },
+        },
+    )
+
     id: str
     label: str
     description: str
@@ -67,6 +108,27 @@ class APIKeyResponse(Schema):
 
 
 class APIKeyCreateResponse(APIKeyResponse):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "id": "key_01HXYZABC123",
+                "label": "CI bot",
+                "description": "Posts run results from CI",
+                "prefix": "thps_pk_abcd",
+                "scope_capabilities": ["runs.create", "runs.update"],
+                "scope_games": ["n2680o1p"],
+                "created": "2026-04-26T10:00:00Z",
+                "expiry_date": "2026-10-23T10:00:00Z",
+                "last_used": None,
+                "last_used_ip": None,
+                "revoked": False,
+                "revoked_reason": "",
+                "revoked_at": None,
+                "key": "thps_pk_abcdEXAMPLEFULLKEYVALUEONLYSHOWNONCE",
+            },
+        },
+    )
+
     key: str
 
 
@@ -77,5 +139,24 @@ class GameEmbed(Schema):
 
 
 class CapabilitiesResponse(Schema):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "capabilities": [
+                    "runs.create",
+                    "runs.update",
+                    "runs.delete",
+                ],
+                "games": [
+                    {
+                        "id": "n2680o1p",
+                        "name": "Tony Hawk's Pro Skater 4",
+                        "slug": "thps4",
+                    },
+                ],
+            },
+        },
+    )
+
     capabilities: list[str]
     games: list[GameEmbed]

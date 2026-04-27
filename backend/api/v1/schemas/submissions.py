@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any, Literal
 
 from ninja import Schema
-from pydantic import Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from api.v1.schemas.base import RunStatusType
 from api.v1.schemas.runs import PlayerRunEmbedSchema
@@ -63,12 +63,54 @@ class ModerationGameGroup(Schema):
 class SubmissionHubResponse(Schema):
     """Response for GET /auth/submissions."""
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "pending_runs": [
+                    {
+                        "id": "y8dwozoj",
+                        "runtype": "main",
+                        "vid_status": "new",
+                        "description": "PB attempt",
+                        "src_sync": [],
+                    },
+                ],
+                "moderation_queue": [
+                    {
+                        "game_id": "n2680o1p",
+                        "game_name": "Tony Hawk's Pro Skater 4",
+                        "game_slug": "thps4",
+                        "pending_count": 1,
+                        "pending_runs": [
+                            {
+                                "id": "y8dwozoj",
+                                "runtype": "main",
+                                "vid_status": "new",
+                                "description": "PB attempt",
+                                "src_sync": [],
+                            },
+                        ],
+                    },
+                ],
+            },
+        },
+    )
+
     pending_runs: list[SubmissionRunSchema]
     moderation_queue: list[ModerationGameGroup] | None = None
 
 
 class VerifyRejectRequest(Schema):
     """Request body for PUT /auth/submissions/{run_id}/status."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "status": "verified",
+                "reason": None,
+            },
+        },
+    )
 
     status: Literal["verified", "rejected"]
     reason: str | None = Field(
@@ -80,6 +122,17 @@ class VerifyRejectRequest(Schema):
 
 class VerifyRejectResponse(Schema):
     """Response after verify/reject action is queued."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "run_id": "y8dwozoj",
+                "status": "verified",
+                "src_sync_status": "queued",
+                "message": "Verification queued.",
+            },
+        },
+    )
 
     run_id: str
     status: str
@@ -109,6 +162,17 @@ class PlayerEntry(Schema):
 class ChangePlayersRequest(Schema):
     """Request body for PUT /auth/submissions/{run_id}/players."""
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "players": [
+                    {"rel": "user", "name": "ThePackle"},
+                    {"rel": "guest", "name": "Sidekick"},
+                ],
+            },
+        },
+    )
+
     players: list[PlayerEntry] = Field(
         ...,
         min_length=1,
@@ -118,6 +182,20 @@ class ChangePlayersRequest(Schema):
 
 class ChangePlayersResponse(Schema):
     """Response after change-players action is queued."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "run_id": "y8dwozoj",
+                "players": [
+                    {"rel": "user", "name": "ThePackle"},
+                    {"rel": "guest", "name": "Sidekick"},
+                ],
+                "src_sync_status": "queued",
+                "message": "Players update queued.",
+            },
+        },
+    )
 
     run_id: str
     players: list[dict]
@@ -155,6 +233,28 @@ class SubmitPlayerEntry(Schema):
 
 class RunSubmitSchema(Schema):
     """Request body for POST /auth/submissions/submit."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "game_id": "n2680o1p",
+                "category_id": "wkpoq02r",
+                "level_id": None,
+                "platform_id": "ps2",
+                "emulated": False,
+                "players": [
+                    {"rel": "user", "id": "v8lponvj", "name": None},
+                ],
+                "time": "1m 23s 456ms",
+                "timenl": None,
+                "timeigt": None,
+                "video": "https://www.youtube.com/watch?v=abcdefg",
+                "comment": "PB!",
+                "date": "2026-04-26",
+                "variable_values": {"r8r9q8mn": "5lev3p2l"},
+            },
+        },
+    )
 
     game_id: str = Field(
         ...,
@@ -256,6 +356,17 @@ class RunSubmitSchema(Schema):
 class RunSubmitResponse(Schema):
     """Response after successful run submission to SRC."""
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "run_id": "y8dwozoj",
+                "src_url": "https://speedrun.com/run/y8dwozoj",
+                "vid_status": "new",
+                "message": "Run submitted to SRC.",
+            },
+        },
+    )
+
     run_id: str
     src_url: str
     vid_status: RunStatusType
@@ -292,10 +403,49 @@ class SyncLogEntry(Schema):
 class SyncLogResponse(Schema):
     """Paginated response for GET /auth/admin/sync-logs."""
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "count": 1,
+                "results": [
+                    {
+                        "id": 42,
+                        "run": {
+                            "id": "y8dwozoj",
+                            "game_name": "Tony Hawk's Pro Skater 4",
+                            "game_slug": "thps4",
+                            "category_name": "Any%",
+                            "level_name": None,
+                            "url": "https://speedrun.com/run/y8dwozoj",
+                        },
+                        "action": "verify",
+                        "status": "queued",
+                        "payload": {"reason": None},
+                        "moderator_name": "ThePackle",
+                        "attempts": 1,
+                        "max_attempts": 5,
+                        "last_error": "",
+                        "created_at": "2026-04-26T10:00:00Z",
+                        "updated_at": "2026-04-26T10:00:05Z",
+                    },
+                ],
+            },
+        },
+    )
+
     count: int
     results: list[SyncLogEntry]
 
 
 class SyncRetryResponse(Schema):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "task_id": 42,
+                "message": "Retry scheduled.",
+            },
+        },
+    )
+
     task_id: int
     message: str

@@ -94,6 +94,14 @@ def _build_leaderboard_rows(
         nickname = row["player__nickname"]
         name = row["player__name"]
 
+        country_id = row.get("player__countrycode__id")
+        country_name = row.get("player__countrycode__name")
+        country = (
+            {"id": country_id, "name": country_name}
+            if country_id
+            else None
+        )
+
         g1 = row.get("player__user__gradient_1")
         g2 = row.get("player__user__gradient_2")
         g3 = row.get("player__user__gradient_3")
@@ -110,17 +118,34 @@ def _build_leaderboard_rows(
         result.append(
             {
                 "rank": i + 1,
-                "player_id": row["player_id"],
-                "player_name": nickname if nickname else name,
-                "player_url": row["player__url"],
-                "player_pfp": row["player__pfp"],
+                "player": {
+                    "name": nickname if nickname else name,
+                    "country": country,
+                    "gradients": gradients,
+                },
                 "total_points": row["total_points"] or 0,
                 "fg_points": row["fg_points"] or 0,
                 "il_points": row["il_points"] or 0,
-                "gradients": gradients,
             }
         )
     return result
+
+
+def _player_embed_from_orm(
+    player: Any,
+) -> dict[str, Any]:
+    """Build the singular nested player embed from a `Players` ORM instance."""
+    if player is None:
+        return {"name": "Anonymous", "country": None, "gradients": None}
+    return {
+        "name": player.nickname if player.nickname else player.name,
+        "country": (
+            {"id": player.countrycode.id, "name": player.countrycode.name}
+            if player.countrycode
+            else None
+        ),
+        "gradients": extract_gradients(player),
+    }
 
 
 def main_player_data_export(
@@ -351,8 +376,8 @@ def query_overall_leaderboard() -> list[dict[str, Any]]:
             "player_id",
             "player__name",
             "player__nickname",
-            "player__url",
-            "player__pfp",
+            "player__countrycode__id",
+            "player__countrycode__name",
             "player__user__gradient_1",
             "player__user__gradient_2",
             "player__user__gradient_3",
@@ -387,8 +412,8 @@ def query_game_leaderboard(
             "player_id",
             "player__name",
             "player__nickname",
-            "player__url",
-            "player__pfp",
+            "player__countrycode__id",
+            "player__countrycode__name",
             "player__user__gradient_1",
             "player__user__gradient_2",
             "player__user__gradient_3",
@@ -405,40 +430,59 @@ def query_game_leaderboard(
     return _build_leaderboard_rows(rows)
 
 
-def query_thps4_oldest_runs(
+OLDEST_RUNS_LIMITS: dict[str, int] = {
+    "thps4": 10,
+    "thps12": 5,
+    "thps34": 5,
+}
+
+
+def query_oldest_il_runs(
     game_id: str,
+    game_slug: str,
 ) -> list[dict[str, Any]]:
-    runs: QuerySet[Runs] = (
+    """Return the longest-held IL world records for a supported game.
+
+    THPS4 returns the 10 oldest IL WRs (excluding `zoo-feed-the-hippos`,
+    which is excluded from points calculations); THPS12 and THPS34 each
+    return the 5 oldest. Full-game runs are never included. Unsupported
+    slugs return an empty list.
+    """
+    limit = OLDEST_RUNS_LIMITS.get(game_slug)
+    if limit is None:
+        return []
+
+    qs: QuerySet[Runs] = (
         Runs.objects.select_related("game", "category", "level")
-        .prefetch_related("run_players__player")
+        .prefetch_related(
+            "run_players__player__countrycode",
+            "run_players__player__user",
+        )
         .filter(
             game_id=game_id,
+            runtype="il",
             obsolete=False,
             vid_status="verified",
             place=1,
         )
-        .exclude(level__slug="zoo-feed-the-hippos")
-        .order_by("date")
     )
 
-    result = []
+    if game_slug == "thps4":
+        qs = qs.exclude(level__slug="zoo-feed-the-hippos")
+
+    runs = list(qs.order_by("date")[:limit])
+
+    result: list[dict[str, Any]] = []
     for run in runs:
         all_rp = list(run.run_players.all())  # type: ignore
         rp = all_rp[0] if all_rp else None
         player = rp.player if rp else None
-        if player and player.nickname:
-            player_name = player.nickname
-        elif player:
-            player_name = player.name
-        else:
-            player_name = "Anonymous"
 
         days_held = (date_type.today() - run.date.date()).days if run.date else -1
 
         result.append(
             {
-                "player_id": player.id if player else "",
-                "player_name": player_name,
+                "player": _player_embed_from_orm(player),
                 "game_name": run.game.name,
                 "game_slug": run.game.slug,
                 "category_name": run.category.name if run.category else None,
