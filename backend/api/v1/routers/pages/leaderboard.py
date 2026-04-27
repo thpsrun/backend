@@ -13,10 +13,9 @@ from api.v1.routers.utils import (
     overall_leaderboard_cache_key,
 )
 from api.v1.routers.utils.query_utils import (
-    OLDEST_RUNS_LIMITS,
     query_game_leaderboard,
-    query_oldest_il_runs,
     query_overall_leaderboard,
+    query_thps4_oldest_runs,
 )
 from api.v1.schemas.base import ErrorResponse
 from api.v1.schemas.leaderboard import (
@@ -74,20 +73,16 @@ combined full-game and individual level points for that game only.
 
 Only non-obsolete, verified runs are counted toward point totals.
 
-THPS4 note: The level "Zoo - Feed the Hippos" is automatically excluded
+THPS4 Note: The level "Zoo - Feed the Hippos" is automatically excluded
 from point calculations.
 
 Supported Embeds:
-- `oldest-runs` (THPS4, THPS12, THPS34 only): Adds an `oldest_runs` key to the
-  response containing the longest-held IL world records (full-game runs are
-  excluded). THPS4 returns 10 entries; THPS12 and THPS34 return 5 each.
-  Entries are sorted oldest-first by submission date; `days_held` is -1 when
-  the submission date is unknown.
+- `oldest-runs` (THPS4/THPS1+2/THPS3+4 only): Adds an `oldest_runs` key to the response containing
+  each runner's personal best sorted by longest-held time (days since the run was set).
 
 Examples:
 - `/website/game/thps4/pointslb` - THPS4 leaderboard
-- `/website/game/thps4/pointslb?embed=oldest-runs` - THPS4 leaderboard with oldest IL WRs
-- `/website/game/thps12/pointslb?embed=oldest-runs` - THPS1+2 with oldest IL WRs
+- `/website/game/thps4/pointslb?embed=oldest-runs` - THPS4 leaderboard with oldest PBs
 - `/website/game/n2680o1p/pointslb` - Leaderboard by game ID
 """,
     auth=public_read(),
@@ -97,7 +92,7 @@ def get_game_leaderboard(
     game_id: str,
     embed: Annotated[
         str | None,
-        Query(description="Optional: 'oldest-runs' for oldest IL WRs embed (THPS4/12/34)"),
+        Query(description="Optional: 'oldest-runs' for THPS4 oldest PBs embed"),
     ] = None,
 ) -> Status:
     if len(game_id) > 15:
@@ -147,10 +142,10 @@ def get_game_leaderboard(
             ],
         }
 
-        if game.slug in OLDEST_RUNS_LIMITS and "oldest-runs" in embed_fields:
+        if game.slug == "thps4" and "oldest-runs" in embed_fields:
             oldest_data = check_cache_query(
                 game_leaderboard_cache_key(game.id) + ":oldest",
-                lambda: query_oldest_il_runs(game.id, game.slug),
+                lambda: query_thps4_oldest_runs(game.id),
             )
             response["oldest_runs"] = [
                 OldestRunEntrySchema(**entry).model_dump() for entry in oldest_data
