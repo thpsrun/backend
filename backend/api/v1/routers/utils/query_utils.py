@@ -437,10 +437,29 @@ def query_game_leaderboard(
     return _build_leaderboard_rows(rows)
 
 
-def query_thps4_oldest_runs(
+OLDEST_RUNS_LIMITS: dict[str, int] = {
+    "thps4": 10,
+    "thps12": 5,
+    "thps34": 5,
+}
+
+
+def query_oldest_il_runs(
     game_id: str,
+    game_slug: str,
 ) -> list[dict[str, Any]]:
-    runs: QuerySet[Runs] = (
+    """Return the longest-held IL world records for a supported game.
+
+    THPS4 returns the 10 oldest IL WRs (excluding `zoo-feed-the-hippos`,
+    which is excluded from points calculations); THPS12 and THPS34 each
+    return the 5 oldest. Full-game runs are never included. Unsupported
+    slugs return an empty list.
+    """
+    limit = OLDEST_RUNS_LIMITS.get(game_slug)
+    if limit is None:
+        return []
+
+    qs: QuerySet[Runs] = (
         Runs.objects.select_related("game", "category", "level")
         .prefetch_related(
             "run_players__player__countrycode",
@@ -448,15 +467,19 @@ def query_thps4_oldest_runs(
         )
         .filter(
             game_id=game_id,
+            runtype="il",
             obsolete=False,
             vid_status="verified",
             place=1,
         )
-        .exclude(level__slug="zoo-feed-the-hippos")
-        .order_by("date")
     )
 
-    result = []
+    if game_slug == "thps4":
+        qs = qs.exclude(level__slug="zoo-feed-the-hippos")
+
+    runs = list(qs.order_by("date")[:limit])
+
+    result: list[dict[str, Any]] = []
     for run in runs:
         all_rp = list(run.run_players.all())  # type: ignore
         rp = all_rp[0] if all_rp else None
