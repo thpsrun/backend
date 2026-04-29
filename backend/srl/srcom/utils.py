@@ -2,10 +2,18 @@ from itertools import product
 
 from celery import shared_task
 from django.db.models import Count, QuerySet
+from django.utils import timezone
 
-from srl.models import Platforms, Players, Runs, VariableValues
+from srl.models import Games, Platforms, Players, RunHistory, Runs, VariableValues
+from srl.models.run_history import RunHistoryEndReason
 from srl.srcom.schema.src import SrcRunsPlayers, SrcVariablesModel
-from srl.utils import convert_time, points_formula, src_api, time_conversion
+from srl.utils import (
+    calculate_bonus,
+    convert_time,
+    points_formula,
+    src_api,
+    time_conversion,
+)
 
 
 def build_leaderboard_combos(
@@ -209,6 +217,7 @@ def update_standings(
     base_qs = Runs.objects.only(
         "place",
         "points",
+        "bonus",
         "time_secs",
         "timenl_secs",
         "timeigt_secs",
@@ -222,12 +231,17 @@ def update_standings(
     runs = all_category_runs.order_by(time_columns[default_time_type])
     wr_time = getattr(runs[0], (time_columns[default_time_type]))
 
+    is_ce = Games.objects.only("is_ce").get(id=game_id).is_ce
+
     for run in runs:
         run_time = getattr(run, (time_columns[default_time_type]))
 
         if is_wr:
             if run_time == wr_time:
-                points = max_points
+                # Preserves a streak bonus for this run, if re-applied. Otherwise
+                # it would be reset to the type's maximum.
+                bonus_value = calculate_bonus(run_type, run.bonus or 0, is_ce)
+                points = max_points + bonus_value
             else:
                 points = points_formula(
                     wr=wr_time,
@@ -310,7 +324,30 @@ def update_obsolete(
                         obsolete_runs.append(run.id)
 
     if obsolete_runs:
-        Runs.objects.filter(id__in=obsolete_runs).update(obsolete=True)
+        now = timezone.now()
+        Runs.objects.filter(id__in=obsolete_runs).update(
+            obsolete=True,
+            obsoleted_at=now,
+        )
+        RunHistory.objects.filter(
+            run_id__in=obsolete_runs,
+            end_date__isnull=True,
+        ).update(
+            end_date=now,
+            end_reason=RunHistoryEndReason.OBSOLETED,
+        )
+
+        sample_run = (
+            Runs.objects.filter(id__in=obsolete_runs)
+            .select_related("category", "level", "game")
+            .first()
+        )
+        if sample_run is not None:
+            from srl.leaderboard.resolution import resolve_leaderboard
+            from srl.tasks import recalculate_leaderboard_task
+
+            leaderboard = resolve_leaderboard(sample_run)
+            recalculate_leaderboard_task.si(leaderboard).delay()
 
 
 def create_run_default(

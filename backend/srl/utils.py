@@ -273,6 +273,8 @@ def get_streak_start_date(
         if runs_share_player(entry_player_ids, tracking_player_ids):
             streak_start = entry_start_date
             tracking_player_ids = entry_player_ids
+        elif entry.end_date is None:
+            continue
         else:
             break
 

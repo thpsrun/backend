@@ -22,6 +22,7 @@ from api.v1.routers.pages.history import router as history_router
 from api.v1.routers.pages.home import router as website_router
 from api.v1.routers.pages.lbs import router as lbs_page_router
 from api.v1.routers.pages.leaderboard import router as leaderboard_page_router
+from api.v1.routers.pages.leaderboard_history import router as leaderboard_history_router
 from api.v1.routers.pages.navbar import router as navbar_router
 from api.v1.routers.resources.categories import router as categories_router
 from api.v1.routers.resources.countries import router as countries_router
@@ -316,6 +317,7 @@ ninja_api.add_router("/tags", tags_router, tags=["Tags"])
 ninja_api.add_router("/website", website_router, tags=["Website"])
 ninja_api.add_router("/website", lbs_page_router, tags=["Website"])
 ninja_api.add_router("/website", leaderboard_page_router, tags=["Website"])
+ninja_api.add_router("/pointslb/history", leaderboard_history_router, tags=["Leaderboards"])
 ninja_api.add_router("/website", navbar_router, tags=["Website"])
 ninja_api.add_router("", history_router, tags=["Website"])
 

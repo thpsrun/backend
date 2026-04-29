@@ -1,11 +1,20 @@
 import argparse
+import time
 from typing import Any, Iterator
 
+from api.signals import disable_history_signals
+from api.v1.routers.utils.cache_utils import _HISTORY_CACHE_PREFIX
+from django.core.cache import caches
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
 from srl.leaderboard.recalculation import TIME_COLUMN_MAP, process_leaderboard
-from srl.models import Games, RunHistory, Runs
+from srl.models import (
+    Games,
+    RunHistory,
+    Runs,
+    RunVariableValues,  # noqa: PLC0415
+)
 
 
 class Command(BaseCommand):
@@ -61,9 +70,6 @@ class Command(BaseCommand):
             group_qs = base_query.filter(**group)
             group_run_ids = group_qs.values_list("id", flat=True)
 
-            # Find all distinct variable-value signatures for this group's runs
-            from srl.models import RunVariableValues  # noqa: PLC0415
-
             rvv_qs = RunVariableValues.objects.filter(run_id__in=group_run_ids).values(
                 "run_id", "variable_id", "value_id"
             )
@@ -78,12 +84,10 @@ class Command(BaseCommand):
                     [(rvv["variable_id"], rvv["value_id"])]
                 )
 
-            # Add runs with no variable values (empty signature)
             for run_id in group_run_ids:
                 if run_id not in run_signatures:
                     run_signatures[run_id] = frozenset()
 
-            # Yield one leaderboard dict per distinct signature
             seen_sigs: set[frozenset] = set()
             for signature in run_signatures.values():
                 if signature not in seen_sigs:
@@ -98,104 +102,142 @@ class Command(BaseCommand):
         *args: Any,
         **options: Any,
     ) -> None:
-        """Execute the command to build RunHistory entries."""
         game_filter = options.get("game")
         dry_run = options.get("dry_run", False)
         clear = options.get("clear", False)
 
-        if dry_run:
+        if not dry_run:
             self.stdout.write(
-                self.style.NOTICE("DRY RUN MODE: No changes will be saved.")
+                self.style.WARNING(
+                    "============================================================\n"
+                    "WARNING: build_run_history may reshape historical RunHistory\n"
+                    "entries.\n"
+                    "\n"
+                    "The /api/v1/pointslb/history endpoints derive monthly/yearly\n"
+                    "results from the FIRST RunHistory entry per run; running this\n"
+                    "command can change those totals retroactively.\n"
+                    "\n"
+                    "This command will automatically invalidate the historical\n"
+                    "cache namespace (pointslb:history:*) when it completes.\n"
+                    "============================================================",
+                )
             )
 
-        if clear and not dry_run:
-            self.stdout.write(
-                self.style.WARNING("Clearing existing history entries...")
-            )
-            if game_filter:
-                deleted, _ = RunHistory.objects.filter(
-                    run__game_id=game_filter
-                ).delete()
-            else:
-                deleted, _ = RunHistory.objects.all().delete()
-            self.stdout.write(self.style.SUCCESS(f"Deleted {deleted} entries."))
+            time.sleep(3)
 
-        leaderboards = list(self.get_leaderboards(game_filter))
-        total_leaderboards = len(leaderboards)
-        self.stdout.write(f"Found {total_leaderboards} leaderboards to process.\n")
+        with disable_history_signals():
+            if dry_run:
+                self.stdout.write(
+                    self.style.NOTICE("DRY RUN MODE: No changes will be saved.")
+                )
 
-        game_ids = {lb["game_id"] for lb in leaderboards}
-        game_time_columns: dict[str, dict[str, str]] = {}
-        game_is_ce: dict[str, bool] = {}
-        game_slugs: dict[str, str] = {}
-        for game in Games.objects.filter(id__in=game_ids).only(
-            "id",
-            "name",
-            "slug",
-            "defaulttime",
-            "idefaulttime",
-        ):
-            game_time_columns[game.id] = {
-                "main": TIME_COLUMN_MAP.get(game.defaulttime, "time_secs"),
-                "il": TIME_COLUMN_MAP.get(game.idefaulttime, "time_secs"),
-            }
-            game_is_ce[game.id] = game.is_ce
-            game_slugs[game.id] = game.slug.upper() if game.slug else game.id
+            if clear and not dry_run:
+                self.stdout.write(
+                    self.style.WARNING("Clearing existing history entries...")
+                )
+                if game_filter:
+                    deleted, _ = RunHistory.objects.filter(
+                        run__game_id=game_filter
+                    ).delete()
+                else:
+                    deleted, _ = RunHistory.objects.all().delete()
+                self.stdout.write(self.style.SUCCESS(f"Deleted {deleted} entries."))
 
-        total_entries = 0
-        total_runs = 0
-        processed_count = 0
-        error_count = 0
+            leaderboards = list(self.get_leaderboards(game_filter))
+            total_leaderboards = len(leaderboards)
+            self.stdout.write(f"Found {total_leaderboards} leaderboards to process.\n")
 
-        for leaderboard in leaderboards:
-            processed_count += 1
-            progress = f"[{processed_count}/{total_leaderboards}]"
-            game_slug = game_slugs.get(leaderboard["game_id"], "???")
+            game_ids = {lb["game_id"] for lb in leaderboards}
+            game_time_columns: dict[str, dict[str, str]] = {}
+            game_is_ce: dict[str, bool] = {}
+            game_slugs: dict[str, str] = {}
+            for game in Games.objects.filter(id__in=game_ids).only(
+                "id",
+                "name",
+                "slug",
+                "defaulttime",
+                "idefaulttime",
+            ):
+                game_time_columns[game.id] = {
+                    "main": TIME_COLUMN_MAP.get(game.defaulttime, "time_secs"),
+                    "il": TIME_COLUMN_MAP.get(game.idefaulttime, "time_secs"),
+                }
+                game_is_ce[game.id] = game.is_ce
+                game_slugs[game.id] = game.slug.upper() if game.slug else game.id
 
-            try:
-                with transaction.atomic():
-                    entries_created, runs_processed, points_fixed = process_leaderboard(
-                        leaderboard,
-                        dry_run,
-                        game_is_ce,
-                        game_time_columns,
-                    )
+            total_entries = 0
+            total_runs = 0
+            processed_count = 0
+            error_count = 0
 
-                if runs_processed > 0:
-                    total_entries += entries_created
-                    total_runs += runs_processed
-                    vmap = leaderboard["variable_value_map"]
+            for leaderboard in leaderboards:
+                processed_count += 1
+                progress = f"[{processed_count}/{total_leaderboards}]"
+                game_slug = game_slugs.get(leaderboard["game_id"], "???")
+
+                try:
+                    with transaction.atomic():
+                        entries_created, runs_processed, points_fixed = (
+                            process_leaderboard(
+                                leaderboard,
+                                dry_run,
+                                game_is_ce,
+                                game_time_columns,
+                            )
+                        )
+
+                    if runs_processed > 0:
+                        total_entries += entries_created
+                        total_runs += runs_processed
+                        vmap = leaderboard["variable_value_map"]
+                        variant_label = (
+                            ",".join(f"{k}={v}" for k, v in sorted(vmap.items()))
+                            or "(no variants)"
+                        )
+                        msg = (
+                            f"{progress} [{game_slug}/{leaderboard['runtype']}] {variant_label}: "
+                            f"{runs_processed} runs, {entries_created} entries"
+                        )
+                        if points_fixed > 0:
+                            msg += f", {points_fixed} points fixed"
+                        self.stdout.write(msg)
+
+                except Exception as e:
+                    error_count += 1
+                    vmap = leaderboard.get("variable_value_map", {})
                     variant_label = (
                         ",".join(f"{k}={v}" for k, v in sorted(vmap.items()))
                         or "(no variants)"
                     )
-                    msg = (
-                        f"{progress} [{game_slug}/{leaderboard['runtype']}] {variant_label}: "
-                        f"{runs_processed} runs, {entries_created} entries"
-                    )
-                    if points_fixed > 0:
-                        msg += f", {points_fixed} points fixed"
-                    self.stdout.write(msg)
+                    self.stdout.write(self.style.ERROR(f"ERROR: {str(e)}"))
 
-            except Exception as e:
-                error_count += 1
-                vmap = leaderboard.get("variable_value_map", {})
-                variant_label = (
-                    ",".join(f"{k}={v}" for k, v in sorted(vmap.items()))
-                    or "(no variants)"
+            self.stdout.write("")
+            self.stdout.write(self.style.SUCCESS("=" * 50))
+            self.stdout.write(self.style.SUCCESS("RUN HISTORY COMPLETE"))
+            self.stdout.write(self.style.SUCCESS("=" * 50))
+            self.stdout.write(f"Leaderboards processed: {processed_count}")
+            self.stdout.write(f"Errors: {error_count}")
+            self.stdout.write(f"Total runs: {total_runs}")
+            self.stdout.write(f"Total history entries created: {total_entries}")
+
+            if dry_run:
+                self.stdout.write(
+                    self.style.NOTICE("\nThis was a dry run. No changes saved.")
                 )
-                self.stdout.write(self.style.ERROR(f"ERROR: {str(e)}"))
 
-        self.stdout.write("")
-        self.stdout.write(self.style.SUCCESS("=" * 50))
-        self.stdout.write(self.style.SUCCESS("RUN HISTORY COMPLETE"))
-        self.stdout.write(self.style.SUCCESS("=" * 50))
-        self.stdout.write(f"Leaderboards processed: {processed_count}")
-        self.stdout.write(f"Errors: {error_count}")
-        self.stdout.write(f"Total runs: {total_runs}")
-        self.stdout.write(f"Total history entries created: {total_entries}")
+        self._purge_history_cache()
 
-        if dry_run:
+    def _purge_history_cache(self) -> None:
+        cache = caches["default"]
+        if hasattr(cache, "delete_pattern"):
+            cache.delete_pattern(f"{_HISTORY_CACHE_PREFIX}:*")
             self.stdout.write(
-                self.style.NOTICE("\nThis was a dry run. No changes saved.")
+                self.style.SUCCESS("Historical cache cleared."),
+            )
+        else:
+            self.stdout.write(
+                self.style.WARNING(
+                    "Cache backend does not support delete_pattern - historical "
+                    "caches may be stale until manually cleared.",
+                )
             )

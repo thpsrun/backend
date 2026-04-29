@@ -123,7 +123,6 @@ class Command(BaseCommand):
                 place=1,
                 obsolete=False,
                 vid_status="verified",
-                bonus__lt=settings.STREAK_MAX_MONTHS,
             )
             .select_related("game", "category", "level")
             .prefetch_related("players", "runvariablevalues_set__value")
@@ -170,26 +169,19 @@ class Command(BaseCommand):
             anniversaries_found += 1
 
             run_subcat = compute_run_subcategory(run)
-            if check_all:
-                if months_held == run.bonus:
-                    if verbose:
-                        self.stdout.write(
-                            f"  [{game.slug.upper()}] {run_subcat}: {run.id} - "
-                            f"already at {run.bonus} months (no change)"
-                        )
-                    continue
-            elif months_held <= run.bonus:
-                if verbose:
-                    self.stdout.write(
-                        f"  [{game.slug.upper()}] {run_subcat}: {run.id} - "
-                        f"already at {run.bonus} months (no change)"
-                    )
-                continue
 
             max_points = self.get_max_points(game, run.runtype)  # type: ignore
             new_bonus = min(months_held, settings.STREAK_MAX_MONTHS)
             streak_bonus = calculate_bonus(run.runtype, new_bonus, game.is_ce)  # type: ignore
             new_points = max_points + streak_bonus
+
+            if run.bonus == new_bonus and run.points == new_points:
+                if verbose:
+                    self.stdout.write(
+                        f"  [{game.slug.upper()}] {run_subcat}: {run.id} - "
+                        f"already at {run.bonus} months / {run.points} pts (no change)"
+                    )
+                continue
 
             player_names = ", ".join(p.name for p in run.players.all()) or "Anonymous"
 

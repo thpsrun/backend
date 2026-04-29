@@ -45,6 +45,11 @@ class RunHistory(models.Model):
         blank=True,
         verbose_name="End Reason",
     )
+    streak_start_date = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Streak Start (WR entries only)",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     constraints = [

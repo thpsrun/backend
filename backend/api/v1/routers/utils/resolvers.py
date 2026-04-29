@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from django.db.models import Q
 from django.http import HttpRequest
 from django.shortcuts import get_object_or_404
 from guides.models import Guides
@@ -155,3 +156,9 @@ def game_from_stream_path(
         .first()
     )
     return stream.game if stream else None
+
+
+def resolve_game_or_none(game_id: str) -> Games | None:
+    return Games.objects.filter(
+        Q(id__iexact=game_id) | Q(slug__iexact=game_id),
+    ).first()

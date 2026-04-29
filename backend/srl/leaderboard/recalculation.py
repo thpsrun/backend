@@ -1,3 +1,8 @@
+import bisect
+from dataclasses import dataclass, field
+from datetime import datetime
+
+from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.db.models import F, Prefetch, QuerySet
 from django.db.models.functions import Coalesce
@@ -12,6 +17,8 @@ TIME_COLUMN_MAP: dict[str, str] = {
     "realtime_noloads": "timenl_secs",
     "ingame": "timeigt_secs",
 }
+
+# TODO: Yes this is a lot of spaghetti code. Please forgive me for now lol
 
 
 def get_time_column(
@@ -41,6 +48,418 @@ def build_game_metadata(
         }
         game_is_ce[game.id] = game.is_ce
     return game_time_columns, game_is_ce
+
+
+def _build_event_stream(
+    runs: list[Runs],
+) -> list[tuple[datetime, str, int, Runs]]:
+    events: list[tuple[datetime, str, int, Runs]] = []
+
+    for run in runs:
+        is_obsolete = bool(run.obsolete)
+        obsoleted_at = run.obsoleted_at
+        effective_date = run.effective_date
+
+        if is_obsolete and obsoleted_at is None:
+            continue
+
+        if is_obsolete and obsoleted_at <= effective_date:
+            continue
+
+        events.append((effective_date, "ADD", 0, run))
+        if is_obsolete:
+            events.append((obsoleted_at, "REMOVE", 1, run))
+
+    events.sort(key=lambda e: (e[0], e[2]))
+    return events
+
+
+@dataclass
+class _WalkerState:
+    runtype: str
+    is_ce: bool
+    max_points: int
+    time_field: str
+
+    active_pool: dict[str, tuple[Runs, float]] = field(default_factory=dict)
+    active_entries: dict[str, tuple["RunHistory", float]] = field(default_factory=dict)
+    player_best_runs: dict[str, list[tuple[float, str]]] = field(default_factory=dict)
+    run_to_players: dict[str, set[str]] = field(default_factory=dict)
+
+    current_wr_id: str | None = None
+    current_wr_time: float | None = None
+    current_wr_player_ids: set[str] = field(default_factory=set)
+
+    runs_streak_updates: dict[str, int] = field(default_factory=dict)
+    runs_streak_starts: dict[str, datetime] = field(default_factory=dict)
+
+    closed_entries: list["RunHistory"] = field(default_factory=list)
+    new_entries: list["RunHistory"] = field(default_factory=list)
+    entries_created_count: int = 0
+
+
+def _player_ids_for(
+    state: _WalkerState,
+    run: Runs,
+) -> set[str]:
+    if run.id not in state.run_to_players:
+        state.run_to_players[run.id] = {p.id for p in run.players.all()}
+    return state.run_to_players[run.id]
+
+
+def _is_already_slower(
+    state: _WalkerState,
+    run_time: float,
+    player_ids: set[str],
+) -> bool:
+    """True if any player on the run already has a faster (or equal) PB."""
+    for pid in player_ids:
+        stack = state.player_best_runs.get(pid)
+        if stack and run_time >= stack[0][0]:
+            return True
+    return False
+
+
+def _close_active_entry(
+    state: _WalkerState,
+    run_id: str,
+    end_date: datetime,
+    end_reason: str,
+) -> None:
+    if run_id not in state.active_entries:
+        return
+    entry, _ = state.active_entries.pop(run_id)
+    entry.end_date = end_date
+    entry.end_reason = end_reason
+    state.closed_entries.append(entry)
+
+
+def _open_active_entry(
+    state: _WalkerState,
+    run: Runs,
+    run_time: float,
+    start_date: datetime,
+    points: int,
+    streak_start_date: datetime | None = None,
+) -> RunHistory:
+    entry = RunHistory(
+        run=run,
+        start_date=start_date,
+        end_date=None,
+        end_reason=None,
+        points=points,
+        streak_start_date=streak_start_date,
+    )
+    state.new_entries.append(entry)
+    state.active_entries[run.id] = (entry, run_time)
+    state.entries_created_count += 1
+    return entry
+
+
+def _emit_closed_entry(
+    state: _WalkerState,
+    run: Runs,
+    start_date: datetime,
+    end_date: datetime,
+    end_reason: str,
+    points: int,
+) -> None:
+    entry = RunHistory(
+        run=run,
+        start_date=start_date,
+        end_date=end_date,
+        end_reason=end_reason,
+        points=points,
+    )
+    state.new_entries.append(entry)
+    state.entries_created_count += 1
+
+
+def _is_short_run(
+    run_time: float,
+    runtype: str,
+) -> bool:
+    return runtype == "il" and run_time < 60.0
+
+
+def _resolve_streak_start(
+    state: _WalkerState,
+    event_date: datetime,
+    new_wr_player_ids: set[str],
+) -> datetime:
+    """Return the streak's start date for a new WR."""
+    if state.current_wr_id is not None and runs_share_player(
+        state.current_wr_player_ids, new_wr_player_ids
+    ):
+        prior_start = state.runs_streak_starts.get(state.current_wr_id)
+        if prior_start is not None:
+            return prior_start
+    return event_date
+
+
+def _streak_months_capped(
+    streak_start: datetime,
+    event_date: datetime,
+) -> int:
+    delta = relativedelta(event_date, streak_start)
+    months = delta.years * 12 + delta.months
+    return min(max(0, months), settings.STREAK_MAX_MONTHS)
+
+
+def _handle_add(
+    state: _WalkerState,
+    run: Runs,
+    event_date: datetime,
+) -> None:
+    run_time = float(getattr(run, state.time_field) or 0)
+    if not run_time:
+        return
+
+    player_ids = _player_ids_for(state, run)
+
+    if _is_already_slower(state, run_time, player_ids):
+        if state.current_wr_time is None:
+            return
+        is_short = _is_short_run(run_time, state.runtype)
+        formula_points = points_formula(
+            state.current_wr_time,
+            run_time,
+            state.max_points,
+            short=is_short,
+        )
+        _emit_closed_entry(
+            state,
+            run,
+            event_date,
+            event_date,
+            RunHistoryEndReason.OBSOLETED,
+            formula_points,
+        )
+        return
+
+    state.active_pool[run.id] = (run, run_time)
+    for pid in player_ids:
+        bisect.insort(state.player_best_runs.setdefault(pid, []), (run_time, run.id))
+
+    # Close older PB entries for affected players unless co-op overlap keeps them.
+    for pid in player_ids:
+        stack = state.player_best_runs[pid]
+        if len(stack) > 1:
+            old_run_id = stack[1][1]
+            if old_run_id in state.active_entries:
+                others_still_pb = any(
+                    other_pid != pid
+                    and state.player_best_runs.get(other_pid)
+                    and state.player_best_runs[other_pid][0][1] == old_run_id
+                    for other_pid in state.run_to_players.get(old_run_id, set())
+                )
+                if not others_still_pb:
+                    _close_active_entry(
+                        state,
+                        old_run_id,
+                        event_date,
+                        RunHistoryEndReason.OBSOLETED,
+                    )
+
+    is_new_wr = state.current_wr_time is None or run_time < state.current_wr_time
+
+    if is_new_wr:
+        previous_active = list(state.active_entries.keys())
+        for active_run_id in previous_active:
+            entry_run, active_run_time = state.active_pool[active_run_id]
+            reason = (
+                RunHistoryEndReason.LOST_WR
+                if active_run_id == state.current_wr_id
+                else RunHistoryEndReason.RECALCULATION
+            )
+            _close_active_entry(state, active_run_id, event_date, reason)
+
+            if active_run_id == run.id:
+                continue
+
+            is_short = _is_short_run(active_run_time, state.runtype)
+            formula_points = points_formula(
+                run_time,
+                active_run_time,
+                state.max_points,
+                short=is_short,
+            )
+            _open_active_entry(
+                state,
+                entry_run,
+                active_run_time,
+                event_date,
+                formula_points,
+            )
+
+        streak_start = _resolve_streak_start(
+            state,
+            event_date,
+            new_wr_player_ids=player_ids,
+        )
+        inherited_bonus = _streak_months_capped(streak_start, event_date)
+
+        wr_points = state.max_points + calculate_bonus(
+            state.runtype,
+            inherited_bonus,
+            state.is_ce,
+        )
+        _open_active_entry(
+            state,
+            run,
+            run_time,
+            event_date,
+            wr_points,
+            streak_start_date=streak_start,
+        )
+        state.runs_streak_updates[run.id] = inherited_bonus
+        state.runs_streak_starts[run.id] = streak_start
+
+        state.current_wr_id = run.id
+        state.current_wr_time = run_time
+        state.current_wr_player_ids = player_ids
+    else:
+        is_short = _is_short_run(run_time, state.runtype)
+        formula_points = points_formula(
+            state.current_wr_time,
+            run_time,
+            state.max_points,
+            short=is_short,
+        )
+        # A run that ties the current WR scores at max_points (formula
+        # returns max_points when wr == run). Track its streak anchor too,
+        # since /pointslb's place-based filter and build_streaks both treat
+        # the tied submission as a fresh per-player streak starter.
+        tied_co_wr_streak: datetime | None = None
+        if run_time == state.current_wr_time:
+            tied_co_wr_streak = event_date
+        _open_active_entry(
+            state,
+            run,
+            run_time,
+            event_date,
+            formula_points,
+            streak_start_date=tied_co_wr_streak,
+        )
+
+
+def _handle_remove(
+    state: _WalkerState,
+    run: Runs,
+    event_date: datetime,
+) -> None:
+    if run.id not in state.active_pool:
+        return
+
+    _, run_time = state.active_pool.pop(run.id)
+    player_ids = _player_ids_for(state, run)
+
+    for pid in player_ids:
+        stack = state.player_best_runs.get(pid)
+        if not stack:
+            continue
+        try:
+            stack.remove((run_time, run.id))
+        except ValueError:
+            pass
+
+    is_wr_removal = run.id == state.current_wr_id
+
+    _close_active_entry(state, run.id, event_date, RunHistoryEndReason.OBSOLETED)
+
+    if is_wr_removal:
+        if not state.active_pool:
+            state.current_wr_id = None
+            state.current_wr_time = None
+            state.current_wr_player_ids = set()
+            return
+
+        new_wr_id, (new_wr_run, new_wr_time) = min(
+            state.active_pool.items(),
+            key=lambda kv: kv[1][1],
+        )
+        new_wr_player_ids = _player_ids_for(state, new_wr_run)
+
+        streak_start = _resolve_streak_start(
+            state,
+            event_date,
+            new_wr_player_ids=new_wr_player_ids,
+        )
+        inherited_bonus = _streak_months_capped(streak_start, event_date)
+
+        previous_active = [aid for aid in state.active_entries if aid != new_wr_id]
+        for active_run_id in previous_active:
+            active_run, active_run_time = state.active_pool[active_run_id]
+            _close_active_entry(
+                state,
+                active_run_id,
+                event_date,
+                RunHistoryEndReason.RECALCULATION,
+            )
+            is_short = _is_short_run(active_run_time, state.runtype)
+            formula_points = points_formula(
+                new_wr_time,
+                active_run_time,
+                state.max_points,
+                short=is_short,
+            )
+            _open_active_entry(
+                state,
+                active_run,
+                active_run_time,
+                event_date,
+                formula_points,
+            )
+
+        _close_active_entry(
+            state,
+            new_wr_id,
+            event_date,
+            RunHistoryEndReason.RECALCULATION,
+        )
+        wr_points = state.max_points + calculate_bonus(
+            state.runtype,
+            inherited_bonus,
+            state.is_ce,
+        )
+        _open_active_entry(
+            state,
+            new_wr_run,
+            new_wr_time,
+            event_date,
+            wr_points,
+            streak_start_date=streak_start,
+        )
+        state.runs_streak_updates[new_wr_id] = inherited_bonus
+        state.runs_streak_starts[new_wr_id] = streak_start
+
+        state.current_wr_id = new_wr_id
+        state.current_wr_time = new_wr_time
+        state.current_wr_player_ids = new_wr_player_ids
+    else:
+        # Non-WR removal: promote next-best PB for affected players.
+        for pid in player_ids:
+            stack = state.player_best_runs.get(pid) or []
+            if not stack:
+                continue
+            promoted_time, promoted_id = stack[0]
+            if promoted_id in state.active_entries:
+                continue  # already scoring (shared with another player)
+            promoted_run, _ = state.active_pool[promoted_id]
+            is_short = _is_short_run(promoted_time, state.runtype)
+            formula_points = points_formula(
+                state.current_wr_time,
+                promoted_time,
+                state.max_points,
+                short=is_short,
+            )
+            _open_active_entry(
+                state,
+                promoted_run,
+                promoted_time,
+                event_date,
+                formula_points,
+            )
 
 
 def get_runs_for_leaderboard(
@@ -85,188 +504,72 @@ def process_leaderboard(
 ) -> tuple[int, int, int]:
     runs = list(
         get_runs_for_leaderboard(leaderboard).prefetch_related(
-            Prefetch("players", queryset=Players.objects.only("id"))
+            Prefetch("players", queryset=Players.objects.only("id")),
         ),
     )
     if not runs:
         return 0, 0, 0
 
-    game_times = game_time_columns.get(leaderboard["game_id"], {})
-    if leaderboard["runtype"] == "main":
-        time_column = game_times.get("main", "time_secs")
-    else:
-        time_column = game_times.get("il", "time_secs")
+    game_id = leaderboard["game_id"]
+    runtype = leaderboard["runtype"]
+    is_ce = game_is_ce.get(game_id, False)
+    time_field = game_time_columns.get(game_id, {}).get(runtype) or "time_secs"
+    max_points = (
+        settings.POINTS_MAX_CE
+        if is_ce
+        else (settings.POINTS_MAX_FG if runtype == "main" else settings.POINTS_MAX_IL)
+    )
 
-    is_ce = game_is_ce.get(leaderboard["game_id"], False)
-    if is_ce:
-        max_points = settings.POINTS_MAX_CE
-    elif leaderboard["runtype"] == "main":
-        max_points = settings.POINTS_MAX_FG
-    else:
-        max_points = settings.POINTS_MAX_IL
+    state = _WalkerState(
+        runtype=runtype,
+        is_ce=is_ce,
+        max_points=max_points,
+        time_field=time_field,
+    )
 
-    current_wr_time: float | None = None
-    current_wr_run: Runs | None = None
-    current_wr_player_ids: set[str] = set()
-    # run_id -> (open RunHistory entry, run's time) for currently-active scoring periods
-    active_entries: dict[str, tuple[RunHistory, float]] = {}
-    # player_id -> (run_id, time) tracking each player's current PB
-    player_best_runs: dict[str, tuple[str, float]] = {}
-    entries_created_count = 0
-    entries_to_update: list[RunHistory] = []
-    runs_streak_updates: dict[str, int] = {}
+    events = _build_event_stream(runs)
 
-    for run in runs:
-        run_time = getattr(run, time_column) or 0
-        if run_time <= 0:
-            run_time = getattr(run, "time_secs") or 0
-        if run_time <= 0:
-            continue
-
-        effective_date = run.effective_date  # type: ignore
-
-        player_ids = [player.id for player in run.players.all()]
-
-        # Close out any slower PB this player already had on this leaderboard
-        for player_id in player_ids:
-            if player_id in player_best_runs:
-                old_run_id, old_time = player_best_runs[player_id]
-                if run_time < old_time and old_run_id in active_entries:
-                    old_entry, _ = active_entries[old_run_id]
-                    old_entry.end_date = effective_date
-                    old_entry.end_reason = RunHistoryEndReason.OBSOLETED
-                    entries_to_update.append(old_entry)
-                    del active_entries[old_run_id]
-
-            if (
-                player_id not in player_best_runs
-                or run_time < player_best_runs[player_id][1]
-            ):
-                player_best_runs[player_id] = (run.id, run_time)
-
-        is_new_wr = current_wr_time is None or run_time < current_wr_time
-
-        if is_new_wr:
-            old_wr_id = current_wr_run.id if current_wr_run else None
-            new_wr_player_ids = set(player_ids)
-
-            # Streak continues if the same player beat their own WR
-            streak_continues = current_wr_run is not None and runs_share_player(
-                current_wr_player_ids, new_wr_player_ids
-            )
-
-            old_bonus = 0
-            if streak_continues and old_wr_id:
-                old_bonus = runs_streak_updates.get(old_wr_id, 0)
-
-            run_ids_to_update = list(active_entries.keys())
-
-            for run_id in run_ids_to_update:
-                entry, old_run_time = active_entries[run_id]
-
-                entry.end_date = effective_date
-                if run_id == old_wr_id:
-                    entry.end_reason = RunHistoryEndReason.LOST_WR
-
-                    if not streak_continues:
-                        runs_streak_updates[run_id] = 0
-                else:
-                    entry.end_reason = RunHistoryEndReason.RECALCULATION
-                entries_to_update.append(entry)
-
-                new_points = points_formula(
-                    wr=run_time,
-                    run=old_run_time,
-                    max_points=max_points,
-                    short=True if run_time < 60 else False,
-                )
-
-                new_entry = RunHistory(
-                    run_id=run_id,
-                    start_date=effective_date,
-                    end_date=None,
-                    points=new_points,
-                    end_reason=None,
-                )
-                if not dry_run:
-                    new_entry.save()
-                entries_created_count += 1
-                active_entries[run_id] = (new_entry, old_run_time)
-
-            current_wr_time = run_time
-            current_wr_run = run
-            current_wr_player_ids = new_wr_player_ids
-
-            new_bonus = old_bonus if streak_continues else 0
-            runs_streak_updates[run.id] = new_bonus
-
-            streak_bonus = calculate_bonus(
-                leaderboard["runtype"],
-                new_bonus,
-                is_ce,
-            )
-            new_wr_points = max_points + streak_bonus
-
-            new_wr_entry = RunHistory(
-                run_id=run.id,
-                start_date=effective_date,
-                end_date=None,
-                points=new_wr_points,
-                end_reason=None,
-            )
-            if not dry_run:
-                new_wr_entry.save()
-            entries_created_count += 1
-            active_entries[run.id] = (new_wr_entry, run_time)
-
+    for event_date, kind, _, run in events:
+        if kind == "ADD":
+            _handle_add(state, run, event_date)
         else:
-            points = points_formula(
-                wr=current_wr_time,  # type: ignore
-                run=run_time,
-                max_points=max_points,
-                short=True if current_wr_time < 60 else False,
-            )
+            _handle_remove(state, run, event_date)
 
-            new_entry = RunHistory(
-                run_id=run.id,
-                start_date=effective_date,
-                end_date=None,
-                points=points,
-                end_reason=None,
-            )
-            if not dry_run:
-                new_entry.save()
-            entries_created_count += 1
-            active_entries[run.id] = (new_entry, run_time)
+    if not dry_run and state.new_entries:
+        RunHistory.objects.bulk_create(state.new_entries, batch_size=500)
 
-    if not dry_run and entries_to_update:
-        RunHistory.objects.bulk_update(
-            entries_to_update,
-            ["end_date", "end_reason"],
-        )
+    runs_to_fix = _sync_runs_points(state, runs, dry_run=dry_run)
 
-    current_points_map: dict[str, int] = {
-        run_id: entry.points for run_id, (entry, _) in active_entries.items()
+    return state.entries_created_count, len(runs), runs_to_fix
+
+
+def _sync_runs_points(
+    state: _WalkerState,
+    runs: list[Runs],
+    dry_run: bool,
+) -> int:
+    """Sync each Run's points/bonus to the final state."""
+    points_map: dict[str, int] = {
+        run_id: entry.points for run_id, (entry, _) in state.active_entries.items()
     }
 
-    runs_to_fix: list[Runs] = []
+    runs_to_update: list[Runs] = []
     for run in runs:
-        expected_points = current_points_map.get(run.id)
-        expected_streak = runs_streak_updates.get(run.id)
-        needs_update = False
+        expected_points = points_map.get(run.id, 0)
+        expected_bonus = (
+            state.runs_streak_updates.get(run.id, 0) if run.id in points_map else 0
+        )
 
-        if expected_points is not None and run.points != expected_points:
+        if run.points != expected_points or run.bonus != expected_bonus:
             run.points = expected_points
-            needs_update = True
+            run.bonus = expected_bonus
+            runs_to_update.append(run)
 
-        if expected_streak is not None and run.bonus != expected_streak:
-            run.bonus = expected_streak
-            needs_update = True
+    if runs_to_update and not dry_run:
+        Runs.objects.bulk_update(
+            runs_to_update,
+            ["points", "bonus"],
+            batch_size=500,
+        )
 
-        if needs_update:
-            runs_to_fix.append(run)
-
-    if not dry_run and runs_to_fix:
-        Runs.objects.bulk_update(runs_to_fix, ["points", "bonus"])
-
-    return entries_created_count, len(runs), len(runs_to_fix)
+    return len(runs_to_update)

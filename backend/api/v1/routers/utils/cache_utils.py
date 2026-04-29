@@ -2,12 +2,23 @@ import hashlib
 from typing import Any, Callable
 
 from django.core.cache import caches
-from django.db.models import Max, Q, QuerySet
+from django.db.models import Max, Min, Q, QuerySet
+from django.utils import timezone
 from guides.models import Guides
 from nav.models import NavItem, SocialLink
-from srl.models import Categories, Levels, Players, Runs, Variables, VariableValues
+from srl.models import (
+    Categories,
+    Levels,
+    Players,
+    RunHistory,
+    Runs,
+    Variables,
+    VariableValues,
+)
 
 _TS_TTL = 30  # seconds to cache timestamp lookups
+_HISTORY_CACHE_PREFIX = "pointslb:history"
+_HISTORY_CURRENT_YEAR_TTL = 60 * 60 * 24
 
 
 def _cached_timestamp(
@@ -411,3 +422,50 @@ def history_cache_key(
     key = hashlib.md5(raw.encode()).hexdigest()
 
     return f"history:{key}:{timestamp[:10]}"
+
+
+def historical_cache_key(
+    scope: str,
+    mode: str,
+    year: int,
+    month: int,
+) -> str:
+    return f"{_HISTORY_CACHE_PREFIX}:{scope}:{mode}:{year}-{month:02d}"
+
+
+def historical_cache_ttl(
+    year: int,
+) -> int | None:
+    current_year = timezone.now().year
+    if year < current_year:
+        return None
+    return _HISTORY_CURRENT_YEAR_TTL
+
+
+HISTORY_EARLIEST_TTL = 60 * 60 * 24
+
+
+def get_earliest_possible(
+    game_id: str | None = None,
+) -> str | None:
+    cache_scope = game_id if game_id else "all"
+    cache_key = f"{_HISTORY_CACHE_PREFIX}:earliest:{cache_scope}"
+    cache = caches["default"]
+
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached if cached != "__NONE__" else None
+
+    qs = RunHistory.objects.all()
+    if game_id:
+        qs = qs.filter(run__game_id=game_id)
+
+    earliest_dt = qs.aggregate(Min("start_date"))["start_date__min"]
+
+    if earliest_dt is None:
+        cache.set(cache_key, "__NONE__", timeout=HISTORY_EARLIEST_TTL)
+        return None
+
+    result = earliest_dt.strftime("%Y-%m")
+    cache.set(cache_key, result, timeout=HISTORY_EARLIEST_TTL)
+    return result

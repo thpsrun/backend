@@ -88,12 +88,16 @@ def _build_lbs_run_dict(
 def _build_leaderboard_rows(
     rows: QuerySet,
 ) -> list[dict[str, Any]]:
-    """Build ranked leaderboard entries from an annotated values queryset."""
+    """Builds ranked leaderboard entries from an annotated values queryset.
+
+    Each entry exposes a `player` identity under a nested key, matching the shape
+    used in several endpoints, especially with points.
+
+    Returns:
+        list[dict[str, Any]]
+    """
     result: list[dict[str, Any]] = []
     for i, row in enumerate(rows):
-        nickname = row["player__nickname"]
-        name = row["player__name"]
-
         g1 = row.get("player__user__gradient_1")
         g2 = row.get("player__user__gradient_2")
         g3 = row.get("player__user__gradient_3")
@@ -107,17 +111,29 @@ def _build_leaderboard_rows(
             else None
         )
 
+        country_id = row.get("player__countrycode__id")
+        country_name = row.get("player__countrycode__name")
+        country = (
+            {"id": country_id, "name": country_name, "flag": None}
+            if country_id
+            else None
+        )
+
         result.append(
             {
                 "rank": i + 1,
-                "player_id": row["player_id"],
-                "player_name": nickname if nickname else name,
-                "player_url": row["player__url"],
-                "player_pfp": row["player__pfp"],
                 "total_points": row["total_points"] or 0,
                 "fg_points": row["fg_points"] or 0,
                 "il_points": row["il_points"] or 0,
-                "gradients": gradients,
+                "player": {
+                    "id": row["player_id"],
+                    "name": row["player__name"],
+                    "nickname": row["player__nickname"],
+                    "url": row["player__url"],
+                    "pfp": row["player__pfp"],
+                    "country": country,
+                    "gradients": gradients,
+                },
             }
         )
     return result
@@ -352,12 +368,18 @@ def query_overall_leaderboard() -> list[dict[str, Any]]:
             run__obsolete=False,
             run__vid_status="verified",
         )
+        .exclude(
+            run__v_date__isnull=True,
+            run__date__isnull=True,
+        )
         .values(
             "player_id",
             "player__name",
             "player__nickname",
             "player__url",
             "player__pfp",
+            "player__countrycode__id",
+            "player__countrycode__name",
             "player__user__gradient_1",
             "player__user__gradient_2",
             "player__user__gradient_3",
@@ -382,6 +404,9 @@ def query_game_leaderboard(
         run__obsolete=False,
         run__vid_status="verified",
         run__game_id=game_id,
+    ).exclude(
+        run__v_date__isnull=True,
+        run__date__isnull=True,
     )
 
     if game_slug == "thps4":
@@ -394,6 +419,8 @@ def query_game_leaderboard(
             "player__nickname",
             "player__url",
             "player__pfp",
+            "player__countrycode__id",
+            "player__countrycode__name",
             "player__user__gradient_1",
             "player__user__gradient_2",
             "player__user__gradient_3",
@@ -415,7 +442,10 @@ def query_thps4_oldest_runs(
 ) -> list[dict[str, Any]]:
     runs: QuerySet[Runs] = (
         Runs.objects.select_related("game", "category", "level")
-        .prefetch_related("run_players__player")
+        .prefetch_related(
+            "run_players__player__countrycode",
+            "run_players__player__user",
+        )
         .filter(
             game_id=game_id,
             obsolete=False,
@@ -431,19 +461,30 @@ def query_thps4_oldest_runs(
         all_rp = list(run.run_players.all())  # type: ignore
         rp = all_rp[0] if all_rp else None
         player = rp.player if rp else None
-        if player and player.nickname:
-            player_name = player.nickname
-        elif player:
-            player_name = player.name
+
+        if player and player.countrycode:
+            cc = player.countrycode
+            country = {
+                "id": cc.id,
+                "name": cc.name,
+                "flag": cc.flag.url if cc.flag else None,
+            }
         else:
-            player_name = "Anonymous"
+            country = None
 
         days_held = (date_type.today() - run.date.date()).days if run.date else -1
 
         result.append(
             {
-                "player_id": player.id if player else "",
-                "player_name": player_name,
+                "player": {
+                    "id": player.id if player else "",
+                    "name": player.name if player else "Anonymous",
+                    "nickname": player.nickname if player else None,
+                    "url": player.url if player else "",
+                    "pfp": player.pfp if player else None,
+                    "country": country,
+                    "gradients": extract_gradients(player) if player else None,
+                },
                 "game_name": run.game.name,
                 "game_slug": run.game.slug,
                 "category_name": run.category.name if run.category else None,
@@ -600,27 +641,6 @@ def query_lbs_recent(
 
     result = []
     for run in runs:
-        first_rp = next(iter(run.run_players.all()), None)  # type: ignore
-        if first_rp:
-            player_name = (
-                first_rp.player.nickname
-                if first_rp.player.nickname
-                else first_rp.player.name
-            )
-            player_country = (
-                {
-                    "id": first_rp.player.countrycode.id,
-                    "name": first_rp.player.countrycode.name,
-                }
-                if first_rp.player.countrycode
-                else None
-            )
-            gradients = extract_gradients(first_rp.player)
-        else:
-            player_name = "Anonymous"
-            player_country = None
-            gradients = None
-
         value_slugs = [rvv.value.slug for rvv in run.runvariablevalues_set.all()]
 
         result.append(
@@ -632,9 +652,9 @@ def query_lbs_recent(
                 "p_time": run.p_time,
                 "p_time_secs": run.p_time_secs,
                 "place": run.place,
-                "player_name": player_name,
-                "player_country": player_country,
-                "gradients": gradients,
+                "players": main_player_data_export(
+                    run.run_players.all(),  # type: ignore
+                ),
                 "v_date": run.v_date.isoformat() if run.v_date else None,
                 "video": run.video or None,
                 "value_slugs": value_slugs if value_slugs else None,

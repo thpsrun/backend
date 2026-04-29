@@ -7,5 +7,5 @@ with connection.cursor() as c:
     c.execute(\"INSERT INTO django_migrations (app, name, applied) VALUES ('accounts', '0001_initial', NOW())\")"
 3. python manage.py migrate accounts 0002_auth_user_bridge
 4. python manage.py migrate
-5. python manage.py build_run_history
+5. python manage.py build_run_history --clear
 6. python manage.py build_streaks --all

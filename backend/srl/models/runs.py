@@ -214,6 +214,11 @@ class Runs(models.Model):
             "count towards the player's total."
         ),
     )
+    obsoleted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=("Should only be occupied if `obsolte` is true."),
+    )
     arch_video = models.URLField(
         verbose_name="Archived Video URL",
         blank=True,
