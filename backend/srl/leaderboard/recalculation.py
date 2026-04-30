@@ -7,7 +7,15 @@ from django.conf import settings
 from django.db.models import F, Prefetch, QuerySet
 from django.db.models.functions import Coalesce
 
-from srl.models import Games, Players, RunHistory, Runs
+from srl.models import (
+    Categories,
+    Games,
+    Players,
+    RunHistory,
+    Runs,
+    Variables,
+    VariableValues,
+)
 from srl.models.run_history import RunHistoryEndReason
 from srl.srcom.utils import filter_by_variable_map
 from srl.utils import calculate_bonus, points_formula, runs_share_player
@@ -25,12 +33,67 @@ def get_time_column(
     game_id: str,
     runtype: str = "main",
 ) -> str:
-    """Get the time column to use for a game based on its default timing method."""
+    """Get the game-level time column for a game.
+
+    This is a game-only fallback. To honor the full precedence chain
+    (Variable > Category > Game), use `get_leaderboard_time_column`.
+    """
     game = Games.objects.only("defaulttime", "idefaulttime").get(id=game_id)
     if runtype == "main":
         return TIME_COLUMN_MAP.get(game.defaulttime, "time_secs")
     else:
         return TIME_COLUMN_MAP.get(game.idefaulttime, "time_secs")
+
+
+def get_leaderboard_time_column(
+    leaderboard: dict,
+) -> str:
+    """Resolve the effective time column for a leaderboard variant.
+
+    Precedence: any variable VALUE on the leaderboard with a non-null
+    `defaulttime` wins first; then any variable; then the category's
+    `defaulttime`; then the game's `defaulttime` (or `idefaulttime` for IL).
+
+    Performs up to four small queries; for batch processing across many
+    leaderboards, use `build_leaderboard_metadata` plus `resolve_time_column`.
+    """
+    var_map = leaderboard.get("variable_value_map") or {}
+    if var_map:
+        value_timing = (
+            VariableValues.objects.filter(
+                value__in=list(var_map.values()),
+                defaulttime__isnull=False,
+            )
+            .order_by("var_id")
+            .values_list("defaulttime", flat=True)
+            .first()
+        )
+        if value_timing:
+            return TIME_COLUMN_MAP.get(value_timing, "time_secs")
+
+        var_timing = (
+            Variables.objects.filter(
+                id__in=list(var_map.keys()),
+                defaulttime__isnull=False,
+            )
+            .order_by("id")
+            .values_list("defaulttime", flat=True)
+            .first()
+        )
+        if var_timing:
+            return TIME_COLUMN_MAP.get(var_timing, "time_secs")
+
+    cat_id = leaderboard.get("category_id")
+    if cat_id:
+        cat_timing = (
+            Categories.objects.filter(id=cat_id, defaulttime__isnull=False)
+            .values_list("defaulttime", flat=True)
+            .first()
+        )
+        if cat_timing:
+            return TIME_COLUMN_MAP.get(cat_timing, "time_secs")
+
+    return get_time_column(leaderboard["game_id"], leaderboard["runtype"])
 
 
 def build_game_metadata(
@@ -48,6 +111,99 @@ def build_game_metadata(
         }
         game_is_ce[game.id] = game.is_ce
     return game_time_columns, game_is_ce
+
+
+def build_leaderboard_metadata(
+    leaderboards: list[dict],
+) -> tuple[
+    dict[str, dict[str, str]],
+    dict[str, bool],
+    dict[str, str],
+    dict[str, str],
+    dict[str, str],
+]:
+    """Build all caches needed to resolve timing across many leaderboards."""
+    game_ids = {lb["game_id"] for lb in leaderboards}
+    category_ids = {lb["category_id"] for lb in leaderboards if lb.get("category_id")}
+    variable_ids: set[str] = set()
+    value_ids: set[str] = set()
+    for lb in leaderboards:
+        var_map = lb.get("variable_value_map") or {}
+        variable_ids.update(var_map.keys())
+        value_ids.update(var_map.values())
+
+    game_time_columns, game_is_ce = build_game_metadata(game_ids)
+
+    value_timings: dict[str, str] = {}
+    if value_ids:
+        value_timings = dict(
+            VariableValues.objects.filter(
+                value__in=value_ids,
+                defaulttime__isnull=False,
+            ).values_list("value", "defaulttime"),
+        )
+
+    variable_timings: dict[str, str] = {}
+    if variable_ids:
+        variable_timings = dict(
+            Variables.objects.filter(
+                id__in=variable_ids,
+                defaulttime__isnull=False,
+            ).values_list("id", "defaulttime"),
+        )
+
+    category_timings: dict[str, str] = {}
+    if category_ids:
+        category_timings = dict(
+            Categories.objects.filter(
+                id__in=category_ids,
+                defaulttime__isnull=False,
+            ).values_list("id", "defaulttime"),
+        )
+
+    return (
+        game_time_columns,
+        game_is_ce,
+        value_timings,
+        variable_timings,
+        category_timings,
+    )
+
+
+def resolve_time_column(
+    leaderboard: dict,
+    *,
+    game_time_columns: dict[str, dict[str, str]],
+    value_timings: dict[str, str],
+    variable_timings: dict[str, str],
+    category_timings: dict[str, str],
+) -> str:
+    """Resolve a leaderboard's time column from precomputed metadata.
+
+    Mirrors `get_leaderboard_time_column` but reads from caches instead of
+    the database, for use inside batch loops.
+    """
+    var_map = leaderboard.get("variable_value_map") or {}
+    for var_id in sorted(var_map.keys()):
+        val_id = var_map[var_id]
+        vt = value_timings.get(val_id)
+        if vt:
+            return TIME_COLUMN_MAP.get(vt, "time_secs")
+    for var_id in sorted(var_map.keys()):
+        vt = variable_timings.get(var_id)
+        if vt:
+            return TIME_COLUMN_MAP.get(vt, "time_secs")
+
+    cat_id = leaderboard.get("category_id")
+    if cat_id:
+        ct = category_timings.get(cat_id)
+        if ct:
+            return TIME_COLUMN_MAP.get(ct, "time_secs")
+
+    return (
+        game_time_columns.get(leaderboard["game_id"], {}).get(leaderboard["runtype"])
+        or "time_secs"
+    )
 
 
 def _build_event_stream(
@@ -501,6 +657,9 @@ def process_leaderboard(
     dry_run: bool,
     game_is_ce: dict[str, bool],
     game_time_columns: dict[str, dict[str, str]],
+    value_timings: dict[str, str] | None = None,
+    variable_timings: dict[str, str] | None = None,
+    category_timings: dict[str, str] | None = None,
 ) -> tuple[int, int, int]:
     runs = list(
         get_runs_for_leaderboard(leaderboard).prefetch_related(
@@ -513,7 +672,13 @@ def process_leaderboard(
     game_id = leaderboard["game_id"]
     runtype = leaderboard["runtype"]
     is_ce = game_is_ce.get(game_id, False)
-    time_field = game_time_columns.get(game_id, {}).get(runtype) or "time_secs"
+    time_field = resolve_time_column(
+        leaderboard,
+        game_time_columns=game_time_columns,
+        value_timings=value_timings or {},
+        variable_timings=variable_timings or {},
+        category_timings=category_timings or {},
+    )
     max_points = (
         settings.POINTS_MAX_CE
         if is_ce

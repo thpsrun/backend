@@ -70,6 +70,7 @@ def apply_value_embeds(
                 "name": value.var.name,
                 "slug": value.var.slug,
                 "scope": value.var.scope,
+                "defaulttime": value.var.defaulttime,
                 "archive": value.var.archive,
             }
 
@@ -624,12 +625,14 @@ def get_variable(
             "name": variable.name,
             "slug": variable.slug,
             "scope": variable.scope,
+            "defaulttime": variable.defaulttime,
             "archive": variable.archive,
             "values": [
                 {
                     "value": val.value,
                     "name": val.name,
                     "slug": val.slug,
+                    "defaulttime": val.defaulttime,
                     "archive": val.archive,
                     "rules": val.rules,
                 }

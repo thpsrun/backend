@@ -251,7 +251,16 @@ class Runs(models.Model):
     def _primary_timing_method(
         self,
     ) -> str:
-        # Category timing overrides game defaults; IL runs use idefaulttime
+        # Precedence: VariableValue > Variable > Category > Game (idefaulttime for IL).
+        # Callers should prefetch runvariablevalues_set__value and
+        # runvariablevalues_set__variable to avoid extra queries when iterating runs.
+        rvvs = list(self.runvariablevalues_set.all())
+        for rvv in rvvs:
+            if rvv.value.defaulttime:
+                return rvv.value.defaulttime
+        for rvv in rvvs:
+            if rvv.variable.defaulttime:
+                return rvv.variable.defaulttime
         if self.category and self.category.defaulttime:
             return self.category.defaulttime
         if self.runtype == "il":

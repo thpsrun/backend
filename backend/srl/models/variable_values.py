@@ -1,6 +1,7 @@
 from django.db import models
 from django.utils.text import slugify
 
+from srl.models.base import LeaderboardChoices
 from srl.models.variables import Variables
 
 
@@ -44,6 +45,19 @@ class VariableValues(models.Model):
             "Controls display order within this variable's values. "
             "order=0 items sort alphabetically as a fallback. "
             "Items with order>=1 sort first in ascending order."
+        ),
+    )
+    defaulttime = models.CharField(
+        verbose_name="Default Time",
+        choices=LeaderboardChoices.choices,
+        null=True,
+        blank=True,
+        default=None,
+        help_text=(
+            "When not set, the value inherits its variable's timing method (or further up "
+            "the chain). When set, this is the most specific override and takes precedence "
+            "over the parent variable, the category, and the game. "
+            "Precedence: VariableValue > Variable > Category > Game."
         ),
     )
     archive = models.BooleanField(

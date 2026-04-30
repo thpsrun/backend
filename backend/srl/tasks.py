@@ -8,10 +8,10 @@ from django.db import transaction
 from django.db.models import Min
 
 from srl.leaderboard.recalculation import (
-    build_game_metadata,
+    build_leaderboard_metadata,
     clear_leaderboard_history,
+    get_leaderboard_time_column,
     get_runs_for_leaderboard,
-    get_time_column,
     process_leaderboard,
 )
 from srl.leaderboard.streaks import apply_streak_to_run
@@ -26,8 +26,13 @@ def recalculate_leaderboard_task(
     Clears existing RunHistory for the variant, then rebuilds from scratch.
     Dispatched by recalculate_run() when a run is verified.
     """
-    game_ids = {leaderboard_dict["game_id"]}
-    game_time_columns, game_is_ce = build_game_metadata(game_ids)
+    (
+        game_time_columns,
+        game_is_ce,
+        value_timings,
+        variable_timings,
+        category_timings,
+    ) = build_leaderboard_metadata([leaderboard_dict])
 
     with transaction.atomic():
         clear_leaderboard_history(leaderboard_dict)
@@ -36,6 +41,9 @@ def recalculate_leaderboard_task(
             dry_run=False,
             game_is_ce=game_is_ce,
             game_time_columns=game_time_columns,
+            value_timings=value_timings,
+            variable_timings=variable_timings,
+            category_timings=category_timings,
         )
 
 
@@ -48,10 +56,7 @@ def recalculate_streaks_task(
     Finds the fastest verified run on the leaderboard and applies streak logic.
     Only dispatched when recalculate_run detects a potential WR change.
     """
-    time_col = get_time_column(
-        leaderboard_dict["game_id"],
-        leaderboard_dict["runtype"],
-    )
+    time_col = get_leaderboard_time_column(leaderboard_dict)
 
     runs_qs = (
         get_runs_for_leaderboard(leaderboard_dict)

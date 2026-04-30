@@ -1,7 +1,10 @@
 from celery import chain
 from django.db.models import Min
 
-from srl.leaderboard.recalculation import get_runs_for_leaderboard, get_time_column
+from srl.leaderboard.recalculation import (
+    get_leaderboard_time_column,
+    get_runs_for_leaderboard,
+)
 from srl.leaderboard.resolution import resolve_leaderboard
 from srl.models.runs import Runs
 from srl.tasks import recalculate_leaderboard_task, recalculate_streaks_task
@@ -12,10 +15,7 @@ def _wr_check(
     leaderboard: dict,
 ) -> bool:
     """Check if a run's time could make it a WR on its leaderboard."""
-    time_col = get_time_column(
-        leaderboard["game_id"],
-        leaderboard["runtype"],
-    )
+    time_col = get_leaderboard_time_column(leaderboard)
 
     run_time = getattr(run, time_col) or 0
     if run_time <= 0:

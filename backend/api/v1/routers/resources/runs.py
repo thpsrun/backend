@@ -559,6 +559,7 @@ def create_run(
             .select_related("category", "level")
             .prefetch_related(
                 "run_players__player__countrycode",
+                "runvariablevalues_set__variable",
                 "runvariablevalues_set__value",
             )
             .first()
@@ -800,6 +801,7 @@ def update_run(
             .select_related("category", "level")
             .prefetch_related(
                 "run_players__player__countrycode",
+                "runvariablevalues_set__variable",
                 "runvariablevalues_set__value",
             )
             .first()

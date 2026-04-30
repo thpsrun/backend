@@ -2,6 +2,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.text import slugify
 
+from srl.models.base import LeaderboardChoices
 from srl.models.categories import Categories
 from srl.models.games import Games
 from srl.models.levels import Levels
@@ -62,6 +63,19 @@ class Variables(models.Model):
     scope = models.CharField(
         verbose_name="Scope (FG/IL)",
         choices=VariableScope.choices,
+    )
+    defaulttime = models.CharField(
+        verbose_name="Default Time",
+        choices=LeaderboardChoices.choices,
+        null=True,
+        blank=True,
+        default=None,
+        help_text=(
+            "When not set, the variable inherits its category's timing method (or the game's "
+            "if the category does not set one). When set, this takes precedence over both the "
+            "category and game timing for any run that includes this variable. "
+            "Precedence: Variable > Category > Game."
+        ),
     )
     level = models.ForeignKey(
         Levels,

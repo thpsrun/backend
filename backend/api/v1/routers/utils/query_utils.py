@@ -2,9 +2,10 @@ from datetime import date as date_type
 from typing import Any
 
 from django.core.cache import caches
-from django.db.models import Case, F, Q, QuerySet, Sum, When
+from django.db.models import Case, F, OuterRef, Q, QuerySet, Subquery, Sum, When
+from django.db.models.expressions import Expression
 from django.db.models.functions import TruncDate
-from srl.models import Games, Players, RunHistory, RunPlayers, Runs
+from srl.models import Games, Players, RunHistory, RunPlayers, Runs, RunVariableValues
 
 from api.v1.routers.utils import (
     main_pbs_cache_key,
@@ -14,6 +15,69 @@ from api.v1.routers.utils import (
 )
 from api.v1.schemas.players import extract_gradients
 from api.v1.schemas.runs import PlayerRunEmbedSchema, compute_run_subcategory
+
+
+def _value_timing_subquery() -> Subquery:
+    """Subquery returning the first value-level `defaulttime` for a run.
+
+    Picks the lowest-variable-id row on the run whose linked `VariableValues`
+    has a non-null `defaulttime`. This is the most-specific level in the
+    precedence chain.
+    """
+    return Subquery(
+        RunVariableValues.objects.filter(
+            run=OuterRef("pk"),
+            value__defaulttime__isnull=False,
+        )
+        .order_by("variable_id")
+        .values("value__defaulttime")[:1],
+    )
+
+
+def _variable_timing_subquery() -> Subquery:
+    """Subquery returning the first variable-level `defaulttime` for a run.
+
+    Picks the lowest-id variable on the run that has a non-null `defaulttime`,
+    matching the precedence used elsewhere in the timing resolver chain.
+    """
+    return Subquery(
+        RunVariableValues.objects.filter(
+            run=OuterRef("pk"),
+            variable__defaulttime__isnull=False,
+        )
+        .order_by("variable_id")
+        .values("variable__defaulttime")[:1],
+    )
+
+
+def _primary_time_secs_expr() -> Expression:
+    """Build a Case expression that selects the time_secs field per run.
+
+    Honors the full VariableValue > Variable > Category > Game precedence
+    chain. Requires the queryset to be annotated with `_val_timing` via
+    `_value_timing_subquery` and `_var_timing` via `_variable_timing_subquery`.
+    """
+    return Case(
+        When(_val_timing="realtime_noloads", then=F("timenl_secs")),
+        When(_val_timing="ingame", then=F("timeigt_secs")),
+        When(_val_timing="realtime", then=F("time_secs")),
+        When(_var_timing="realtime_noloads", then=F("timenl_secs")),
+        When(_var_timing="ingame", then=F("timeigt_secs")),
+        When(_var_timing="realtime", then=F("time_secs")),
+        When(category__defaulttime="realtime_noloads", then=F("timenl_secs")),
+        When(category__defaulttime="ingame", then=F("timeigt_secs")),
+        When(category__defaulttime="realtime", then=F("time_secs")),
+        When(
+            runtype="il",
+            game__idefaulttime="realtime_noloads",
+            then=F("timenl_secs"),
+        ),
+        When(runtype="il", game__idefaulttime="ingame", then=F("timeigt_secs")),
+        When(runtype="il", game__idefaulttime="realtime", then=F("time_secs")),
+        When(game__defaulttime="realtime_noloads", then=F("timenl_secs")),
+        When(game__defaulttime="ingame", then=F("timeigt_secs")),
+        default=F("time_secs"),
+    )
 
 
 def _export_players(
@@ -193,6 +257,7 @@ def query_latest_runs(
         .prefetch_related(
             "run_players__player__countrycode",
             "run_players__player__user",
+            "runvariablevalues_set__variable",
             "runvariablevalues_set__value",
         )
         .filter(**filters)
@@ -239,6 +304,7 @@ def query_records() -> list[dict[str, Any]]:
         .prefetch_related(
             "run_players__player__countrycode",
             "run_players__player__user",
+            "runvariablevalues_set__variable",
             "runvariablevalues_set__value",
         )
         .filter(
@@ -306,17 +372,11 @@ def query_stats() -> dict[str, Any]:
     player_count = Players.objects.only("id").all().count()
 
     total_time_secs = (
-        Runs.objects.aggregate(
-            total=Sum(
-                Case(
-                    When(
-                        category__defaulttime="realtime_noloads",
-                        then=F("timenl_secs"),
-                    ),
-                    When(category__defaulttime="ingame", then=F("timeigt_secs")),
-                    default=F("time_secs"),
-                )
-            ),
+        Runs.objects.annotate(
+            _val_timing=_value_timing_subquery(),
+            _var_timing=_variable_timing_subquery(),
+        ).aggregate(
+            total=Sum(_primary_time_secs_expr()),
         )["total"]
         or 0.0
     )
@@ -337,6 +397,7 @@ def query_player_runs(
         .prefetch_related(
             "run_players__player__countrycode",
             "run_players__player__user",
+            "runvariablevalues_set__variable",
             "runvariablevalues_set__value",
         )
         .filter(
@@ -464,6 +525,8 @@ def query_oldest_il_runs(
         .prefetch_related(
             "run_players__player__countrycode",
             "run_players__player__user",
+            "runvariablevalues_set__variable",
+            "runvariablevalues_set__value",
         )
         .filter(
             game_id=game_id,
@@ -586,6 +649,8 @@ def query_lbs_runs(
         .prefetch_related(
             "run_players__player__countrycode",
             "run_players__player__user",
+            "runvariablevalues_set__variable",
+            "runvariablevalues_set__value",
         )
         .order_by("place", "date")
     )
@@ -619,17 +684,11 @@ def query_lbs_stats(
     )
 
     total_time_secs = (
-        base.aggregate(
-            total=Sum(
-                Case(
-                    When(
-                        category__defaulttime="realtime_noloads",
-                        then=F("timenl_secs"),
-                    ),
-                    When(category__defaulttime="ingame", then=F("timeigt_secs")),
-                    default=F("time_secs"),
-                )
-            ),
+        base.annotate(
+            _val_timing=_value_timing_subquery(),
+            _var_timing=_variable_timing_subquery(),
+        ).aggregate(
+            total=Sum(_primary_time_secs_expr()),
         )["total"]
         or 0.0
     )
@@ -657,6 +716,7 @@ def query_lbs_recent(
         .prefetch_related(
             "run_players__player__countrycode",
             "run_players__player__user",
+            "runvariablevalues_set__variable",
             "runvariablevalues_set__value",
         )
         .order_by("-v_date")[:5]
@@ -707,6 +767,8 @@ def query_lbs_il_summary(
         .prefetch_related(
             "run_players__player__countrycode",
             "run_players__player__user",
+            "runvariablevalues_set__variable",
+            "runvariablevalues_set__value",
         )
         .order_by("place", "date")
     )
@@ -817,6 +879,7 @@ def query_wr_history(
         .prefetch_related(
             "run__run_players__player",
             "run__run_players__player__user",
+            "run__runvariablevalues_set__variable",
             "run__runvariablevalues_set__value",
         )
     )

@@ -8,12 +8,15 @@ from django.core.cache import caches
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from srl.leaderboard.recalculation import TIME_COLUMN_MAP, process_leaderboard
+from srl.leaderboard.recalculation import (
+    build_leaderboard_metadata,
+    process_leaderboard,
+)
 from srl.models import (
     Games,
     RunHistory,
     Runs,
-    RunVariableValues,  # noqa: PLC0415
+    RunVariableValues,
 )
 
 
@@ -147,22 +150,21 @@ class Command(BaseCommand):
             total_leaderboards = len(leaderboards)
             self.stdout.write(f"Found {total_leaderboards} leaderboards to process.\n")
 
+            (
+                game_time_columns,
+                game_is_ce,
+                value_timings,
+                variable_timings,
+                category_timings,
+            ) = build_leaderboard_metadata(leaderboards)
+
             game_ids = {lb["game_id"] for lb in leaderboards}
-            game_time_columns: dict[str, dict[str, str]] = {}
-            game_is_ce: dict[str, bool] = {}
             game_slugs: dict[str, str] = {}
             for game in Games.objects.filter(id__in=game_ids).only(
                 "id",
                 "name",
                 "slug",
-                "defaulttime",
-                "idefaulttime",
             ):
-                game_time_columns[game.id] = {
-                    "main": TIME_COLUMN_MAP.get(game.defaulttime, "time_secs"),
-                    "il": TIME_COLUMN_MAP.get(game.idefaulttime, "time_secs"),
-                }
-                game_is_ce[game.id] = game.is_ce
                 game_slugs[game.id] = game.slug.upper() if game.slug else game.id
 
             total_entries = 0
@@ -183,6 +185,9 @@ class Command(BaseCommand):
                                 dry_run,
                                 game_is_ce,
                                 game_time_columns,
+                                value_timings=value_timings,
+                                variable_timings=variable_timings,
+                                category_timings=category_timings,
                             )
                         )
 

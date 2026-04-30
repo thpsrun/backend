@@ -85,7 +85,10 @@ def apply_player_embeds(
         qs = (
             Runs.objects.filter(run_players__player=player, vid_status="verified")
             .select_related("game", "category", "level")
-            .prefetch_related("runvariablevalues_set__value")
+            .prefetch_related(
+                "runvariablevalues_set__variable",
+                "runvariablevalues_set__value",
+            )
             .order_by("-v_date")
         )
         if not include_obsolete:
