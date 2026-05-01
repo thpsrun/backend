@@ -25,8 +25,11 @@ from srl.models import (
     VariableValues,
 )
 from srl.views import (
-    ManageMainVisibilityView,
-    ManageOrderingView,
+    GameReorderView,
+    GameVisibilityView,
+    LegacyOrderingRedirectView,
+    LegacyVisibilityRedirectView,
+    ManageGameDisplayView,
     RefreshGameRunsView,
     UpdateGameRunsView,
     UpdateGameView,
@@ -105,11 +108,11 @@ class GameAdmin(admin.ModelAdmin):
         _: HttpRequest,
         queryset: QuerySet["Games"],
     ) -> HttpResponse:
-        """Opens the main page visibility editor for the selected game."""
+        """Opens the merged display editor for the selected game."""
         game = queryset.first()
         if game:
             return redirect(
-                reverse("admin:manage_main_visibility", args=[game.id]),
+                reverse("admin:srl_game_display", args=[game.id]),
             )
         return redirect(reverse("admin:srl_games_changelist"))
 
@@ -119,11 +122,11 @@ class GameAdmin(admin.ModelAdmin):
         _: HttpRequest,
         queryset: QuerySet["Games"],
     ) -> HttpResponse:
-        """Opens the ordering editor for the selected game."""
+        """Opens the merged display editor for the selected game."""
         game = queryset.first()
         if game:
             return redirect(
-                reverse("admin:manage_ordering", args=[game.id]),
+                reverse("admin:srl_game_display", args=[game.id]),
             )
         return redirect(reverse("admin:srl_games_changelist"))
 
@@ -149,14 +152,29 @@ class GameAdmin(admin.ModelAdmin):
                 name="refresh_game_runs",
             ),
             path(
+                "<str:game_id>/manage-display/",
+                self.admin_site.admin_view(ManageGameDisplayView.as_view()),
+                name="srl_game_display",
+            ),
+            path(
+                "<str:game_id>/reorder/",
+                self.admin_site.admin_view(GameReorderView.as_view()),
+                name="srl_game_reorder",
+            ),
+            path(
+                "<str:game_id>/visibility/",
+                self.admin_site.admin_view(GameVisibilityView.as_view()),
+                name="srl_game_visibility",
+            ),
+            path(
                 "<str:game_id>/manage-main-visibility/",
-                self.admin_site.admin_view(ManageMainVisibilityView.as_view()),
-                name="manage_main_visibility",
+                self.admin_site.admin_view(LegacyVisibilityRedirectView.as_view()),
+                name="srl_game_legacy_main_visibility",
             ),
             path(
                 "<str:game_id>/manage-ordering/",
-                self.admin_site.admin_view(ManageOrderingView.as_view()),
-                name="manage_ordering",
+                self.admin_site.admin_view(LegacyOrderingRedirectView.as_view()),
+                name="srl_game_legacy_ordering",
             ),
         ]
         return custom_urls + urls
