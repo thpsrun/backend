@@ -17,12 +17,14 @@ from api.v1.routers.utils.query_utils import (
     query_game_leaderboard,
     query_oldest_il_runs,
     query_overall_leaderboard,
+    query_wr_count,
 )
 from api.v1.schemas.base import ErrorResponse
 from api.v1.schemas.leaderboard import (
     GameLeaderboardEntrySchema,
     OldestRunEntrySchema,
     PointLeaderboardEntrySchema,
+    WRCountEntrySchema,
 )
 
 router = Router()
@@ -83,10 +85,17 @@ Supported Embeds:
   excluded). THPS4 returns 10 entries; THPS12 and THPS34 return 5 each.
   Entries are sorted oldest-first by submission date; `days_held` is -1 when
   the submission date is unknown.
+- `wr-count` (THPS4, THPS12, THPS34 only): Adds a `wr_count` key listing every
+  player who currently holds at least one IL world record for the game,
+  ranked by trophy count descending (case-insensitive name as tiebreaker).
+  THPS4 excludes `zoo-feed-the-hippos`. Each (level, category, variable)
+  WR row counts independently; co-op runs credit every attached player.
 
 Examples:
 - `/website/game/thps4/pointslb` - THPS4 leaderboard
 - `/website/game/thps4/pointslb?embed=oldest-runs` - THPS4 leaderboard with oldest IL WRs
+- `/website/game/thps4/pointslb?embed=wr-count` - THPS4 leaderboard with IL WR trophy counts
+- `/website/game/thps4/pointslb?embed=oldest-runs,wr-count` - THPS4 with both embeds
 - `/website/game/thps12/pointslb?embed=oldest-runs` - THPS1+2 with oldest IL WRs
 - `/website/game/n2680o1p/pointslb` - Leaderboard by game ID
 """,
@@ -97,7 +106,12 @@ def get_game_leaderboard(
     game_id: str,
     embed: Annotated[
         str | None,
-        Query(description="Optional: 'oldest-runs' for oldest IL WRs embed (THPS4/12/34)"),
+        Query(
+            description=(
+                "Optional comma-separated embeds (THPS4/12/34): "
+                "'oldest-runs' for oldest IL WRs, 'wr-count' for IL WR trophy counts."
+            ),
+        ),
     ] = None,
 ) -> Status:
     if len(game_id) > 15:
@@ -124,7 +138,7 @@ def get_game_leaderboard(
 
         embed_fields = [e.strip() for e in embed.split(",")] if embed else []
 
-        valid_embed_types = {"oldest-runs"}
+        valid_embed_types = {"oldest-runs", "wr-count"}
         invalid_embeds = [e for e in embed_fields if e not in valid_embed_types]
         if invalid_embeds:
             return Status(
@@ -154,6 +168,15 @@ def get_game_leaderboard(
             )
             response["oldest_runs"] = [
                 OldestRunEntrySchema(**entry).model_dump() for entry in oldest_data
+            ]
+
+        if game.slug in OLDEST_RUNS_LIMITS and "wr-count" in embed_fields:
+            wr_count_data = check_cache_query(
+                game_leaderboard_cache_key(game.id) + ":wr_count",
+                lambda: query_wr_count(game.id, game.slug),
+            )
+            response["wr_count"] = [
+                WRCountEntrySchema(**entry).model_dump() for entry in wr_count_data
             ]
 
         return Status(200, response)

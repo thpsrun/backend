@@ -124,3 +124,34 @@ class OldestRunEntrySchema(BaseEmbedSchema):
     time: str | None = None
     date: datetime | None = None
     days_held: int = Field(..., ge=-1)
+
+
+class WRCountEntrySchema(BaseEmbedSchema):
+    """Schema for a single entry in the wr-count embed.
+
+    Attributes:
+        player (LeaderboardPlayerEmbed): Nested player identity.
+        count (int): Number of currently-held IL world records for the game.
+            Counts each (level, category, variable-combo) WR row independently;
+            for thps4 the `zoo-feed-the-hippos` level is excluded.
+    """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "player": {
+                    "id": "v8lponvj",
+                    "name": "PlayerOne",
+                    "nickname": None,
+                    "url": "https://speedrun.com/user/PlayerOne",
+                    "pfp": None,
+                    "country": {"id": "us", "name": "United States", "flag": None},
+                    "gradients": None,
+                },
+                "count": 7,
+            },
+        },
+    )
+
+    player: LeaderboardPlayerEmbed
+    count: int = Field(..., ge=1)

@@ -2,7 +2,7 @@ from datetime import date as date_type
 from typing import Any
 
 from django.core.cache import caches
-from django.db.models import Case, F, OuterRef, Q, QuerySet, Subquery, Sum, When
+from django.db.models import Case, Count, F, OuterRef, Q, QuerySet, Subquery, Sum, When
 from django.db.models.expressions import Expression
 from django.db.models.functions import TruncDate
 from srl.models import Games, Players, RunHistory, RunPlayers, Runs, RunVariableValues
@@ -498,6 +498,36 @@ def query_game_leaderboard(
     return _build_leaderboard_rows(rows)
 
 
+def _build_player_payload(
+    player: Players | None,
+) -> dict[str, Any]:
+    """Build the standard nested player block used by leaderboard embeds.
+
+    Returns the same shape as `LeaderboardPlayerEmbed`. Anonymous (no player)
+    runs collapse to a placeholder block with empty id/url and a name of
+    "Anonymous" - matches the prior inline behavior in `query_oldest_il_runs`.
+    """
+    if player and player.countrycode:
+        cc = player.countrycode
+        country: dict[str, Any] | None = {
+            "id": cc.id,
+            "name": cc.name,
+            "flag": cc.flag.url if cc.flag else None,
+        }
+    else:
+        country = None
+
+    return {
+        "id": player.id if player else "",
+        "name": player.name if player else "Anonymous",
+        "nickname": player.nickname if player else None,
+        "url": player.url if player else "",
+        "pfp": player.pfp if player else None,
+        "country": country,
+        "gradients": extract_gradients(player) if player else None,
+    }
+
+
 OLDEST_RUNS_LIMITS: dict[str, int] = {
     "thps4": 10,
     "thps12": 5,
@@ -548,29 +578,11 @@ def query_oldest_il_runs(
         rp = all_rp[0] if all_rp else None
         player = rp.player if rp else None
 
-        if player and player.countrycode:
-            cc = player.countrycode
-            country = {
-                "id": cc.id,
-                "name": cc.name,
-                "flag": cc.flag.url if cc.flag else None,
-            }
-        else:
-            country = None
-
         days_held = (date_type.today() - run.date.date()).days if run.date else -1
 
         result.append(
             {
-                "player": {
-                    "id": player.id if player else "",
-                    "name": player.name if player else "Anonymous",
-                    "nickname": player.nickname if player else None,
-                    "url": player.url if player else "",
-                    "pfp": player.pfp if player else None,
-                    "country": country,
-                    "gradients": extract_gradients(player) if player else None,
-                },
+                "player": _build_player_payload(player),
                 "game_name": run.game.name,
                 "game_slug": run.game.slug,
                 "category_name": run.category.name if run.category else None,
@@ -582,6 +594,64 @@ def query_oldest_il_runs(
             }
         )
 
+    return result
+
+
+def query_wr_count(
+    game_id: str,
+    game_slug: str,
+) -> list[dict[str, Any]]:
+    """Return the IL world record count per player for a supported game.
+
+    Eligible runs are first-place IL runs that are not obsolete and have
+    `vid_status="verified"`. THPS4 excludes the `zoo-feed-the-hippos` level
+    (matching points calculation behavior). Each qualifying run row counts
+    as one trophy; a player holding WR in two variant categories of the
+    same level scores 2. Co-op runs credit every attached `run_player`.
+
+    Sorted by count descending, then player name case-insensitive ascending.
+    Returns every player with at least one trophy. Unsupported game slugs
+    return an empty list.
+    """
+    if game_slug not in OLDEST_RUNS_LIMITS:
+        return []
+
+    qs: QuerySet[Runs] = Runs.objects.filter(
+        game_id=game_id,
+        runtype="il",
+        obsolete=False,
+        vid_status="verified",
+        place=1,
+    )
+
+    if game_slug == "thps4":
+        qs = qs.exclude(level__slug="zoo-feed-the-hippos")
+
+    rows = (
+        RunPlayers.objects.filter(run__in=qs)
+        .values("player_id")
+        .annotate(count=Count("run_id", distinct=True))
+    )
+
+    player_ids = [row["player_id"] for row in rows]
+    players_by_id = {
+        p.id: p
+        for p in Players.objects.select_related("countrycode", "user").filter(
+            id__in=player_ids,
+        )
+    }
+
+    result: list[dict[str, Any]] = []
+    for row in rows:
+        player = players_by_id.get(row["player_id"])
+        result.append(
+            {
+                "player": _build_player_payload(player),
+                "count": row["count"],
+            }
+        )
+
+    result.sort(key=lambda r: (-r["count"], r["player"]["name"].lower()))
     return result
 
 
