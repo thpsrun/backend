@@ -1,200 +1,42 @@
-{% extends "admin/base_site.html" %}
+{% extends "admin/srl/admin_custom_base.html" %}
 {% load i18n %}
 
 {% block title %}Manage Nav Ordering{% endblock %}
 
-{% block content %}
-<h2>Navigation Item Ordering</h2>
+{% block admin_custom_body %}
+<h2>Navigation Ordering</h2>
 <p>
-    Use the arrow buttons to reorder items within their group. Items with an explicit order (&ge; 1)
-    sort first. Items at order 0 (shown dimmed) fall back to alphabetical order in the API.
+    Drag items to reorder. Drag across parents to move; a confirmation dialog
+    appears for cross-parent moves. Use up/down buttons for keyboard reorder
+    within the same parent. "Undo" appears in the toast for ~5 seconds.
 </p>
 
-{% if messages %}
-<ul class="messagelist">
-    {% for message in messages %}
-    <li class="{{ message.tags }}">{{ message }}</li>
+<input type="hidden" id="page_loaded_at" value="{{ page_loaded_at }}">
+
+<div class="adm-toolbar">
+    <input
+        type="search"
+        class="adm-search"
+        placeholder="Filter nav items..."
+        data-search-target="adm-tree-root"
+    >
+</div>
+
+<ul
+    id="adm-tree-root"
+    class="adm-list adm-tree"
+    data-sortable-scope="nav"
+    data-sortable-group="nav"
+    data-list-id="root"
+    data-parent-id=""
+    data-parent-name="(root)"
+    data-reorder-url="{% url 'admin:nav_navitem_reorder' %}"
+>
+    {% for node in tree %}
+    {% include "admin/nav/nav_node.html" with node=node %}
     {% endfor %}
 </ul>
-{% endif %}
-
-<h3>Top-Level Items</h3>
-{% if top_level %}
-<table style="border-collapse: collapse; width: 100%; max-width: 620px;">
-    <thead>
-        <tr>
-            <th style="text-align: left; padding: 8px; border-bottom: 2px solid var(--hairline-color);">Name</th>
-            <th style="text-align: center; padding: 8px; border-bottom: 2px solid var(--hairline-color); width: 70px;">Order</th>
-            <th style="text-align: center; padding: 8px; border-bottom: 2px solid var(--hairline-color); width: 90px;">Move</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for item in top_level %}
-        <tr {% if item.order == 0 %}style="opacity: 0.6;"{% endif %}>
-            <td style="padding: 8px;">
-                {{ item.name }}
-                {% if item.order == 0 %}<span style="color: var(--quiet-link-fg); font-size: 0.8em;">(unordered)</span>{% endif %}
-            </td>
-            <td style="text-align: center; padding: 8px;">{{ item.order }}</td>
-            <td style="text-align: center; padding: 8px; white-space: nowrap;">
-                <form method="post" style="display: inline;">
-                    {% csrf_token %}
-                    <input type="hidden" name="item_id" value="{{ item.pk }}">
-                    <input type="hidden" name="parent_id" value="">
-                    <input type="hidden" name="direction" value="up">
-                    <button type="submit" {% if forloop.first %}disabled{% endif %} style="padding: 2px 8px; cursor: pointer;">&#8593;</button>
-                </form>
-                <form method="post" style="display: inline;">
-                    {% csrf_token %}
-                    <input type="hidden" name="item_id" value="{{ item.pk }}">
-                    <input type="hidden" name="parent_id" value="">
-                    <input type="hidden" name="direction" value="down">
-                    <button type="submit" {% if forloop.last %}disabled{% endif %} style="padding: 2px 8px; cursor: pointer;">&#8595;</button>
-                </form>
-            </td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
-{% else %}
-<p><em>No top-level nav items.</em></p>
-{% endif %}
-
-{% for group in groups %}
-{% if group.children %}
-<h3 style="margin-top: 30px;">{{ group.item.name }} &mdash; Children</h3>
-<table style="border-collapse: collapse; width: 100%; max-width: 620px;">
-    <thead>
-        <tr>
-            <th style="text-align: left; padding: 8px; border-bottom: 2px solid var(--hairline-color);">Name</th>
-            <th style="text-align: center; padding: 8px; border-bottom: 2px solid var(--hairline-color); width: 70px;">Order</th>
-            <th style="text-align: center; padding: 8px; border-bottom: 2px solid var(--hairline-color); width: 90px;">Move</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for child in group.children %}
-        <tr {% if child.item.order == 0 %}style="opacity: 0.6;"{% endif %}>
-            <td style="padding: 8px;">
-                {{ child.item.name }}
-                {% if child.item.url %}<span style="color: var(--quiet-link-fg); font-size: 0.8em;">({{ child.item.url }})</span>{% endif %}
-                {% if child.item.order == 0 %}<span style="color: var(--quiet-link-fg); font-size: 0.8em;">(unordered)</span>{% endif %}
-            </td>
-            <td style="text-align: center; padding: 8px;">{{ child.item.order }}</td>
-            <td style="text-align: center; padding: 8px; white-space: nowrap;">
-                <form method="post" style="display: inline;">
-                    {% csrf_token %}
-                    <input type="hidden" name="item_id" value="{{ child.item.pk }}">
-                    <input type="hidden" name="parent_id" value="{{ group.item.pk }}">
-                    <input type="hidden" name="direction" value="up">
-                    <button type="submit" {% if forloop.first %}disabled{% endif %} style="padding: 2px 8px; cursor: pointer;">&#8593;</button>
-                </form>
-                <form method="post" style="display: inline;">
-                    {% csrf_token %}
-                    <input type="hidden" name="item_id" value="{{ child.item.pk }}">
-                    <input type="hidden" name="parent_id" value="{{ group.item.pk }}">
-                    <input type="hidden" name="direction" value="down">
-                    <button type="submit" {% if forloop.last %}disabled{% endif %} style="padding: 2px 8px; cursor: pointer;">&#8595;</button>
-                </form>
-            </td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
-
-{% for child in group.children %}
-{% if child.grandchildren %}
-<h4 style="margin-top: 20px; margin-bottom: 4px; margin-left: 20px;">
-    {{ group.item.name }} &rarr; {{ child.item.name }} &mdash; Children
-</h4>
-<table style="border-collapse: collapse; width: 100%; max-width: 620px; margin-left: 20px;">
-    <thead>
-        <tr>
-            <th style="text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--hairline-color);">Name</th>
-            <th style="text-align: center; padding: 6px 8px; border-bottom: 1px solid var(--hairline-color); width: 70px;">Order</th>
-            <th style="text-align: center; padding: 6px 8px; border-bottom: 1px solid var(--hairline-color); width: 90px;">Move</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for gc in child.grandchildren %}
-        <tr {% if gc.item.order == 0 %}style="opacity: 0.6;"{% endif %}>
-            <td style="padding: 6px 8px;">
-                {{ gc.item.name }}
-                {% if gc.item.url %}<span style="color: var(--quiet-link-fg); font-size: 0.8em;">({{ gc.item.url }})</span>{% endif %}
-                {% if gc.item.order == 0 %}<span style="color: var(--quiet-link-fg); font-size: 0.8em;">(unordered)</span>{% endif %}
-            </td>
-            <td style="text-align: center; padding: 6px 8px;">{{ gc.item.order }}</td>
-            <td style="text-align: center; padding: 6px 8px; white-space: nowrap;">
-                <form method="post" style="display: inline;">
-                    {% csrf_token %}
-                    <input type="hidden" name="item_id" value="{{ gc.item.pk }}">
-                    <input type="hidden" name="parent_id" value="{{ child.item.pk }}">
-                    <input type="hidden" name="direction" value="up">
-                    <button type="submit" {% if forloop.first %}disabled{% endif %} style="padding: 2px 8px; cursor: pointer;">&#8593;</button>
-                </form>
-                <form method="post" style="display: inline;">
-                    {% csrf_token %}
-                    <input type="hidden" name="item_id" value="{{ gc.item.pk }}">
-                    <input type="hidden" name="parent_id" value="{{ child.item.pk }}">
-                    <input type="hidden" name="direction" value="down">
-                    <button type="submit" {% if forloop.last %}disabled{% endif %} style="padding: 2px 8px; cursor: pointer;">&#8595;</button>
-                </form>
-            </td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
-
-{% for gc in child.grandchildren %}
-{% if gc.great_grandchildren %}
-<h5 style="margin-top: 16px; margin-bottom: 4px; margin-left: 40px;">
-    {{ group.item.name }} &rarr; {{ child.item.name }} &rarr; {{ gc.item.name }} &mdash; Children
-</h5>
-<table style="border-collapse: collapse; width: 100%; max-width: 620px; margin-left: 40px;">
-    <thead>
-        <tr>
-            <th style="text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--hairline-color);">Name</th>
-            <th style="text-align: center; padding: 6px 8px; border-bottom: 1px solid var(--hairline-color); width: 70px;">Order</th>
-            <th style="text-align: center; padding: 6px 8px; border-bottom: 1px solid var(--hairline-color); width: 90px;">Move</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for ggc_item in gc.great_grandchildren %}
-        <tr {% if ggc_item.order == 0 %}style="opacity: 0.6;"{% endif %}>
-            <td style="padding: 6px 8px;">
-                {{ ggc_item.name }}
-                {% if ggc_item.url %}<span style="color: var(--quiet-link-fg); font-size: 0.8em;">({{ ggc_item.url }})</span>{% endif %}
-                {% if ggc_item.order == 0 %}<span style="color: var(--quiet-link-fg); font-size: 0.8em;">(unordered)</span>{% endif %}
-            </td>
-            <td style="text-align: center; padding: 6px 8px;">{{ ggc_item.order }}</td>
-            <td style="text-align: center; padding: 6px 8px; white-space: nowrap;">
-                <form method="post" style="display: inline;">
-                    {% csrf_token %}
-                    <input type="hidden" name="item_id" value="{{ ggc_item.pk }}">
-                    <input type="hidden" name="parent_id" value="{{ gc.item.pk }}">
-                    <input type="hidden" name="direction" value="up">
-                    <button type="submit" {% if forloop.first %}disabled{% endif %} style="padding: 2px 8px; cursor: pointer;">&#8593;</button>
-                </form>
-                <form method="post" style="display: inline;">
-                    {% csrf_token %}
-                    <input type="hidden" name="item_id" value="{{ ggc_item.pk }}">
-                    <input type="hidden" name="parent_id" value="{{ gc.item.pk }}">
-                    <input type="hidden" name="direction" value="down">
-                    <button type="submit" {% if forloop.last %}disabled{% endif %} style="padding: 2px 8px; cursor: pointer;">&#8595;</button>
-                </form>
-            </td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
-{% endif %}
-{% endfor %}
-
-{% endif %}
-{% endfor %}
-
-{% endif %}
-{% endfor %}
 
 <br>
-<a href="{% url 'admin:nav_navitem_changelist' %}">&#8592; Back to Nav Items</a>
+<a href="{% url 'admin:nav_navitem_changelist' %}">&larr; Back to Nav Items</a>
 {% endblock %}

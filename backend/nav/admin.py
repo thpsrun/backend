@@ -4,7 +4,7 @@ from django.shortcuts import redirect
 from django.urls import URLPattern, path, reverse
 
 from nav.models import NavItem, SocialLink
-from nav.views import ManageNavOrderingView
+from nav.views import ManageNavOrderingView, NavReorderView
 
 
 @admin.register(NavItem)
@@ -34,7 +34,7 @@ class NavItemAdmin(admin.ModelAdmin):
         request: HttpRequest,
         queryset,
     ) -> HttpResponse:
-        return redirect(reverse("admin:manage_nav_ordering"))
+        return redirect(reverse("admin:nav_navitem_manage_ordering"))
 
     def get_urls(
         self,
@@ -43,7 +43,14 @@ class NavItemAdmin(admin.ModelAdmin):
             path(
                 "manage-ordering/",
                 self.admin_site.admin_view(ManageNavOrderingView.as_view()),
-                name="manage_nav_ordering",
+                name="nav_navitem_manage_ordering",
+            ),
+            path(
+                "reorder/",
+                self.admin_site.admin_view(
+                    NavReorderView.as_view(),
+                ),
+                name="nav_navitem_reorder",
             ),
         ]
         return custom_urls + super().get_urls()

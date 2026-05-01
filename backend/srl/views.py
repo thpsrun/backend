@@ -1,12 +1,35 @@
+import json
+from datetime import datetime
 from typing import Any
 
-from django.contrib import messages
-from django.http import HttpRequest, HttpResponse
+from django.db import models, transaction
+from django.http import HttpRequest, HttpResponse, HttpResponsePermanentRedirect
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import NoReverseMatch, reverse
+from django.utils import timezone
 from django.views.generic import ListView, View
 
 from srl.models import Categories, Games, Levels, Variables, VariableValues
 from srl.srcom import sync_game, sync_game_runs, sync_obsolete_runs, sync_players
+
+
+def _is_stale(
+    request: HttpRequest,
+    queryset,
+) -> bool:
+    raw = request.headers.get("X-Page-Loaded-At", "")
+    if not raw:
+        return False
+    try:
+        page_ts = datetime.fromisoformat(raw)
+    except ValueError:
+        return False
+    if page_ts.tzinfo is None:
+        page_ts = timezone.make_aware(page_ts)
+    latest = queryset.aggregate(latest=models.Max("updated_at"))["latest"]
+    if latest is None:
+        return False
+    return latest > page_ts
 
 
 class UpdateGameView(ListView):
@@ -77,114 +100,11 @@ class ImportObsoleteView(ListView):
         return redirect("/illiad/srl/players/")
 
 
-class ManageMainVisibilityView(View):
-    """Admin view to manage appear_on_main for categories and variable values per game."""
-
-    def _build_context(
-        self,
-        game: Games,
-    ) -> dict[str, Any]:
-        """Build the tree of categories and their variable values for a game."""
-        categories = (
-            Categories.objects.filter(game=game)
-            .order_by("name")
-            .prefetch_related(
-                "variables_set__variablevalues_set",
-            )
-        )
-
-        categories_data: list[dict[str, Any]] = []
-        for cat in categories:
-            variable_values: list[dict[str, Any]] = []
-            for var in cat.variables_set.all():  # type: ignore
-                for vv in var.variablevalues_set.all():
-                    variable_values.append(
-                        {
-                            "variable_name": var.name,
-                            "value": vv,
-                        }
-                    )
-
-            global_vars = Variables.objects.filter(
-                game=game,
-                cat__isnull=True,
-                scope__in=["global", "full-game"],
-            ).prefetch_related("variablevalues_set")
-
-            for var in global_vars:
-                for vv in var.variablevalues_set.all():  # type: ignore
-                    if not any(
-                        existing["value"].value == vv.value
-                        for existing in variable_values
-                    ):
-                        variable_values.append(
-                            {
-                                "variable_name": f"{var.name} (global)",
-                                "value": vv,
-                            }
-                        )
-
-            categories_data.append(
-                {
-                    "category": cat,
-                    "variable_values": variable_values,
-                }
-            )
-
-        return {
-            "game": game,
-            "categories": categories_data,
-            "title": f"Main Page Visibility: {game.name}",
-            "opts": Games._meta,
-            "has_view_permission": True,
-        }
-
-    def get(
-        self,
-        request: HttpRequest,
-        game_id: str,
-    ) -> HttpResponse:
-        game = get_object_or_404(Games, id=game_id)
-        context = self._build_context(game)
-        return render(request, "admin/srl/manage_main_visibility.html", context)
-
-    def post(
-        self,
-        request: HttpRequest,
-        game_id: str,
-    ) -> HttpResponse:
-        game = get_object_or_404(Games, id=game_id)
-
-        categories = Categories.objects.filter(game=game)
-        for cat in categories:
-            new_value = f"cat_{cat.id}" in request.POST
-            if cat.appear_on_main != new_value:
-                cat.appear_on_main = new_value
-                cat.save(update_fields=["appear_on_main", "updated_at"])
-
-        game_variable_values = VariableValues.objects.filter(
-            var__game=game,
-        )
-        for vv in game_variable_values:
-            new_value = f"vv_{vv.value}" in request.POST
-            if vv.appear_on_main != new_value:
-                vv.appear_on_main = new_value
-                vv.save(update_fields=["appear_on_main", "updated_at"])
-
-        messages.success(request, f"Main page visibility updated for {game.name}.")
-        return redirect(
-            request.path,
-        )
-
-
-class ManageOrderingView(View):
-    """Admin view to manage sort ordering for full-game categories, levels, and variable values."""
-
+class ManageGameDisplayView(View):
     def _sorted_for_display(
         self,
         queryset,
     ) -> list:
-        """Return items sorted: order>=1 first ascending, then order=0 alphabetically."""
         items = list(queryset)
         ordered = sorted([i for i in items if i.order > 0], key=lambda x: x.order)
         unordered = sorted([i for i in items if i.order == 0], key=lambda x: x.name)
@@ -203,6 +123,7 @@ class ManageOrderingView(View):
         variable_groups: list[dict[str, Any]] = []
         for var in (
             Variables.objects.filter(game=game)
+            .select_related("cat")
             .order_by("name")
             .prefetch_related("variablevalues_set")
         ):
@@ -210,14 +131,21 @@ class ManageOrderingView(View):
             if vv_list:
                 variable_groups.append({"variable": var, "values": vv_list})
 
+        try:
+            visibility_url = reverse("admin:srl_game_visibility", args=[game.id])
+        except NoReverseMatch:
+            visibility_url = ""
+
         return {
             "game": game,
             "categories": categories,
             "levels": levels,
             "variable_groups": variable_groups,
-            "title": f"Manage Ordering: {game.name}",
+            "title": f"Manage Display: {game.name}",
             "opts": Games._meta,
             "has_view_permission": True,
+            "page_loaded_at": timezone.now().isoformat(),
+            "visibility_url": visibility_url,
         }
 
     def get(
@@ -227,56 +155,113 @@ class ManageOrderingView(View):
     ) -> HttpResponse:
         game = get_object_or_404(Games, id=game_id)
         context = self._build_context(game)
-        return render(request, "admin/srl/manage_ordering.html", context)
+        return render(request, "admin/srl/manage_game_display.html", context)
 
+
+class GameReorderView(View):
     def post(
         self,
         request: HttpRequest,
         game_id: str,
     ) -> HttpResponse:
         game = get_object_or_404(Games, id=game_id)
-        item_id = request.POST.get("item_id", "")
-        direction = request.POST.get("direction", "")
-        item_type = request.POST.get("item_type", "")
+        scope = request.POST.get("scope", "")
+        ordered_ids = request.POST.getlist("ordered_ids")
+        var_id = request.POST.get("var_id", "")
 
-        if item_type == "category":
+        if scope == "category":
             queryset = Categories.objects.filter(game=game, type="per-game")
-        elif item_type == "level":
+        elif scope == "level":
             queryset = Levels.objects.filter(game=game)
-        elif item_type == "variable_value":
-            var_id = request.POST.get("var_id", "")
+        elif scope == "variable_value":
             if not var_id:
-                messages.error(request, "Missing variable ID.")
-                return redirect(request.path)
+                return HttpResponse(
+                    "Missing var_id for variable_value scope.", status=400
+                )
             queryset = VariableValues.objects.filter(var__game=game, var_id=var_id)
         else:
-            messages.error(request, "Invalid item type.")
-            return redirect(request.path)
+            return HttpResponse(f"Invalid scope: {scope!r}.", status=400)
 
-        items = self._sorted_for_display(queryset)
+        if _is_stale(request, queryset):
+            return HttpResponse("Page data is stale. Reload and try again.", status=409)
 
-        idx = next(
-            (i for i, item in enumerate(items) if str(item.pk) == item_id),
-            None,
-        )
-        if idx is None:
-            messages.error(request, "Item not found.")
-            return redirect(request.path)
+        with transaction.atomic():
+            list(queryset.select_for_update())
+            now = timezone.now()
+            for position, pk in enumerate(ordered_ids, start=1):
+                queryset.filter(pk=pk).update(
+                    order=position,
+                    updated_at=now,
+                )
 
-        if direction == "up" and idx > 0:
-            new_idx = idx - 1
-        elif direction == "down" and idx < len(items) - 1:
-            new_idx = idx + 1
+        toast = {
+            "adminToast": {
+                "kind": "success",
+                "message": f"Reordered {scope.replace('_', ' ')} successfully.",
+            },
+        }
+        response = HttpResponse("", status=200)
+        response["HX-Trigger"] = json.dumps(toast)
+        response["X-New-Page-Loaded-At"] = timezone.now().isoformat()
+        return response
+
+
+class GameVisibilityView(View):
+    def post(
+        self,
+        request: HttpRequest,
+        game_id: str,
+    ) -> HttpResponse:
+        game = get_object_or_404(Games, id=game_id)
+        target_type = request.POST.get("target_type", "")
+        target_id = request.POST.get("target_id", "")
+        raw_value = request.POST.get("value", "false")
+        value = raw_value.lower() in ("true", "1", "on", "yes")
+
+        if target_type == "category":
+            obj = get_object_or_404(Categories, id=target_id, game=game)
+            stale_qs = Categories.objects.filter(id=target_id)
+        elif target_type == "variable_value":
+            obj = get_object_or_404(VariableValues, value=target_id, var__game=game)
+            stale_qs = VariableValues.objects.filter(value=target_id)
         else:
-            messages.warning(request, "Cannot move item in that direction.")
-            return redirect(request.path)
+            return HttpResponse(f"Invalid target_type: {target_type!r}.", status=400)
 
-        items[idx], items[new_idx] = items[new_idx], items[idx]
+        if _is_stale(request, stale_qs):
+            return HttpResponse("Page data is stale. Reload and try again.", status=409)
 
-        for position, item in enumerate(items, start=1):
-            if item.order != position:
-                item.order = position
-                item.save(update_fields=["order"])
+        obj.appear_on_main = value
+        obj.save(update_fields=["appear_on_main", "updated_at"])
 
-        messages.success(request, "Order updated.")
-        return redirect(request.path)
+        toast = {
+            "adminToast": {
+                "kind": "success",
+                "message": "Main page visibility updated.",
+            },
+        }
+        response = HttpResponse("", status=200)
+        response["HX-Trigger"] = json.dumps(toast)
+        response["X-New-Page-Loaded-At"] = timezone.now().isoformat()
+        return response
+
+
+class LegacyVisibilityRedirectView(View):
+    def get(
+        self,
+        request: HttpRequest,
+        game_id: str,
+    ) -> HttpResponse:
+        return HttpResponsePermanentRedirect(
+            f"/illiad/srl/games/{game_id}/manage-display/",
+        )
+
+
+class LegacyOrderingRedirectView(View):
+    def get(
+        self,
+        request: HttpRequest,
+        game_id: str,
+    ) -> HttpResponse:
+        return HttpResponsePermanentRedirect(
+            f"/illiad/srl/games/{game_id}/manage-display/",
+        )

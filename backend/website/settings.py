@@ -65,6 +65,7 @@ INSTALLED_APPS = [
     "allauth.socialaccount.providers.twitch",
     "allauth.mfa",
     "allauth.headless",
+    "django_htmx",
     "rest_framework_api_key",
     "rules",
     # LOCAL
@@ -83,6 +84,7 @@ MIDDLEWARE = [
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
+    "django_htmx.middleware.HtmxMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "allauth.account.middleware.AccountMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",

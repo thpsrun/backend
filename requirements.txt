@@ -11,6 +11,7 @@ django-anymail[resend]==12.*
 django-cors-headers==4.9.*
 django-debug-toolbar==6.2.*
 django-environ==0.12.*
+django-htmx==1.27.0
 django-ratelimit==4.*
 django-redis==6.*
 django-resized==1.*

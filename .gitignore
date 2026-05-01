@@ -135,7 +135,12 @@ backend/srl/static/srl/imgs/awards/
 backend/db.json
 backend/srl/static/pfp/*
 backend/media/
-backend/website/static/*
+
+# collectstatic output (STATIC_ROOT). Source static files under backend/<app>/static
+# are tracked in git; only the collected output is ignored.
+/static/
+/backend/static/
+/backend/website/static/
 
 backups/
 bin/
@@ -147,4 +152,6 @@ typescript
 npm/*
 pyproject.toml
 .pylintrc
-static/
+
+# Superpowers brainstorming session artifacts
+.superpowers/

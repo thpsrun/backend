@@ -1,0 +1,51 @@
+{% load i18n %}
+<li
+    class="adm-row"
+    data-id="{{ node.item.pk }}"
+    data-name="{{ node.item.name|lower }}"
+    {% if node.item.order == 0 %}data-unordered="1"{% endif %}
+>
+    <span class="adm-grip" aria-hidden="true">&#x2630;</span>
+    <span class="adm-tree-toggle" data-toggle-children>
+        {% if node.children %}&#x25BC;{% else %}&nbsp;{% endif %}
+    </span>
+    <span class="adm-name">
+        {{ node.item.name }}
+        {% if node.item.url %}
+            <span class="adm-meta">({{ node.item.url }})</span>
+        {% endif %}
+        {% if node.item.order == 0 %}<span class="adm-meta">(unordered)</span>{% endif %}
+    </span>
+    <span class="adm-meta">order: {{ node.item.order }}</span>
+    <div class="adm-arrows">
+        <button
+            type="button"
+            class="adm-arrow"
+            aria-label="Move up"
+            data-direction="up"
+        >&#8593;</button>
+        <button
+            type="button"
+            class="adm-arrow"
+            aria-label="Move down"
+            data-direction="down"
+        >&#8595;</button>
+    </div>
+</li>
+{% if node.children %}
+<li>
+    <ul
+        class="adm-list adm-tree"
+        data-sortable-scope="nav"
+        data-sortable-group="nav"
+        data-list-id="parent-{{ node.item.pk }}"
+        data-parent-id="{{ node.item.pk }}"
+        data-parent-name="{{ node.item.name|escapejs }}"
+        data-reorder-url="{% url 'admin:nav_navitem_reorder' %}"
+    >
+        {% for child_node in node.children %}
+        {% include "admin/nav/nav_node.html" with node=child_node %}
+        {% endfor %}
+    </ul>
+</li>
+{% endif %}
