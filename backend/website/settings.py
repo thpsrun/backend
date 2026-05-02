@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.postgres",
     "django.contrib.staticfiles",
+    "django.contrib.humanize",
     # THIRD-PARTY
     "corsheaders",
     "django.contrib.sites",
@@ -247,6 +248,14 @@ ACCOUNT_LOGIN_METHODS = {"username", "email"}
 ACCOUNT_SIGNUP_FIELDS = ["email*", "username*", "password1*", "password2*"]
 MFA_TOTP_ISSUER = os.getenv("SITE_NAME", "THPS Speedrunning")
 
+SOCIALACCOUNT_ADAPTER = "accounts.adapters.SocialAccountAdapter"
+MFA_ADAPTER = "accounts.adapters.MFAAdapter"
+
+MFA_SUPPORTED_TYPES = ["totp", "webauthn", "recovery_codes"]
+MFA_PASSKEY_LOGIN_ENABLED = True
+MFA_PASSKEY_SIGNUP_ENABLED = False
+MFA_WEBAUTHN_ALLOW_INSECURE_ORIGIN = DEBUG  # WebAuthn refuses HTTP except on localhost
+
 # SOCIAL AUTH (Discord + Twitch - apps registered externally, credentials in .env)
 SOCIALACCOUNT_PROVIDERS = {
     "discord": {
@@ -270,16 +279,9 @@ SESSION_COOKIE_AGE = 60 * 60 * 24 * 7  # 7 days in seconds
 # ALLAUTH HEADLESS
 HEADLESS_ONLY = True
 HEADLESS_FRONTEND_URLS = {
-    "account_confirm_email": os.getenv("FRONTEND_URL", "http://localhost:3000")
-    + "/verify-email/{key}",
-    "account_reset_password_from_key": os.getenv(
-        "FRONTEND_URL", "http://localhost:3000"
-    )
-    + "/reset-password/{uidb36}/{key}",
-    "socialaccount_login_cancelled": os.getenv("FRONTEND_URL", "http://localhost:3000")
-    + "/login/cancelled/",
-    "socialaccount_login_error": os.getenv("FRONTEND_URL", "http://localhost:3000")
-    + "/login/error/",
+    "account_confirm_email": f"{FRONTEND_URL}/verify-email/{{key}}",
+    "account_reset_password_from_key": f"{FRONTEND_URL}/reset-password/{{uidb36}}/{{key}}",
+    "socialaccount_login_error": f"{FRONTEND_URL}/login/error/",
 }
 
 # EMAIL (Resend via django-anymail TODO:)
