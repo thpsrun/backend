@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Any
 
 from django.db import transaction
 from django.db.models import Q
@@ -12,16 +12,65 @@ from api.permissions import authed, public_read
 from api.v1.routers.utils.embeds import parse_embeds
 from api.v1.routers.utils.resolvers import game_from_body, guide_from_path
 from api.v1.schemas.base import ErrorResponse
+from api.v1.schemas.common import CountrySchema
 from api.v1.schemas.games import GameSchema
 from api.v1.schemas.guides import (
+    GuideAuthorSchema,
     GuideCreateSchema,
     GuideListSchema,
     GuideSchema,
     GuideUpdateSchema,
     TagSchema,
 )
+from api.v1.schemas.players import GradientsEmbed
 
 router = Router()
+
+
+def _author_for_user(
+    user: Any,
+) -> GuideAuthorSchema | None:
+    if user is None:
+        return None
+
+    player = getattr(user, "player", None)
+    if player is None:
+        return GuideAuthorSchema(
+            name=user.get_username(),
+            nickname=None,
+            country=None,
+            gradients=None,
+        )
+
+    country: CountrySchema | None = None
+    if player.countrycode_id:
+        country = CountrySchema(
+            id=player.countrycode.id,
+            name=player.countrycode.name,
+        )
+
+    g1: str | None = getattr(user, "gradient_1", None)
+    g2: str | None = getattr(user, "gradient_2", None)
+    g3: str | None = getattr(user, "gradient_3", None)
+    gradients: GradientsEmbed | None = (
+        GradientsEmbed(gradient_1=g1, gradient_2=g2, gradient_3=g3)
+        if (g1 or g2 or g3)
+        else None
+    )
+
+    return GuideAuthorSchema(
+        name=player.name,
+        nickname=player.nickname,
+        country=country,
+        gradients=gradients,
+    )
+
+
+_AUTHOR_SELECT_RELATED: tuple[str, ...] = (
+    "owner",
+    "owner__player",
+    "owner__player__countrycode",
+)
 
 
 @router.get(
@@ -52,7 +101,7 @@ def list_guides(
 ) -> Status:
     embed_list = parse_embeds(embed, "guides")
 
-    queryset = Guides.objects.all()
+    queryset = Guides.objects.select_related(*_AUTHOR_SELECT_RELATED)
 
     if game:
         queryset = queryset.filter(
@@ -71,6 +120,7 @@ def list_guides(
     result = []
     for guide in queryset:
         guide_data = GuideListSchema.model_validate(guide)
+        guide_data.author = _author_for_user(guide.owner)
 
         if "game" in embed_list and guide.game:
             guide_data.game = GameSchema.model_validate(guide.game)
@@ -110,7 +160,9 @@ def get_guide(
 ) -> Status:
     embed_list = parse_embeds(embed, "guides")
 
-    queryset = Guides.objects.filter(slug__iexact=slug)
+    queryset = Guides.objects.filter(slug__iexact=slug).select_related(
+        *_AUTHOR_SELECT_RELATED,
+    )
     if "game" in embed_list:
         queryset = queryset.select_related("game")
     if "tags" in embed_list:
@@ -126,7 +178,17 @@ def get_guide(
             ),
         )
 
-    return Status(200, GuideSchema.model_validate(guide))
+    guide_data = GuideSchema.model_validate(guide)
+    guide_data.author = _author_for_user(guide.owner)
+
+    if "game" in embed_list and guide.game:
+        guide_data.game = GameSchema.model_validate(guide.game)
+    if "tags" in embed_list:
+        guide_data.tags = [
+            TagSchema.model_validate(tag) for tag in guide.tags.all()
+        ]
+
+    return Status(200, guide_data)
 
 
 @router.post(
@@ -141,7 +203,7 @@ REQUIRES CONTRIBUTOR ACCESS OR HIGHER.
 Request Body:
 - `title` (str): Name of the guide.
 - `game_id` (str): Unique game ID or slug of the game this is associated with.
-- `tag_ids` (list | None): List of tag IDs or their slug.
+- `tag_ids` (list[int] | None): List of tag IDs.
 - `short_description` (str): Brief description of the guide (limit 500 characters).
 - `content` (str): Full guide content (markdown supported).
 """,
@@ -163,16 +225,10 @@ def create_guide(
         )
 
     if data.tag_ids:
-        existing_tags = Tags.objects.filter(
-            Q(id__in=data.tag_ids) | Q(slug__in=data.tag_ids)
+        existing_ids = set(
+            Tags.objects.filter(id__in=data.tag_ids).values_list("id", flat=True)
         )
-
-        found_identifiers = set(existing_tags.values_list("id", flat=True)).union(
-            existing_tags.values_list("slug", flat=True)
-        )
-
-        provided_tags = set(data.tag_ids)
-        missing_tags = provided_tags - found_identifiers
+        missing_tags = set(data.tag_ids) - existing_ids
 
         if missing_tags:
             return Status(
@@ -188,6 +244,7 @@ def create_guide(
             guide = Guides.objects.create(
                 title=data.title,
                 game=game,
+                owner=request.user,
                 short_description=data.short_description,
                 content=data.content,
             )
@@ -196,6 +253,7 @@ def create_guide(
                 guide.tags.set(data.tag_ids)
 
             guide_data = GuideSchema.model_validate(guide)
+            guide_data.author = _author_for_user(request.user)
             guide_data.game = GameSchema.model_validate(guide.game)
             guide_data.tags = [
                 TagSchema.model_validate(tag) for tag in guide.tags.all()
@@ -224,7 +282,7 @@ REQUIRES CONTRIBUTOR ACCESS OR HIGHER.
 Request Body:
 - `title` (str | None): Name of the guide.
 - `game_id` (str | None): Unique game ID or slug of the game this is associated with.
-- `tag_ids` (list | None): List of tag IDs or their slug.
+- `tag_ids` (list[int] | None): List of tag IDs.
 - `short_description` (str | None): Brief description of the guide (limit 500 characters).
 - `content` (str | None): Full guide content (markdown supported).
 """,
@@ -235,7 +293,11 @@ def update_guide(
     slug: str,
     data: GuideUpdateSchema,
 ) -> Status:
-    guide = Guides.objects.filter(slug__iexact=slug).first()
+    guide = (
+        Guides.objects.filter(slug__iexact=slug)
+        .select_related(*_AUTHOR_SELECT_RELATED)
+        .first()
+    )
     if not guide:
         return Status(
             404,
@@ -258,16 +320,10 @@ def update_guide(
             )
 
     if data.tag_ids is not None:
-        existing_tags = Tags.objects.filter(
-            Q(id__in=data.tag_ids) | Q(slug__in=data.tag_ids)
+        existing_ids = set(
+            Tags.objects.filter(id__in=data.tag_ids).values_list("id", flat=True)
         )
-
-        found_identifiers = set(existing_tags.values_list("id", flat=True)).union(
-            existing_tags.values_list("slug", flat=True)
-        )
-
-        provided_tags = set(data.tag_ids)
-        missing_tags = provided_tags - found_identifiers
+        missing_tags = set(data.tag_ids) - existing_ids
 
         if missing_tags:
             return Status(
@@ -311,7 +367,13 @@ def update_guide(
             if data.tag_ids is not None:
                 guide.tags.set(data.tag_ids)
 
-            return Status(200, GuideSchema.model_validate(guide))
+            guide_data = GuideSchema.model_validate(guide)
+            guide_data.author = _author_for_user(guide.owner)
+            guide_data.game = GameSchema.model_validate(guide.game)
+            guide_data.tags = [
+                TagSchema.model_validate(tag) for tag in guide.tags.all()
+            ]
+            return Status(200, guide_data)
     except Exception as e:
         return Status(
             500,

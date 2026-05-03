@@ -1,11 +1,14 @@
 import re
+from typing import Any
 
 import bleach
 import markdown as _markdown_lib
 from pydantic import ConfigDict, Field, field_validator
 
 from api.v1.schemas.base import BaseEmbedSchema, SlugMixin, TimestampMixin
+from api.v1.schemas.common import CountrySchema
 from api.v1.schemas.games import GameSchema
+from api.v1.schemas.players import GradientsEmbed
 
 CONTENT_MAX_LENGTH: int = 50_000
 
@@ -43,14 +46,58 @@ class TagSchema(SlugMixin, BaseEmbedSchema):
     """Base schema for `Tag` data without embeds.
 
     Attributes:
+        id (int): Unique tag ID.
         name (str): Tag name (e.g., "Tricks", "Glitches").
         slug (str): URL-friendly version of name.
         description (str): Description of what this tag represents.
     """
 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "id": 1,
+                "name": "Tricks",
+                "slug": "tricks",
+                "description": "Advanced tricks and techniques.",
+            },
+        },
+    )
+
+    id: int
     name: str = Field(..., max_length=100)
     slug: str = Field(..., max_length=100, description="URL-friendly slug")
     description: str
+
+
+class GuideAuthorSchema(BaseEmbedSchema):
+    """Author identity for a guide, mirroing other parts of the codebase.
+
+    Attributes:
+        name (str): Author display name (Players.name, or User.username when unclaimed).
+        nickname (str | None): Optional nickname override.
+        country (CountrySchema | None): Country of the linked player.
+        gradients (GradientsEmbed | None): Name gradient colors.
+    """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "name": "TheAnastasia",
+                "nickname": "Anastasia",
+                "country": {"id": "us", "name": "United States"},
+                "gradients": {
+                    "gradient_1": "#5BCEFA",
+                    "gradient_2": "#F5A9B8",
+                    "gradient_3": "#FFFFFF",
+                },
+            },
+        },
+    )
+
+    name: str = Field(..., max_length=150)
+    nickname: str | None = Field(default=None, max_length=30)
+    country: CountrySchema | None = None
+    gradients: GradientsEmbed | None = None
 
 
 class GuideListSchema(TimestampMixin, BaseEmbedSchema):
@@ -60,6 +107,7 @@ class GuideListSchema(TimestampMixin, BaseEmbedSchema):
         title (str): Guide title.
         slug (str): URL-friendly slug.
         short_description (str): Brief description.
+        author (GuideAuthorSchema | None): Author identity, populated from the guide owner.
         created_at (datetime | None): When guide was created.
         updated_at (datetime | None): When guide was last updated.
         game (GameSchema | None): Associated game.
@@ -71,12 +119,30 @@ class GuideListSchema(TimestampMixin, BaseEmbedSchema):
         ..., min_length=1, max_length=200, description="URL-friendly slug"
     )
     short_description: str = Field(..., max_length=500)
+    author: GuideAuthorSchema | None = None
     game: GameSchema | None = Field(
         default=None, description="Included with ?embed=game"
     )
     tags: list[TagSchema] | None = Field(
         default=None, description="Included with ?embed=tags"
     )
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def _drop_m2m_manager(
+        cls,
+        value: Any,
+    ) -> Any:
+        # `guide.tags` is a Django ManyRelatedManager when read via
+        # from_attributes; routers populate this field explicitly, so treat
+        # the unresolved manager as no value.
+        if (
+            value is not None
+            and hasattr(value, "all")
+            and not isinstance(value, (list, tuple))
+        ):
+            return None
+        return value
 
 
 class GuideSchema(GuideListSchema):
@@ -93,6 +159,16 @@ class GuideSchema(GuideListSchema):
                 "slug": "getting-started",
                 "short_description": "A beginner's guide to speedrunning THPS4.",
                 "content": "# Intro\n\nWelcome to THPS4 speedruns...",
+                "author": {
+                    "name": "TheAnastasia",
+                    "nickname": "Anastasia",
+                    "country": {"id": "us", "name": "United States"},
+                    "gradients": {
+                        "gradient_1": "#5BCEFA",
+                        "gradient_2": "#F5A9B8",
+                        "gradient_3": "#FFFFFF",
+                    },
+                },
                 "created_at": "2025-01-15T12:00:00Z",
                 "updated_at": "2025-01-20T09:30:00Z",
                 "game": None,
@@ -110,14 +186,14 @@ class GuideCreateSchema(BaseEmbedSchema):
     Attributes:
         title (str): Guide title.
         game_id (str): Associated game ID.
-        tag_ids (list[TagSchema] | None): List of tag IDs to associate with guide.
+        tag_ids (list[int] | None): List of tag IDs to associate with guide.
         short_description (str): Brief description.
         content (str): Full guide content.
     """
 
     title: str = Field(..., min_length=1, max_length=200)
     game_id: str
-    tag_ids: list[str] | None = Field(default=[])
+    tag_ids: list[int] | None = Field(default=[])
     short_description: str = Field(..., min_length=1, max_length=500)
     content: str = Field(
         ...,
@@ -142,7 +218,7 @@ class GuideUpdateSchema(BaseEmbedSchema):
         title (str | None): Updated guide title.
         slug (str | None): Updated URL-friendly slug.
         game_id (str | None): Updated associated game ID.
-        tag_ids (list[str] | None): Updated list of tag IDs.
+        tag_ids (list[int] | None): Updated list of tag IDs.
         short_description (str | None): Updated brief description.
         content (str | None): Updated full content.
     """
@@ -152,7 +228,7 @@ class GuideUpdateSchema(BaseEmbedSchema):
         default=None, min_length=1, max_length=200, description="URL-friendly slug"
     )
     game_id: str | None = None
-    tag_ids: list[str] | None = None
+    tag_ids: list[int] | None = None
     short_description: str | None = Field(default=None, min_length=1, max_length=500)
     content: str | None = Field(
         default=None,

@@ -6,10 +6,11 @@ from pydantic import ConfigDict, Field, field_validator
 from api.v1.schemas.base import BaseEmbedSchema
 from api.v1.schemas.common import (
     BasePlayerInfoSchema,
-    BaseSocialsSchema,
+    BaseSocialsWriteSchema,
     CountrySchema,
     ModeratedGameEmbedSchema,
     PlayerSocialsSchema,
+    validate_speedrun_url,
 )
 
 
@@ -197,7 +198,7 @@ class PlayerCreateInfoEmbed(BasePlayerInfoSchema):
     country_id: str | None = None
 
 
-PlayerCreateSocialsEmbed = BaseSocialsSchema
+PlayerCreateSocialsEmbed = BaseSocialsWriteSchema
 
 
 class PlayerCreateSchema(BaseEmbedSchema):
@@ -209,6 +210,14 @@ class PlayerCreateSchema(BaseEmbedSchema):
     url: str
     player: PlayerCreateInfoEmbed
     socials: PlayerCreateSocialsEmbed = PlayerCreateSocialsEmbed()
+
+    @field_validator("url", mode="before")
+    @classmethod
+    def _validate_url(
+        cls,
+        v: str | None,
+    ) -> str | None:
+        return validate_speedrun_url(v)
 
 
 class PlayerUpdateInfoEmbed(BaseEmbedSchema):
@@ -222,10 +231,18 @@ class PlayerUpdateInfoEmbed(BaseEmbedSchema):
     country_id: str | None = None
 
 
-PlayerUpdateSocialsEmbed = BaseSocialsSchema
+PlayerUpdateSocialsEmbed = BaseSocialsWriteSchema
 
 
 class PlayerUpdateSchema(BaseEmbedSchema):
     url: str | None = None
     player: PlayerUpdateInfoEmbed | None = None
     socials: PlayerUpdateSocialsEmbed | None = None
+
+    @field_validator("url", mode="before")
+    @classmethod
+    def _validate_url(
+        cls,
+        v: str | None,
+    ) -> str | None:
+        return validate_speedrun_url(v)

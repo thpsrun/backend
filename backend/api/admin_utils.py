@@ -6,7 +6,7 @@ from django.contrib import admin
 from django.contrib.admin.models import LogEntry
 from django.http import HttpRequest
 from django.urls import NoReverseMatch, reverse
-from django.utils.html import format_html
+from django.utils.html import escape, format_html
 from django.utils.safestring import SafeString, mark_safe
 
 
@@ -85,13 +85,13 @@ class APIActivityLogEntryAdmin(admin.ModelAdmin):
                     "api_key_", ""
                 )
                 return format_html(
-                    '<span title="API Key: {}">' "<strong>🔑 {}</strong>" "</span>",
+                    '<span title="API Key: {}">' "<strong> {}</strong>" "</span>",
                     obj.user.username,
                     key_name,
                 )
             else:
                 return format_html(
-                    '<span title="User: {}">' "<strong>👤 {}</strong>" "</span>",
+                    '<span title="User: {}">' "<strong> {}</strong>" "</span>",
                     obj.user.username,
                     obj.user.get_full_name() or obj.user.username,
                 )
@@ -167,7 +167,7 @@ class APIActivityLogEntryAdmin(admin.ModelAdmin):
         if not obj.change_message:
             return "-"
 
-        message: str = obj.change_message
+        message: str = escape(obj.change_message)
 
         if "via API" in message:
             message = message.replace("via API", "<strong>via API</strong>")
@@ -175,8 +175,8 @@ class APIActivityLogEntryAdmin(admin.ModelAdmin):
         if "Key:" in message:
             message = re.sub(
                 r"Key: ([^)]+)",
-                r'Key: <code style="background: #f8f9fa; padding: 2px 4px;\
-                    border-radius: 3px;">\1</code>',
+                r'Key: <code style="background: #f8f9fa; padding: 2px 4px;'
+                r'border-radius: 3px;">\1</code>',
                 message,
             )
 

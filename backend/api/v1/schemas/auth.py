@@ -2,13 +2,14 @@ import re
 from datetime import date
 
 from ninja import Schema
-from pydantic import EmailStr, Field, field_validator, model_validator
+from pydantic import EmailStr, Field, ValidationInfo, field_validator, model_validator
 
 from api.v1.schemas.common import (
     BasePlayerInfoSchema,
     CountrySchema,
     ModeratedGameEmbedSchema,
     PlayerSocialsSchema,
+    validate_social_url,
 )
 
 CountryCodeResponse = CountrySchema
@@ -145,18 +146,12 @@ class SocialsUpdateEmbed(Schema):
         mode="before",
     )
     @classmethod
-    def validate_url(
+    def _validate_url(
         cls,
         v: str | None,
+        info: ValidationInfo,
     ) -> str | None:
-        if v is None:
-            return v
-        from urllib.parse import urlparse
-
-        parsed = urlparse(v)
-        if parsed.scheme not in ("http", "https") or not parsed.netloc:
-            raise ValueError("Must be a valid http or https URL")
-        return v
+        return validate_social_url(info.field_name or "", v)
 
 
 class CustomizationsUpdateEmbed(Schema):

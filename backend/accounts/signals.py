@@ -1,4 +1,5 @@
 import logging
+import re
 
 from allauth.socialaccount.signals import (
     social_account_added,
@@ -8,6 +9,8 @@ from allauth.socialaccount.signals import (
 from django.dispatch import receiver
 
 logger = logging.getLogger(__name__)
+
+TWITCH_LOGIN_RE: re.Pattern[str] = re.compile(r"^[A-Za-z0-9_]{1,25}$")
 
 
 def _sync_social_to_player(sociallogin) -> None:
@@ -20,9 +23,6 @@ def _sync_social_to_player(sociallogin) -> None:
     extra = sociallogin.account.extra_data or {}
 
     if provider_id == "discord":
-        # Discord's `username` is the unique @handle in the new username system,
-        # or the legacy login name for old accounts. `global_name` is the styled
-        # display name (e.g., "Anastasia ☆") and is NOT what we want here.
         username = extra.get("username") or ""
         logger.info(
             "Discord connect for user_id=%s username=%r global_name=%r discriminator=%r",
@@ -35,8 +35,14 @@ def _sync_social_to_player(sociallogin) -> None:
             _save_player_field(player, "discord", username[:32])
     elif provider_id == "twitch":
         login = extra.get("login")
-        if login:
-            _save_player_field(player, "twitch", f"https://twitch.tv/{login}")
+        if not login or not TWITCH_LOGIN_RE.match(login):
+            logger.warning(
+                "Skipping twitch sync for user_id=%s: unexpected login %r",
+                user.pk,
+                login,
+            )
+            return
+        _save_player_field(player, "twitch", f"https://twitch.tv/{login}")
 
 
 def _clear_social_from_player(user, provider_id: str) -> None:
