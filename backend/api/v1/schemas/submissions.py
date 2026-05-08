@@ -39,11 +39,6 @@ class SubmissionRunSchema(PlayerRunEmbedSchema):
         ...,
         description="Verification status: new, verified, or rejected",
     )
-    description: str | None = Field(
-        default=None,
-        max_length=5000,
-        description="Run notes/description",
-    )
     src_sync: list[SyncStatusSchema] = Field(
         default_factory=list,
         description="SRC sync status for any pending moderator actions.",
@@ -285,6 +280,7 @@ class SyncLogEntry(Schema):
     attempts: int
     max_attempts: int
     last_error: str
+    error_category: str = ""
     created_at: datetime
     updated_at: datetime
 

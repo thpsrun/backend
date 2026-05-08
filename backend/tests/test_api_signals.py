@@ -213,7 +213,7 @@ class ApiSignalTests(TestCase):
         key.scope_games.add(game)
 
         # Reverse side: Games.moderators has related_name="moderated_games" on Players.
-        player.moderated_games.remove(game)  # type: ignore[attr-defined]
+        player.moderated_games.remove(game)  # type: ignore
 
         key.refresh_from_db()
         self.assertTrue(key.revoked)

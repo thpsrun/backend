@@ -30,8 +30,6 @@ if os.getenv("SENTRY_ENABLED") == "True":
 
 SECRET_KEY = _require_env("SECRET_KEY")
 
-SRC_ENCRYPTION_KEY = os.getenv("SRC_ENCRYPTION_KEY")
-
 if DEBUG:
     ALLOWED_HOSTS = [
         h.strip() for h in os.getenv("ALLOWED_HOSTS", "").split(",") if h.strip()
@@ -291,3 +289,37 @@ ANYMAIL = {
 }
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "noreply@thpsspeedrunning.com")
 ACCOUNT_EMAIL_SUBJECT_PREFIX = "[THPS Speedrunning] "
+
+# SRC INTEGRATION
+SRC_ENCRYPTION_KEY = os.getenv("SRC_ENCRYPTION_KEY")
+
+SRC_V2_ENABLED = os.getenv("SRC_V2_ENABLED", "False").lower() == "true"
+SRC_BOT_USERNAME = os.getenv("SRC_BOT_USERNAME", "")
+SRC_BOT_PASSWORD = os.getenv("SRC_BOT_PASSWORD", "")
+SRC_2FA_SENDER_EMAIL = os.getenv(
+    "SRC_2FA_SENDER_EMAIL",
+    "noreply@speedrun.com",
+)
+SRC_2FA_SUBJECT_PATTERN = os.getenv(
+    "SRC_2FA_SUBJECT_PATTERN",
+    r"verification code",
+)
+SRC_BOT_MAILBOX_IMAP_HOST = os.getenv(
+    "SRC_BOT_MAILBOX_IMAP_HOST",
+    "imap.gmail.com",
+)
+SRC_BOT_MAILBOX_PORT = int(os.getenv("SRC_BOT_MAILBOX_PORT", "993"))
+SRC_BOT_MAILBOX_USER = os.getenv("SRC_BOT_MAILBOX_USER", "")
+SRC_BOT_MAILBOX_APP_PASSWORD = os.getenv(
+    "SRC_BOT_MAILBOX_APP_PASSWORD",
+    "",
+)
+SRC_BOT_REFRESH_COOLDOWN = int(os.getenv("SRC_BOT_REFRESH_COOLDOWN", "30"))
+SRC_BOT_2FA_WAIT_TIMEOUT = int(os.getenv("SRC_BOT_2FA_WAIT_TIMEOUT", "90"))
+SRC_V2_USER_AGENT_SUFFIX = os.getenv(
+    "SRC_V2_USER_AGENT_SUFFIX",
+    "thps.run-bot",
+)
+SRC_V2_REPLAY_MAX_AGE_DAYS = int(
+    os.getenv("SRC_V2_REPLAY_MAX_AGE_DAYS", "7"),
+)

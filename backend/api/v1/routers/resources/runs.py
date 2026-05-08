@@ -15,9 +15,17 @@ from srl.models import (
     RunPlayers,
     Runs,
     RunVariableValues,
+    SRCSyncTask,
     Variables,
     VariableValues,
 )
+from srl.srcom.v2 import is_v2_enabled
+from srl.srcom.v2.runs import (
+    build_settings_payload,
+    compute_v2_eligible_diff,
+    snapshot_run,
+)
+from srl.tasks import sync_src_settings
 
 from api.permissions import authed, public_read
 from api.v1.routers.utils.embeds import (
@@ -195,7 +203,7 @@ def get_all_runs(
     try:
         queryset = (
             Runs.objects.all()
-            .select_related("game", "category", "level")
+            .select_related("game", "category", "level", "platform")
             .prefetch_related(
                 "run_players__player__countrycode",
                 "runvariablevalues_set__variable",
@@ -556,7 +564,7 @@ def create_run(
 
         refetched_run = (
             Runs.objects.filter(id=run.id)
-            .select_related("category", "level")
+            .select_related("category", "level", "platform")
             .prefetch_related(
                 "run_players__player__countrycode",
                 "runvariablevalues_set__variable",
@@ -651,6 +659,7 @@ def update_run(
         old_time_secs = run.time_secs
         old_timenl_secs = run.timenl_secs
         old_timeigt_secs = run.timeigt_secs
+        pre_edit_snapshot = snapshot_run(run)
 
         update_data = run_data.model_dump(exclude_unset=True)
 
@@ -798,7 +807,7 @@ def update_run(
 
         refetched_run = (
             Runs.objects.filter(id=run.id)
-            .select_related("category", "level")
+            .select_related("category", "level", "platform")
             .prefetch_related(
                 "run_players__player__countrycode",
                 "runvariablevalues_set__variable",
@@ -829,6 +838,23 @@ def update_run(
         )
         if became_verified or time_changed_while_verified:
             recalculate_run(refetched_run)
+
+        if is_v2_enabled():
+            post_edit_snapshot = snapshot_run(refetched_run)
+            diff = compute_v2_eligible_diff(pre_edit_snapshot, post_edit_snapshot)
+            if diff:
+                payload = build_settings_payload(refetched_run, post_edit_snapshot)
+                moderator = None
+                user = getattr(request, "user", None)
+                if user is not None and getattr(user, "is_authenticated", False):
+                    moderator = getattr(user, "player", None)
+                edit_task = SRCSyncTask.objects.create(
+                    run=refetched_run,
+                    action=SRCSyncTask.ActionType.EDIT_RUN,
+                    moderator=moderator,
+                    payload=payload,
+                )
+                sync_src_settings.delay(edit_task.id)
 
         return Status(200, response)
 

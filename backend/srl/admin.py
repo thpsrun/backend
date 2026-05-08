@@ -10,6 +10,7 @@ from django.urls import URLPattern, path, reverse
 
 from srl.models import (
     Awards,
+    BotSession,
     Categories,
     CountryCodes,
     Games,
@@ -341,3 +342,56 @@ class SRCSyncTaskAdmin(admin.ModelAdmin):
 
 
 admin.site.register(SRCSyncTask, SRCSyncTaskAdmin)
+
+
+@admin.register(BotSession)
+class BotSessionAdmin(admin.ModelAdmin):
+    list_display = (
+        "status",
+        "validated_at",
+        "last_refresh_attempt_at",
+        "v2_enabled_override",
+    )
+    readonly_fields = (
+        "phpsessid_preview",
+        "csrf_token_preview",
+        "validated_at",
+        "last_refresh_attempt_at",
+    )
+    fields = (
+        "status",
+        "validated_at",
+        "last_refresh_attempt_at",
+        "v2_enabled_override",
+        "phpsessid_preview",
+        "csrf_token_preview",
+    )
+
+    def has_add_permission(
+        self,
+        request: HttpRequest,
+    ) -> bool:
+        return not BotSession.objects.exists()
+
+    def has_delete_permission(
+        self,
+        request: HttpRequest,
+        obj: BotSession | None = None,
+    ) -> bool:
+        return False
+
+    def phpsessid_preview(
+        self,
+        obj: BotSession,
+    ) -> str:
+        return "SET" if obj.phpsessid_encrypted else "(empty)"
+
+    phpsessid_preview.short_description = "PHPSESSID (encrypted)"  # type: ignore
+
+    def csrf_token_preview(
+        self,
+        obj: BotSession,
+    ) -> str:
+        return "SET" if obj.csrf_token else "(empty)"
+
+    csrf_token_preview.short_description = "CSRF token"  # type: ignore

@@ -9,6 +9,7 @@ from ninja.errors import ValidationError
 
 from api.v1.routers.auth.admin_api_keys import router as admin_api_keys_router
 from api.v1.routers.auth.api_keys import router as api_keys_router
+from api.v1.routers.auth.bot_session import router as bot_session_router
 from api.v1.routers.auth.me import router as me_router
 from api.v1.routers.auth.pfp import router as pfp_router
 from api.v1.routers.auth.profile_bg import router as profile_bg_router
@@ -22,7 +23,9 @@ from api.v1.routers.pages.history import router as history_router
 from api.v1.routers.pages.home import router as website_router
 from api.v1.routers.pages.lbs import router as lbs_page_router
 from api.v1.routers.pages.leaderboard import router as leaderboard_page_router
-from api.v1.routers.pages.leaderboard_history import router as leaderboard_history_router
+from api.v1.routers.pages.leaderboard_history import (
+    router as leaderboard_history_router,
+)
 from api.v1.routers.pages.navbar import router as navbar_router
 from api.v1.routers.resources.categories import router as categories_router
 from api.v1.routers.resources.countries import router as countries_router
@@ -46,8 +49,7 @@ ninja_api: NinjaAPI = NinjaAPI(
     ),
     title="thps.run API",
     version="1.0.0",
-    description=dedent(
-        """
+    description=dedent("""
     This API provides access to the thps.run API and documents its functionality.
 
     AUTHENTICATION:
@@ -81,8 +83,7 @@ ninja_api: NinjaAPI = NinjaAPI(
     This section details the normal responses you will receive. Specific endpoints may have more
     response codes. Normal response codes (e.g. 2XX, 4XX, 500, etc.) are used. If more are added,
     then they will appear in this documentation.
-    """
-    ),
+    """),
     docs_url="/docs",
     openapi_url="/openapi.json",
     openapi_extra={
@@ -284,13 +285,11 @@ def global_exception_handler(
     "/health",
     response=dict[str, Any],
     summary="API Health Check",
-    description=dedent(
-        """A simple API endpoint that returns health information.
+    description=dedent("""A simple API endpoint that returns health information.
 
     This endpoint returns basic API status and versioning information. This is useful for
     monitoring and ensuring the API is accessible and is responding to requests.
-    """
-    ),
+    """),
 )
 def health_check(
     request: HttpRequest,
@@ -317,7 +316,9 @@ ninja_api.add_router("/tags", tags_router, tags=["Tags"])
 ninja_api.add_router("/website", website_router, tags=["Website"])
 ninja_api.add_router("/website", lbs_page_router, tags=["Website"])
 ninja_api.add_router("/website", leaderboard_page_router, tags=["Website"])
-ninja_api.add_router("/pointslb/history", leaderboard_history_router, tags=["Leaderboards"])
+ninja_api.add_router(
+    "/pointslb/history", leaderboard_history_router, tags=["Leaderboards"]
+)
 ninja_api.add_router("/website", navbar_router, tags=["Website"])
 ninja_api.add_router("", history_router, tags=["Website"])
 
@@ -327,8 +328,10 @@ ninja_api.add_router("/auth", register_router, tags=["Auth - Account"])
 ninja_api.add_router("/auth", me_router, tags=["Auth - Profile"])
 ninja_api.add_router("/auth", pfp_router, tags=["Auth - Profile Picture"])
 ninja_api.add_router("/auth", profile_bg_router, tags=["Auth - Profile Background"])
-ninja_api.add_router("/auth", src_key_router, tags=["Auth - SRC API Key"])
 ninja_api.add_router("/auth", submissions_router, tags=["Auth - Submissions"])
-ninja_api.add_router("/auth", sync_logs_router, tags=["Auth - Sync Logs"])
 ninja_api.add_router("/auth", api_keys_router, tags=["Auth - API Keys"])
 ninja_api.add_router("/auth", admin_api_keys_router, tags=["Auth - Admin API Keys"])
+
+ninja_api.add_router("/auth", sync_logs_router, tags=["Auth - Sync Logs"])
+ninja_api.add_router("/auth", src_key_router, tags=["Auth - SRC API Key"])
+ninja_api.add_router("/auth", bot_session_router, tags=["Auth - SRC Sessions"])

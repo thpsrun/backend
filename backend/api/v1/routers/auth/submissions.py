@@ -178,7 +178,7 @@ def get_submissions(
             run_players__player=player,
             vid_status="new",
         )
-        .select_related("game", "category", "level")
+        .select_related("game", "category", "level", "platform")
         .prefetch_related(
             "run_players__player__countrycode",
             "run_players__player__user",
@@ -199,7 +199,7 @@ def get_submissions(
                 game__in=moderated_games,
                 vid_status="new",
             )
-            .select_related("game", "category", "level")
+            .select_related("game", "category", "level", "platform")
             .prefetch_related(
                 "run_players__player__countrycode",
                 "run_players__player__user",

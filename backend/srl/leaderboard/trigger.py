@@ -7,7 +7,6 @@ from srl.leaderboard.recalculation import (
 )
 from srl.leaderboard.resolution import resolve_leaderboard
 from srl.models.runs import Runs
-from srl.tasks import recalculate_leaderboard_task, recalculate_streaks_task
 
 
 def _wr_check(
@@ -43,14 +42,11 @@ def recalculate_run(
 ) -> None:
     """Dispatch async leaderboard recalculation for a verified run.
 
-    Resolves the run's leaderboard variant, dispatches the recalculation task,
-    and conditionally chains streak recalculation if the run could affect WR.
-
-    This is the single entry point; call it from any endpoint that verifies a run.
-
     Arguments:
         run: A Run instance that was just verified or had its time updated.
     """
+    from srl.tasks import recalculate_leaderboard_task, recalculate_streaks_task
+
     leaderboard = resolve_leaderboard(run)
     recalc = recalculate_leaderboard_task.si(leaderboard)
 

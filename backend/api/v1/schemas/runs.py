@@ -12,7 +12,7 @@ def compute_run_subcategory(
     """Compute subcategory display string from a run's prefetched RunVariableValues.
 
     Requires the queryset to have:
-        .select_related("category", "level")
+        .select_related("category", "level", "platform")
         .prefetch_related("runvariablevalues_set__value")
     """
     level = getattr(data, "level", None)
@@ -113,6 +113,9 @@ class RunBaseSchema(BaseEmbedSchema):
         place (int): Leaderboard position.
         subcategory (str | None): Human-readable subcategory description.
         times (RunTimesSchema): Nested timing data (RTA, LRT, IGT, primary).
+        platform (str | None): SRC platform ID; null if no platform recorded.
+        emulated (bool): Whether the run was played on an emulator.
+        description (str | None): Run notes/description.
         video (str | None): YouTube/Twitch URL.
         arch_video (str | None): Archived video URL.
         date (datetime | None): Submission date.
@@ -129,7 +132,7 @@ class RunBaseSchema(BaseEmbedSchema):
     points: int = Field(default=0, ge=0)
     obsolete: bool = Field(
         default=False,
-        description="When true, the run is obsolete and points do not count toward the player's total.",
+        description="When true, the run is obsolete & points do not count toward a player's total.",
     )
     subcategory: str | None = Field(
         default=None,
@@ -137,6 +140,20 @@ class RunBaseSchema(BaseEmbedSchema):
         description="Human-readable subcategory combo",
     )
     times: RunTimesSchema = Field(description="Nested timing data")
+    platform: str | None = Field(
+        default=None,
+        max_length=10,
+        description="SRC platform ID; null if none recorded",
+    )
+    emulated: bool = Field(
+        default=False,
+        description="Run was played on an emulator",
+    )
+    description: str | None = Field(
+        default=None,
+        max_length=5000,
+        description="Run notes/description",
+    )
     video: str | None = None
     arch_video: str | None = Field(
         default=None, description="Archived/mirrored video URL"
@@ -144,6 +161,20 @@ class RunBaseSchema(BaseEmbedSchema):
     date: datetime | None = None
     v_date: datetime | None = Field(default=None, description="Verification date")
     url: str
+
+    @field_validator("platform", mode="before")
+    @classmethod
+    def convert_platform_to_id(
+        cls,
+        v: Any,
+    ) -> str | None:
+        if v is None:
+            return None
+        if isinstance(v, str):
+            return v
+        if hasattr(v, "id"):
+            return v.id
+        return None
 
     @model_validator(mode="before")
     @classmethod
@@ -198,6 +229,9 @@ class RunSchema(RunBaseSchema):
                     "p_time": "12:34.567",
                     "p_time_secs": 754.567,
                 },
+                "platform": "8gej2n93",
+                "emulated": False,
+                "description": "Used the new strat at the dam.",
                 "video": "https://youtube.com/watch?v=example",
                 "arch_video": "https://archive.thps.run/videos/y8dwozoj.mp4",
                 "date": "2025-08-15T00:00:00Z",

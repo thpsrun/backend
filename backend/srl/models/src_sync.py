@@ -20,6 +20,7 @@ class SRCSyncTask(models.Model):
         VERIFY = "verify", "Verify"
         REJECT = "reject", "Reject"
         CHANGE_PLAYERS = "change_players", "Change Players"
+        EDIT_RUN = "edit_run", "Edit Run"
 
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
@@ -56,10 +57,19 @@ class SRCSyncTask(models.Model):
         default="",
         help_text="Error details from the most recent failed attempt.",
     )
+    error_category = models.CharField(
+        max_length=20,
+        blank=True,
+        default="",
+        help_text=(
+            "Categorized failure reason for the most recent attempt; "
+            "blank when status is synced or no attempts have failed."
+        ),
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(
         self,
     ) -> str:
-        return f"SRCSync {self.action} run={self.run_id} [{self.status}]"
+        return f"SRCSync {self.action} run={self.run.id} [{self.status}]"

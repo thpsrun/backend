@@ -1,9 +1,8 @@
-import logging
-
 from django.http import HttpRequest
 from ninja import Query, Router, Status
 from ninja.responses import codes_4xx
 from srl.models import SRCSyncTask
+from srl.tasks import sync_src_action, sync_src_settings
 
 from api.permissions import authed
 from api.v1.schemas.base import ErrorResponse
@@ -13,8 +12,6 @@ from api.v1.schemas.submissions import (
     SyncLogRunSchema,
     SyncRetryResponse,
 )
-
-logger = logging.getLogger(__name__)
 
 router = Router()
 
@@ -38,7 +35,15 @@ def get_sync_logs(
     ),
     action: str | None = Query(
         None,
-        description=("Filter by action: verify, reject, or change_players"),
+        description=("Filter by action: verify, reject, change_players, or edit_run"),
+    ),
+    error_category: str | None = Query(
+        None,
+        description=(
+            "Filter by error category: auth, api_contract, "
+            "api_server, validation, rate_limit, network, "
+            "mailbox, unknown."
+        ),
     ),
     game_id: str | None = Query(
         None,
@@ -58,6 +63,8 @@ def get_sync_logs(
         qs = qs.filter(status=status)
     if action:
         qs = qs.filter(action=action)
+    if error_category:
+        qs = qs.filter(error_category=error_category)
     if game_id:
         qs = qs.filter(run__game_id=game_id)
 
@@ -85,6 +92,7 @@ def get_sync_logs(
                 attempts=task.attempts,
                 max_attempts=task.max_attempts,
                 last_error=task.last_error,
+                error_category=task.error_category,
                 created_at=task.created_at,
                 updated_at=task.updated_at,
             ),
@@ -133,20 +141,23 @@ def retry_sync_task(
             ),
         )
 
-    from srl.tasks import sync_src_action
-
     sync_task.status = SRCSyncTask.Status.PENDING
     sync_task.attempts = 0
     sync_task.last_error = ""
+    sync_task.error_category = ""
     sync_task.save(
         update_fields=[
             "status",
             "attempts",
             "last_error",
+            "error_category",
             "updated_at",
         ],
     )
-    sync_src_action.delay(sync_task.id)
+    if sync_task.action == SRCSyncTask.ActionType.EDIT_RUN:
+        sync_src_settings.delay(sync_task.id)
+    else:
+        sync_src_action.delay(sync_task.id)
 
     return Status(
         200,

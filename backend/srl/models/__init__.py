@@ -1,4 +1,5 @@
 from srl.models.awards import Awards
+from srl.models.bot_session import BotSession
 from srl.models.base import validate_award_image, validate_flag_image, validate_profile_bg
 from srl.models.categories import Categories
 from srl.models.country_codes import CountryCodes
@@ -16,6 +17,7 @@ from srl.models.variable_values import VariableValues
 from srl.models.variables import Variables
 
 __all__ = [
+    "BotSession",
     "Series",
     "Platforms",
     "Games",

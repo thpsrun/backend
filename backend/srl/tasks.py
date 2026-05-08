@@ -15,6 +15,14 @@ from srl.leaderboard.recalculation import (
     process_leaderboard,
 )
 from srl.leaderboard.streaks import apply_streak_to_run
+from srl.srcom.v2.session import (
+    refresh_bot_session as _refresh_bot_session,
+)
+from srl.srcom.v2.session import (
+    trip_circuit_breaker as _trip_circuit_breaker,
+)
+
+V2_RETRY_BACKOFF = [30, 60, 120, 300, 600]
 
 
 @shared_task
@@ -291,3 +299,265 @@ def _handle_retryable_failure(
         args=[sync_task.id],
         countdown=delay,
     )
+
+
+# Re-export so tests can patch them on this module.
+refresh_bot_session = _refresh_bot_session
+trip_circuit_breaker = _trip_circuit_breaker
+
+
+@shared_task(name="srl.tasks.sync_src_settings")
+def sync_src_settings(
+    sync_task_id: int,
+) -> None:
+    """Push a local run edit to SRC via v2 PutRunSettings.
+
+    Mirrors the retry/park behavior of sync_src_action but routes
+    failures through ErrorCategory and uses the shared bot session.
+    """
+    from srl.models import SRCSyncTask
+    from srl.srcom.v2 import is_v2_enabled
+    from srl.srcom.v2.client import (
+        SrcV2AuthError,
+        SrcV2Client,
+        SrcV2ContractError,
+        SrcV2Error,
+        SrcV2NetworkError,
+        SrcV2PermissionError,
+        SrcV2RateLimited,
+        SrcV2ServerError,
+        SrcV2ValidationError,
+    )
+    from srl.srcom.v2.errors import ErrorCategory
+
+    try:
+        sync_task = SRCSyncTask.objects.select_related("run").get(id=sync_task_id)
+    except SRCSyncTask.DoesNotExist:
+        logger.error("SRCSyncTask %d not found.", sync_task_id)
+        return
+
+    if sync_task.status == SRCSyncTask.Status.SYNCED:
+        return
+
+    if not is_v2_enabled():
+        sync_task.status = SRCSyncTask.Status.FAILED
+        sync_task.error_category = ErrorCategory.UNKNOWN
+        sync_task.last_error = "v2 disabled by kill switch"
+        sync_task.save(
+            update_fields=[
+                "status",
+                "error_category",
+                "last_error",
+                "updated_at",
+            ],
+        )
+        return
+
+    sync_task.attempts += 1
+
+    try:
+        client = SrcV2Client()
+        client.put_run_settings(sync_task.payload)
+
+        sync_task.status = SRCSyncTask.Status.SYNCED
+        sync_task.error_category = ""
+        sync_task.last_error = ""
+        sync_task.save(
+            update_fields=[
+                "status",
+                "attempts",
+                "error_category",
+                "last_error",
+                "updated_at",
+            ],
+        )
+        return
+
+    except SrcV2PermissionError as exc:
+        # 403: bot likely lost mod status on this game. Refreshing the
+        # session won't help; fail terminally and alert.
+        sync_task.status = SRCSyncTask.Status.FAILED
+        sync_task.error_category = ErrorCategory.AUTH
+        sync_task.last_error = str(exc)[:1000]
+        sync_task.save(
+            update_fields=[
+                "status",
+                "attempts",
+                "error_category",
+                "last_error",
+                "updated_at",
+            ],
+        )
+        sentry_sdk.capture_message(
+            (
+                f"SRC v2 PutRunSettings forbidden on sync task "
+                f"{sync_task.id} (run {sync_task.run_id}); bot may have "
+                f"lost moderator status on the game."
+            ),
+            level="error",
+        )
+        return
+
+    except SrcV2AuthError as exc:
+        sync_task.error_category = ErrorCategory.AUTH
+        sync_task.last_error = str(exc)[:1000]
+        sync_task.status = SRCSyncTask.Status.PENDING
+        sync_task.save(
+            update_fields=[
+                "status",
+                "attempts",
+                "error_category",
+                "last_error",
+                "updated_at",
+            ],
+        )
+        refresh_bot_session.delay()
+        if sync_task.attempts < sync_task.max_attempts:
+            sync_src_settings.apply_async(
+                args=[sync_task_id],
+                countdown=30,
+            )
+        else:
+            sync_task.status = SRCSyncTask.Status.FAILED
+            sync_task.save(update_fields=["status", "updated_at"])
+        return
+
+    except SrcV2ContractError as exc:
+        sync_task.status = SRCSyncTask.Status.FAILED
+        sync_task.error_category = ErrorCategory.API_CONTRACT
+        sync_task.last_error = str(exc)[:1000]
+        sync_task.save(
+            update_fields=[
+                "status",
+                "attempts",
+                "error_category",
+                "last_error",
+                "updated_at",
+            ],
+        )
+        trip_circuit_breaker(
+            reason=(
+                f"PutRunSettings response did not match v2 contract on "
+                f"sync task {sync_task.id}: {exc}"
+            ),
+            category=ErrorCategory.API_CONTRACT,
+        )
+        return
+
+    except SrcV2ValidationError as exc:
+        sync_task.status = SRCSyncTask.Status.FAILED
+        sync_task.error_category = ErrorCategory.VALIDATION
+        sync_task.last_error = str(exc)[:1000]
+        sync_task.save(
+            update_fields=[
+                "status",
+                "attempts",
+                "error_category",
+                "last_error",
+                "updated_at",
+            ],
+        )
+        return
+
+    except (SrcV2RateLimited, SrcV2ServerError, SrcV2NetworkError) as exc:
+        sync_task.error_category = (
+            ErrorCategory.RATE_LIMIT
+            if isinstance(exc, SrcV2RateLimited)
+            else (
+                ErrorCategory.API_SERVER
+                if isinstance(exc, SrcV2ServerError)
+                else ErrorCategory.NETWORK
+            )
+        )
+        sync_task.last_error = str(exc)[:1000]
+        if sync_task.attempts < sync_task.max_attempts:
+            countdown = V2_RETRY_BACKOFF[
+                min(sync_task.attempts - 1, len(V2_RETRY_BACKOFF) - 1)
+            ]
+            sync_task.status = SRCSyncTask.Status.PENDING
+            sync_task.save(
+                update_fields=[
+                    "status",
+                    "attempts",
+                    "error_category",
+                    "last_error",
+                    "updated_at",
+                ],
+            )
+            sync_src_settings.apply_async(
+                args=[sync_task_id],
+                countdown=countdown,
+            )
+        else:
+            sync_task.status = SRCSyncTask.Status.FAILED
+            sync_task.save(
+                update_fields=[
+                    "status",
+                    "attempts",
+                    "error_category",
+                    "last_error",
+                    "updated_at",
+                ],
+            )
+        return
+
+    except SrcV2Error as exc:
+        sync_task.status = SRCSyncTask.Status.FAILED
+        sync_task.error_category = exc.category
+        sync_task.last_error = str(exc)[:1000]
+        sync_task.save(
+            update_fields=[
+                "status",
+                "attempts",
+                "error_category",
+                "last_error",
+                "updated_at",
+            ],
+        )
+        return
+
+
+@shared_task(name="srl.tasks.replay_failed_edits")
+def replay_failed_edits() -> int:
+    """Re-enqueue recent failed EDIT_RUN tasks.
+
+    Called when the kill switch transitions to "effective on" (either
+    by an admin clearing the breaker or by a manual unpause). Resets
+    each task to PENDING and dispatches sync_src_settings for it.
+
+    Tasks older than SRC_V2_REPLAY_MAX_AGE_DAYS are intentionally
+    skipped; stale edits should be reviewed individually.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from django.conf import settings as cfg
+
+    from srl.models import SRCSyncTask
+
+    cutoff = datetime.now(timezone.utc) - timedelta(
+        days=getattr(cfg, "SRC_V2_REPLAY_MAX_AGE_DAYS", 7),
+    )
+    qs = SRCSyncTask.objects.filter(
+        action=SRCSyncTask.ActionType.EDIT_RUN,
+        status=SRCSyncTask.Status.FAILED,
+        created_at__gte=cutoff,
+    )
+    count = 0
+    for task in qs:
+        task.status = SRCSyncTask.Status.PENDING
+        task.error_category = ""
+        task.last_error = ""
+        task.attempts = 0
+        task.save(
+            update_fields=[
+                "status",
+                "error_category",
+                "last_error",
+                "attempts",
+                "updated_at",
+            ],
+        )
+        sync_src_settings.delay(task.id)
+        count += 1
+    logger.info("replay_failed_edits requeued %d tasks", count)
+    return count

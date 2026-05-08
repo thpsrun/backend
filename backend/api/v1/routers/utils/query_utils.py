@@ -393,7 +393,7 @@ def query_player_runs(
     include_obsoletes: bool = False,
 ) -> list[dict[str, Any]]:
     qs: QuerySet[Runs] = (
-        Runs.objects.select_related("game", "category", "level")
+        Runs.objects.select_related("game", "category", "level", "platform")
         .prefetch_related(
             "run_players__player__countrycode",
             "run_players__player__user",
