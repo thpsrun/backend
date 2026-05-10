@@ -289,8 +289,6 @@ def get_all_values(
     description="""\
 Creates a brand new variable value.
 
-REQUIRES MODERATOR ACCESS OR HIGHER.
-
 Request Body:
 - `variable_id` (str): Variable ID this value belongs to.
 - `name` (str): Value name.
@@ -438,8 +436,6 @@ def get_value(
     description="""\
 Updates the variable value based on its unique ID.
 
-REQUIRES MODERATOR ACCESS OR HIGHER.
-
 Supported Parameters:
 - `value_id` (str): Unique ID of the value being updated.
 
@@ -508,8 +504,6 @@ def update_value(
     summary="Delete Variable Value",
     description="""\
 Deletes the selected variable value by its ID.
-
-REQUIRES ADMIN ACCESS.
 
 Supported Parameters:
 - `value_id` (str): Unique ID of the value being deleted.
@@ -663,8 +657,6 @@ def get_variable(
     description="""\
 Creates a brand new variable with validation for scope and relationship constraints.
 
-REQUIRES MODERATOR ACCESS OR HIGHER.
-
 Request Body:
 - `game_id` (str): Game ID this variable belongs to.
 - `name` (str): Variable name.
@@ -770,8 +762,6 @@ def create_variable(
     summary="Update Variable",
     description="""\
 Updates the variable based on its unique ID.
-
-REQUIRES MODERATOR ACCESS OR HIGHER.
 
 Supported Parameters:
 - `id` (str): Unique ID of the variable being updated.
@@ -893,8 +883,6 @@ def update_variable(
     summary="Delete Variable",
     description="""\
 Deletes the selected variable by its ID. Also deletes associated values.
-
-REQUIRES ADMIN ACCESS.
 
 Supported Parameters:
 - `id` (str): Unique ID of the variable being deleted.

@@ -1,11 +1,16 @@
+import hashlib
+import json
 from itertools import product
 
 from celery import shared_task
+from django.db import OperationalError
 from django.db.models import Count, QuerySet
 from django.utils import timezone
+from pydantic import RootModel
 
 from srl.models import Games, Platforms, Players, RunHistory, Runs, VariableValues
 from srl.models.run_history import RunHistoryEndReason
+from srl.srcom.reconciliation import check_reconciliation, current_job
 from srl.srcom.schema.src import SrcRunsPlayers, SrcVariablesModel
 from srl.utils import (
     calculate_bonus,
@@ -14,6 +19,19 @@ from srl.utils import (
     src_api,
     time_conversion,
 )
+
+TIME_COLUMNS: dict[str, str] = {
+    "realtime": "time_secs",
+    "realtime_noloads": "timenl_secs",
+    "ingame": "timeigt_secs",
+}
+
+
+def variables_hash(
+    variables: dict[str, str],
+) -> str:
+    payload = json.dumps(variables, sort_keys=True).encode("utf-8")
+    return hashlib.sha1(payload).hexdigest()
 
 
 def build_leaderboard_combos(
@@ -46,29 +64,23 @@ def build_leaderboard_combos(
     for variable in variables:
         if not variable.is_subcategory:
             continue
-
         if variable.scope.type not in scope_types:
             continue
-
         if variable.category is not None and variable.category != category_id:
             continue
-
         if (
             variable.scope.type == "single-level"
             and variable.scope.level is not None
             and variable.scope.level != level_id
         ):
             continue
-
-        value_ids = list(variable.values.values.keys())
-        var_dict[variable.id] = value_ids
+        var_dict[variable.id] = list(variable.values.values.keys())
 
     if not var_dict:
         return [[]]
 
     keys = list(var_dict.keys())
     values_lists = [var_dict[key] for key in keys]
-
     return [list(zip(keys, vals)) for vals in product(*values_lists)]
 
 
@@ -93,33 +105,19 @@ def create_leaderboard_link(
         url = f"{base_url}{game_id}/category/{category_id}"
 
     if var_combo:
-        var_string: str = "&".join(
-            f"var-{var_id}={val_id}" for var_id, val_id in var_combo
-        )
-        url += f"?{var_string}&embed=players,game,category"
+        var_string = "&".join(f"var-{var_id}={val_id}" for var_id, val_id in var_combo)
+        url += f"?{var_string}&embed=players"
     else:
-        url += "?embed=players,game,category"
+        url += "?embed=players"
 
-    return src_api(url)
+    return src_api(url)  # type: ignore # I don't care enough to fix this sue me.
 
 
 def filter_by_variable_map(
     qs: QuerySet,
     variable_value_map: dict[str, str],
 ) -> QuerySet:
-    """Filter a Runs queryset to a specific variable/value combination.
-
-    For non-empty maps, chains filter() calls so each (variable_id, value_id)
-    pair must be present in the run's RunVariableValues.
-    For an empty map, restricts to runs that have zero RunVariableValues rows.
-
-    Arguments:
-        qs (QuerySet): Base queryset of Runs to filter.
-        variable_value_map (dict[str, str]): {variable_id: value_id} from the leaderboard combo.
-
-    Returns:
-        QuerySet: Filtered queryset scoped to the given variant.
-    """
+    """Filter a Runs queryset to a specific variable/value combination."""
     if variable_value_map:
         for var_id, val_id in variable_value_map.items():
             qs = qs.filter(
@@ -159,10 +157,7 @@ def build_var_name(
 def lrt_fix(
     default: dict,
 ) -> dict:
-    """Helper function that fixes an issue with the SRC API regarding LRT times set to RTA.
-
-    This is a temporary function (hopefully) that fixes an SRC API issue where runs that have
-    load-time removed (LRT) but no real-time (RTA), will have the LRT set to RTA instead.
+    """Fix an SRC API quirk where LRT-only runs have their LRT set to RTA instead.
 
     Arguments:
         default (dict): Dictionary information about a specific run.
@@ -183,171 +178,177 @@ def lrt_fix(
 def update_standings(
     is_wr: bool,
     game_id: str,
+    category_id: str,
     variable_value_map: dict[str, str],
     max_points: int,
     run_type: str,
     default_time_type: str,
+    level_id: str | None = None,
+    recon_job_id: str | None = None,
 ) -> None:
-    """Helper function that handles updating a leaderboard's points and rankings upon a record.
+    """Re-rank a leaderboard variant after a record submission.
 
-    Whenever a new world record is achieved, that record would then become the top place (1). All
-    subsequent runs would need to be re-ranked and their points be algorithmically fixed.
+    When a new world record is set, all subsequent runs are re-ranked and their points
+    recomputed. When `is_wr=False`, only `place` values are refreshed.
 
     Arguments:
-        is_wr (bool): When `True`, it will re-evaluate all points within the category. If `False`,
-            then the point re-evaluation is ignored.
+        is_wr (bool): Re-evaluate points for the whole variant when True.
         game_id (str): Unique SRC ID of the game.
-        variable_value_map (dict[str, str]): {variable_id: value_id} for the leaderboard variant.
+        category_id (str): Unique SRC ID of the category that scopes this variant.
+        variable_value_map (dict[str, str]): {variable_id: value_id} for the variant.
         max_points (int): Maximum number of points within the speedrun.
-        run_type (str): Type of run that needs to be queried (e.g. "main" or "il").
+        run_type (str): "main" or "il".
         default_time_type (str): Default time type of the record.
+        level_id (str | None): Unique SRC ID of the level for IL leaderboards.
     """
-    current_place = 1
-    tied_placements = 0
-    previous_time = None
-    runs_list: list = []
+    with check_reconciliation(recon_job_id):
+        time_col = TIME_COLUMNS[default_time_type]
 
-    # Dictionary to map default timing methods to the type of seconds used.
-    time_columns = {
-        "realtime": "time_secs",
-        "realtime_noloads": "timenl_secs",
-        "ingame": "timeigt_secs",
-    }
-
-    base_qs = Runs.objects.only(
-        "place",
-        "points",
-        "bonus",
-        "time_secs",
-        "timenl_secs",
-        "timeigt_secs",
-    ).filter(
-        game=game_id,
-        obsolete=False,
-    )
-    base_qs = filter_by_variable_map(base_qs, variable_value_map)
-
-    all_category_runs = base_qs.filter(runtype=run_type)
-    runs = all_category_runs.order_by(time_columns[default_time_type])
-    wr_time = getattr(runs[0], (time_columns[default_time_type]))
-
-    is_ce = Games.objects.only("is_ce").get(id=game_id).is_ce
-
-    for run in runs:
-        run_time = getattr(run, (time_columns[default_time_type]))
-
-        if is_wr:
-            if run_time == wr_time:
-                # Preserves a streak bonus for this run, if re-applied. Otherwise
-                # it would be reset to the type's maximum.
-                bonus_value = calculate_bonus(run_type, run.bonus or 0, is_ce)
-                points = max_points + bonus_value
-            else:
-                points = points_formula(
-                    wr=wr_time,
-                    run=run_time,
-                    max_points=max_points,
-                    short=True if wr_time < 60 else False,
-                )
-        else:
-            points = run.points
-
-        if previous_time is not None and run_time != previous_time:
-            current_place += tied_placements
-            tied_placements = 0
-
-        run.place = current_place
-        run.points = points
-        runs_list.append(run)
-
-        tied_placements += 1
-        previous_time = run_time
-
-    Runs.objects.bulk_update(runs_list, ["place", "points"])
-
-
-@shared_task(pydantic=True)
-def update_obsolete(
-    game_id: str,
-    variable_value_map: dict[str, str],
-    players: list[SrcRunsPlayers],
-    run_type: str,
-    default_time_type: str,
-) -> None:
-    """Helper function that, when a new run is submitted, will mark all older runs as obsolete.
-
-    When a speedrun is added to the leaderboard, this function will find all of their old runs
-    that have NOT been marked and perform logic to determine which is faster. The fastest time
-    is removed, with all remaining runs (which should be one) to be marked as obsolete.
-
-    Arguments:
-        game_id (str): Unique SRC ID of the game.
-        variable_value_map (dict[str, str]): {variable_id: value_id} for the leaderboard variant.
-        players (list[SrcRunsPlayers]): Pydantic list of players passed onto the function.
-        run_type (str): Type of run that needs to be queried (e.g. "main" or "il").
-        default_time_type (str): Default time type of the record.
-    """
-    obsolete_runs: list = []
-
-    # Dictionary to map default timing methods to the type of seconds used.
-    time_columns = {
-        "realtime": "time_secs",
-        "realtime_noloads": "timenl_secs",
-        "ingame": "timeigt_secs",
-    }
-
-    base_qs = (
-        Runs.objects.select_related("game")
-        .prefetch_related("run_players__player")
-        .only(
-            "id",
-            "game__id",
-            "obsolete",
+        base_qs = Runs.objects.only(
+            "place",
+            "points",
+            "bonus",
             "time_secs",
             "timenl_secs",
             "timeigt_secs",
+        ).filter(
+            game=game_id,
+            category=category_id,
+            level=level_id,
+            obsolete=False,
         )
-        .filter(runtype=run_type, game_id=game_id, obsolete=False)
-    )
-    base_qs = filter_by_variable_map(base_qs, variable_value_map)
+        base_qs = filter_by_variable_map(base_qs, variable_value_map)
+        all_category_runs = base_qs.filter(runtype=run_type)
 
-    for player in players:
-        if player is not None and player.rel != "guest":
-            player_runs = base_qs.filter(run_players__player__id=player.id)
-            count = player_runs.count()
+        runs = list(all_category_runs.order_by(time_col))
+        if not runs:
+            return
+        wr_time = getattr(runs[0], time_col)
 
-            if count > 1:
-                best_run = player_runs.order_by(time_columns[default_time_type]).first()
-                if best_run:
-                    slowest = player_runs.exclude(id=best_run.id)
-                    for run in slowest:
-                        obsolete_runs.append(run.id)
+        is_ce = Games.objects.only("name").get(id=game_id).is_ce
 
-    if obsolete_runs:
+        current_place = 1
+        tied_placements = 0
+        previous_time = None
+        runs_to_update: list[Runs] = []
+
+        for run in runs:
+            run_time = getattr(run, time_col)
+
+            if is_wr:
+                if run_time == wr_time:
+                    bonus_value = calculate_bonus(run_type, run.bonus or 0, is_ce)
+                    points = max_points + bonus_value
+                else:
+                    points = points_formula(
+                        wr=wr_time,
+                        run=run_time,
+                        max_points=max_points,
+                        short=wr_time < 60,
+                    )
+            else:
+                points = run.points
+
+            if previous_time is not None and run_time != previous_time:
+                current_place += tied_placements
+                tied_placements = 0
+
+            run.place = current_place
+            run.points = points
+            runs_to_update.append(run)
+
+            tied_placements += 1
+            previous_time = run_time
+
+        Runs.objects.bulk_update(runs_to_update, ["place", "points"])
+
+
+class SrcRunsPlayersList(RootModel[list[SrcRunsPlayers]]):
+    pass
+
+
+@shared_task(
+    pydantic=True,
+    autoretry_for=(OperationalError,),
+    retry_backoff=True,
+    retry_backoff_max=60,
+    retry_kwargs={"max_retries": 5},
+)
+def update_obsolete(
+    game_id: str,
+    category_id: str,
+    variable_value_map: dict[str, str],
+    players: SrcRunsPlayersList,
+    run_type: str,
+    default_time_type: str,
+    level_id: str | None = None,
+    recon_job_id: str | None = None,
+) -> None:
+    """Mark a player's older runs as obsolete after a new run is submitted.
+
+    Arguments:
+        game_id (str): Unique SRC ID of the game.
+        category_id (str): Unique SRC ID of the category that scopes this variant.
+        variable_value_map (dict[str, str]): {variable_id: value_id} for the variant.
+        players (SrcRunsPlayersList): RootModel-wrapped list of players for the run.
+        run_type (str): "main" or "il".
+        default_time_type (str): Default time type of the record.
+        level_id (str | None): Unique SRC ID of the level for IL leaderboards.
+    """
+    with check_reconciliation(recon_job_id):
+        time_col = TIME_COLUMNS[default_time_type]
+
+        base_qs = Runs.objects.filter(
+            runtype=run_type,
+            game_id=game_id,
+            category_id=category_id,
+            level_id=level_id,
+            obsolete=False,
+        )
+        base_qs = filter_by_variable_map(base_qs, variable_value_map)
+
+        obsolete_run_ids: list[str] = []
+        for player in players.root:
+            if player.rel == "guest":
+                continue
+            player_runs = list(
+                base_qs.filter(run_players__player__id=player.id)
+                .order_by(time_col)
+                .values_list("id", flat=True),
+            )
+            if len(player_runs) > 1:
+                obsolete_run_ids.extend(player_runs[1:])
+
+        if not obsolete_run_ids:
+            return
+
         now = timezone.now()
-        Runs.objects.filter(id__in=obsolete_runs).update(
+        Runs.objects.filter(id__in=obsolete_run_ids).update(
             obsolete=True,
             obsoleted_at=now,
         )
         RunHistory.objects.filter(
-            run_id__in=obsolete_runs,
+            run_id__in=obsolete_run_ids,
             end_date__isnull=True,
         ).update(
             end_date=now,
             end_reason=RunHistoryEndReason.OBSOLETED,
         )
 
-        sample_run = (
-            Runs.objects.filter(id__in=obsolete_runs)
-            .select_related("category", "level", "game")
-            .first()
-        )
-        if sample_run is not None:
-            from srl.leaderboard.resolution import resolve_leaderboard
-            from srl.tasks import recalculate_leaderboard_task
+        # Phase 3 handles recalc per variant during reconciliation, so skip
+        # the immediate recalc in that path to avoid duplicate work.
+        if current_job() is None:
+            sample_run = (
+                Runs.objects.filter(id__in=obsolete_run_ids)
+                .select_related("category", "level", "game")
+                .first()
+            )
+            if sample_run is not None:
+                from srl.leaderboard.resolution import resolve_leaderboard
+                from srl.tasks import recalculate_leaderboard_task
 
-            leaderboard = resolve_leaderboard(sample_run)
-            recalculate_leaderboard_task.si(leaderboard).delay()
+                leaderboard = resolve_leaderboard(sample_run)
+                recalculate_leaderboard_task.delay(leaderboard)
 
 
 def create_run_default(

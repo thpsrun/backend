@@ -216,14 +216,8 @@ def _build_event_stream(
         obsoleted_at = run.obsoleted_at
         effective_date = run.effective_date
 
-        if is_obsolete and obsoleted_at is None:
-            continue
-
-        if is_obsolete and obsoleted_at <= effective_date:
-            continue
-
         events.append((effective_date, "ADD", 0, run))
-        if is_obsolete:
+        if is_obsolete and obsoleted_at is not None and obsoleted_at > effective_date:
             events.append((obsoleted_at, "REMOVE", 1, run))
 
     events.sort(key=lambda e: (e[0], e[2]))
@@ -593,14 +587,14 @@ def _handle_remove(
         state.current_wr_time = new_wr_time
         state.current_wr_player_ids = new_wr_player_ids
     else:
-        # Non-WR removal: promote next-best PB for affected players.
         for pid in player_ids:
             stack = state.player_best_runs.get(pid) or []
             if not stack:
                 continue
             promoted_time, promoted_id = stack[0]
             if promoted_id in state.active_entries:
-                continue  # already scoring (shared with another player)
+                continue
+
             promoted_run, _ = state.active_pool[promoted_id]
             is_short = _is_short_run(promoted_time, state.runtype)
             formula_points = points_formula(

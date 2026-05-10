@@ -41,6 +41,8 @@ CAPABILITY_SCOPED: dict[str, bool] = {
     "profile.edit_own": False,
     "submissions.list_own": False,
     "sync_logs.admin": False,
+    "reconcile.admin": False,
+    "games.display.admin": False,
 }
 
 # Categorization of the game-scoped capabilities by the natural power a user needs to exercise
@@ -112,6 +114,8 @@ def _register_capabilities() -> None:
     add_perm("profile.edit_own", is_authenticated & has_claimed_player)  # type: ignore
     add_perm("submissions.list_own", is_authenticated & has_claimed_player)  # type: ignore
     add_perm("sync_logs.admin", is_superuser)
+    add_perm("reconcile.admin", is_superuser)
+    add_perm("games.display.admin", is_superuser)
 
 
 _register_capabilities()
@@ -122,9 +126,6 @@ def _resolve_caller(
 ) -> tuple[Any, "APIKey | None"]:
     api_key_header: str | None = request.headers.get("X-API-Key")
     if api_key_header:
-        # APIKeyManager.get_usable_keys (see api/models.py) filters out revoked, expired,
-        # and inactive-owner keys. get_from_key routes through it, so a successful lookup
-        # means the key is fully usable; no second check needed.
         try:
             key: APIKey = APIKey.objects.get_from_key(api_key_header)
         except APIKey.DoesNotExist:

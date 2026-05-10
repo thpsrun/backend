@@ -1,6 +1,6 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
-from srl.srcom.schema.src import SrcLeaderboardRun, SrcPlayersModel
+from srl.srcom.schema.src import SrcLeaderboardRun
 
 
 class RunSyncContext(BaseModel):
@@ -18,12 +18,13 @@ class RunSyncContext(BaseModel):
     variable_value_map: dict[str, str]
     download_pfp: bool = False
     lrt_fix: bool = False
-    players_data: list[SrcPlayersModel]
     runs_data: SrcLeaderboardRun
 
 
 class RunSyncTimesContext(BaseModel):
     """Additional context that converts differnet time definitions."""
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     time_secs: float = Field(..., alias="realtime_t")
     timenl_secs: float = Field(..., alias="realtime_noloads_t")

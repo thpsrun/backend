@@ -348,8 +348,6 @@ def get_game(
     description="""\
 Creates a brand new game.
 
-REQUIRES MODERATOR ACCESS OR HIGHER.
-
 Request Body:
 - `id` (str | None): The game ID; if one is not given, it will auto-generate.
 - `name` (str): Game name.
@@ -419,8 +417,6 @@ def create_game(
     description="""\
 Updates the game based on its unique ID or slug.
 
-REQUIRES MODERATOR ACCESS OR HIGHER.
-
 Request Body:
 - `name` (str | None): Game name.
 - `slug` (str | None): URL-friendly game abbreviation.
@@ -471,8 +467,6 @@ def update_game(
     summary="Delete Game",
     description="""\
 Deletes the selected game.
-
-REQUIRES ADMIN ACCESS.
 
 Supported Parameters:
 - id (str): Unique ID or slug of the specified game

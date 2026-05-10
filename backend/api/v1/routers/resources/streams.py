@@ -110,8 +110,6 @@ def get_live_streams(
     description="""\
 Creates a new stream record for a player.
 
-REQUIRES MODERATOR ACCESS OR HIGHER.
-
 Request Body:
 - `player_id` (str): Player ID who is streaming.
 - `game_id` (str | None): Game ID being played.
@@ -185,8 +183,6 @@ def create_stream(
     summary="Update Stream",
     description="""\
 Updates the stream for a specific player.
-
-REQUIRES MODERATOR ACCESS OR HIGHER.
 
 Supported Parameters:
 - `player_id` (str): Unique ID of the player whose stream is being updated.
@@ -266,8 +262,6 @@ def update_stream(
     summary="Delete Stream",
     description="""\
 Deletes the stream for a specific player.
-
-REQUIRES ADMIN ACCESS OR HIGHER.
 
 Supported Parameters:
 - `player_id` (str): Unique ID of the player whose stream is being deleted.

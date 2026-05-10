@@ -362,8 +362,6 @@ def get_run(
     description="""\
 Create a new speedrun record with full validation.
 
-REQUIRES MODERATOR ACCESS OR HIGHER.
-
 Complex Validation:
 - Game/category/level relationships must be valid.
 - Players must exist if specified.
@@ -605,8 +603,6 @@ def create_run(
     summary="Update Run",
     description="""\
 Updates the run based on its unique ID.
-
-REQUIRES MODERATOR ACCESS OR HIGHER.
 
 Supported Parameters:
 - `id` (str): Unique ID of the run being edited.
@@ -874,8 +870,6 @@ def update_run(
     summary="Delete Run",
     description="""\
 Deletes the selected run by its ID.
-
-REQUIRES ADMIN ACCESS.
 
 Supported Parameters:
 - `id` (str): Unique ID of the run being deleted.

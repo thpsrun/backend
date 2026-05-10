@@ -1,9 +1,12 @@
-from typing import Any
-
 from celery import shared_task
 from django.db import transaction
 
 from srl.models import Games, Variables, VariableValues
+from srl.srcom.reconciliation import (
+    check_reconciliation,
+    dispatch_with_recon,
+    reconciliation_upsert_check,
+)
 from srl.srcom.schema.src import SrcVariablesModel
 from srl.utils import src_api
 
@@ -19,9 +22,8 @@ def sync_variables(
             variable dict information.
     """
     if isinstance(variables_data, str):
-        src_data: dict[str, Any] = src_api(
-            f"https://speedrun.com/api/v1/variables/{variables_data}"
-        )
+        src_data = src_api(f"https://speedrun.com/api/v1/variables/{variables_data}")
+        assert isinstance(src_data, dict)
 
         src_variable = SrcVariablesModel.model_validate(src_data)
     elif isinstance(variables_data, dict):
@@ -30,36 +32,41 @@ def sync_variables(
         src_variable = variables_data
 
     with transaction.atomic():
-        Variables.objects.update_or_create(
-            id=src_variable.id,
+        reconciliation_upsert_check(
+            Variables,
             defaults={
                 "name": src_variable.name,
                 "game": Games.objects.only("id").get(id=src_variable.game),
-                "cat": src_variable.category,
+                "cat_id": src_variable.category,
                 "scope": src_variable.scope.type,
-                "level": src_variable.scope.level,
+                "level_id": src_variable.scope.level,
             },
+            record_type="variable",
+            id=src_variable.id,
         )
 
-    # Only subcategory variables have selectable values to sync
     if src_variable.is_subcategory:
-        sync_values.delay(src_variable.model_dump())
+        dispatch_with_recon(sync_values, src_variable.model_dump())
 
 
 @shared_task(pydantic=True)
 def sync_values(
     src_variable: SrcVariablesModel | dict,
+    recon_job_id: str | None = None,
 ) -> None:
-    if isinstance(src_variable, dict):
-        src_variable = SrcVariablesModel.model_validate(src_variable)
+    with check_reconciliation(recon_job_id):
+        if isinstance(src_variable, dict):
+            src_variable = SrcVariablesModel.model_validate(src_variable)
 
-    for value_id, value_data in src_variable.values.values.items():
-        with transaction.atomic():
-            VariableValues.objects.update_or_create(
-                value=value_id,
-                defaults={
-                    "var": Variables.objects.only("id").get(id=src_variable.id),
-                    "name": value_data.label,
-                    "rules": value_data.rules,
-                },
-            )
+        for value_id, value_data in src_variable.values.values.items():
+            with transaction.atomic():
+                reconciliation_upsert_check(
+                    VariableValues,
+                    defaults={
+                        "var": Variables.objects.only("id").get(id=src_variable.id),
+                        "name": value_data.label,
+                        "rules": value_data.rules,
+                    },
+                    record_type="variable_value",
+                    value=value_id,
+                )

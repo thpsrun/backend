@@ -1,9 +1,7 @@
 import ipaddress
-import logging
 import os
 import socket
 import time
-from typing import Any
 from urllib.parse import urlparse
 
 import requests
@@ -14,13 +12,15 @@ from django.db import transaction
 from langcodes import standardize_tag
 
 from srl.models import CountryCodes, Players
+from srl.srcom.reconciliation import reconciliation_upsert_check
 from srl.srcom.schema.src import SrcPlayersModel
 from srl.utils import src_api
 
-logger = logging.getLogger(__name__)
-
 MAX_PFP_BYTES: int = 10 * 1024 * 1024
-ALLOWED_PFP_HOST_SUFFIXES: tuple[str, ...] = ("speedrun.com",)
+ALLOWED_PFP_HOST_SUFFIXES: tuple[str, ...] = (
+    "speedrun.com",
+    "www.speedrun.com",
+)
 
 
 def _is_safe_pfp_url(
@@ -64,7 +64,6 @@ def _download_pfp_bytes(
 ) -> bytes | None:
     """Fetch a PFP after SSRF validation. Returns None on any failure."""
     if not _is_safe_pfp_url(url):
-        logger.warning("Refusing to fetch unsafe PFP URL: %s", url)
         return None
 
     response = requests.get(
@@ -99,8 +98,8 @@ def _download_pfp_bytes(
         for chunk in response.iter_content(chunk_size=64 * 1024):
             total += len(chunk)
             if total > MAX_PFP_BYTES:
-                logger.warning("PFP exceeds %d bytes, dropping: %s", MAX_PFP_BYTES, url)
                 return None
+
             chunks.append(chunk)
         return b"".join(chunks)
     finally:
@@ -119,9 +118,8 @@ def sync_players(
             player dict information.
     """
     if isinstance(players_data, str):
-        src_data: dict[str, Any] = src_api(
-            f"https://speedrun.com/api/v1/users/{players_data}"
-        )
+        src_data = src_api(f"https://speedrun.com/api/v1/users/{players_data}")
+        assert isinstance(src_data, dict)
 
         src_player = SrcPlayersModel.model_validate(src_data)
     else:
@@ -143,11 +141,6 @@ def sync_players(
 
     safe_url: str | None = sanitize_speedrun_url(src_player.weblink)
     if safe_url is None:
-        logger.warning(
-            "Refusing to sync player %s: invalid weblink %r",
-            src_player.id,
-            src_player.weblink,
-        )
         return
 
     c_code = src_player.country_code
@@ -158,11 +151,11 @@ def sync_players(
 
     if cc is not None:
         with transaction.atomic():
-            CountryCodes.objects.update_or_create(
+            reconciliation_upsert_check(
+                CountryCodes,
+                defaults={"name": src_player.country_name},
+                record_type="country_code",
                 id=cc,
-                defaults={
-                    "name": src_player.country_name,
-                },
             )
 
     try:
@@ -183,7 +176,9 @@ def sync_players(
         defaults["pfp"] = f"{settings.MEDIA_URL}pfp/{src_player.id}.jpg"
 
     with transaction.atomic():
-        Players.objects.update_or_create(
-            id=src_player.id,
+        reconciliation_upsert_check(
+            Players,
             defaults=defaults,
+            record_type="player",
+            id=src_player.id,
         )

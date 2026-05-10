@@ -124,8 +124,6 @@ def get_platform(
     description="""\
 Creates a brand new platform.
 
-REQUIRES MODERATOR ACCESS OR HIGHER.
-
 Request Body:
 - `id` (str): Unique ID (usually based on SRC) of the platform being created.
 - `name` (str): Platform name (e.g., "PlayStation 2") being created.
@@ -173,8 +171,6 @@ def create_platform(
     summary="Update Platform",
     description="""\
 Updates the platform based on its unique ID.
-
-REQUIRES MODERATOR ACCESS OR HIGHER.
 
 Supported Parameters:
 - `id (str): Unique ID (usually based on SRC) of the platform.
@@ -224,8 +220,6 @@ def update_platform(
     summary="Delete Platform",
     description="""\
 Deletes the selected platform based on its ID.
-
-REQUIRES ADMIN ACCESS.
 
 Supported Parameters:
 - `id (str): Unique ID (usually based on SRC) of the platform being deleted.

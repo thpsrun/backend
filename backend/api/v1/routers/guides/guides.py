@@ -83,6 +83,7 @@ Gets all guides within the database, with optional querying and embeds.
 Query Parameters:
 - `game` (str | None): Filter guides based on the game's slug or ID.
 - `tag` (str | None): Filter guides based on the tag's slug or ID.
+- `player_id` (str | None): Filter guides based on the author's player ID.
 - `embed` (list | None): Comma-separated list of resources to embed.
 
 Supported Embeds:
@@ -95,6 +96,7 @@ def list_guides(
     request: HttpRequest,
     game: Annotated[str | None, Query(description="Filter by game slug")] = None,
     tag: Annotated[str | None, Query(description="Filter by tag slug")] = None,
+    player_id: Annotated[str | None, Query(description="Filter by player")] = None,
     embed: Annotated[
         str | None, Query(description="Comma-separated embeds (game,tags)")
     ] = None,
@@ -111,6 +113,8 @@ def list_guides(
         queryset = queryset.filter(
             Q(tags__slug__iexact=tag) | Q(tags__id__iexact=tag),
         )
+    if player_id:
+        queryset = queryset.filter(owner__player__id__iexact=player_id)
 
     if "game" in embed_list:
         queryset = queryset.select_related("game")
@@ -198,8 +202,6 @@ def get_guide(
     description="""\
 Creates a brand new guide.
 
-REQUIRES CONTRIBUTOR ACCESS OR HIGHER.
-
 Request Body:
 - `title` (str): Name of the guide.
 - `game_id` (str): Unique game ID or slug of the game this is associated with.
@@ -276,8 +278,6 @@ def create_guide(
     summary="Update Guide",
     description="""\
 Modifies an existing guide.
-
-REQUIRES CONTRIBUTOR ACCESS OR HIGHER.
 
 Request Body:
 - `title` (str | None): Name of the guide.
@@ -390,8 +390,6 @@ def update_guide(
     summary="Delete Guide",
     description="""\
 Deletes an existing guide.
-
-REQUIRES ADMIN ACCESS OR HIGHER.
 
 Supported Parameters:
 - `slug` (str): Simplified, URL friendly name of the guide.

@@ -1,9 +1,8 @@
-from typing import Any
-
 from celery import shared_task
 from django.db import transaction
 
 from srl.models import Games, Levels
+from srl.srcom.reconciliation import reconciliation_upsert_check
 from srl.srcom.schema.src import SrcLevelsModel
 from srl.utils import src_api
 
@@ -19,9 +18,8 @@ def sync_levels(
             level dict information.
     """
     if isinstance(levels_data, str):
-        src_data: dict[str, Any] = src_api(
-            f"https://speedrun.com/api/v1/levels/{levels_data}"
-        )
+        src_data = src_api(f"https://speedrun.com/api/v1/levels/{levels_data}")
+        assert isinstance(src_data, dict)
 
         src_level = SrcLevelsModel.model_validate(src_data)
     elif isinstance(levels_data, dict):
@@ -30,12 +28,14 @@ def sync_levels(
         src_level = levels_data
 
     with transaction.atomic():
-        Levels.objects.update_or_create(
-            id=src_level.id,
+        reconciliation_upsert_check(
+            Levels,
             defaults={
                 "name": src_level.name,
-                "game": Games.objects.only("id").get(src_level.game),
+                "game": Games.objects.only("id").get(id=src_level.game),
                 "url": src_level.weblink,
                 "rules": src_level.rules,
             },
+            record_type="level",
+            id=src_level.id,
         )

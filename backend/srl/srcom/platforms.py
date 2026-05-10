@@ -1,9 +1,8 @@
-from typing import Any
-
 from celery import shared_task
 from django.db import transaction
 
 from srl.models import Platforms
+from srl.srcom.reconciliation import reconciliation_upsert_check
 from srl.srcom.schema.src import SrcPlatformModel
 from srl.utils import src_api
 
@@ -19,9 +18,8 @@ def sync_platforms(
             platform dict information.
     """
     if isinstance(platform_data, str):
-        src_data: dict[str, Any] = src_api(
-            f"https://speedrun.com/api/v1/platforms/{platform_data}"
-        )
+        src_data = src_api(f"https://speedrun.com/api/v1/platforms/{platform_data}")
+        assert isinstance(src_data, dict)
 
         src_platform = SrcPlatformModel.model_validate(src_data)
     elif isinstance(platform_data, dict):
@@ -30,6 +28,9 @@ def sync_platforms(
         src_platform = platform_data
 
     with transaction.atomic():
-        Platforms.objects.update_or_create(
-            id=src_platform.id, defaults={"name": src_platform.name}
+        reconciliation_upsert_check(
+            Platforms,
+            defaults={"name": src_platform.name},
+            record_type="platform",
+            id=src_platform.id,
         )

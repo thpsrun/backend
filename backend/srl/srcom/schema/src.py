@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Dict, List
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
 # Not everything is defined for these Pydantic models, just pretty much anything
 # that is needed for the project.
@@ -121,16 +121,16 @@ class SrcCategoriesModel(BaseModel):
     id: str
     name: str
     type: str
-    scope: SrcCategoriesLevelsScope
+    scope: SrcCategoriesLevelsScope | None = None
     weblink: str
     rules: str | None = None
-    game: SrcGamesModel
+    game: SrcGamesModel | None = None
 
     @field_validator("game", mode="before")
     @classmethod
     def unwrap_game(cls, v):
         if v is None:
-            return []
+            return None
         elif isinstance(v, dict) and "data" in v:
             return v["data"]
         return v
@@ -204,9 +204,9 @@ class SrcVariablesModel(BaseModel):
 class SrcRunsSystem(BaseModel):
     """Embedded model for system information for an SRC Run."""
 
-    platform: str
+    platform: str | None = None
     emulated: bool
-    region: str | None
+    region: str | None = None
 
 
 class SrcRunsStatus(BaseModel):
@@ -214,7 +214,7 @@ class SrcRunsStatus(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
     status: str
-    examiner: str
+    examiner: str | None = None
     verify_date: datetime | None = Field(default=None, alias="verify-date")
 
 
@@ -222,8 +222,9 @@ class SrcRunsPlayers(BaseModel):
     """Embedded model for player information for an SRC Run."""
 
     rel: str
-    id: str | None
-    uri: str | None
+    id: str | None = None
+    uri: str | None = None
+    name: str | None = None
 
 
 class SrcRunsTimes(BaseModel):
@@ -239,14 +240,15 @@ class SrcVideoLink(BaseModel):
     """Embedded model for returning video links for an SRC Run."""
 
     # For some reason the SRC API has both sometimes.
-    uri: str | None
-    text: str | None
+    uri: str | None = None
+    text: str | None = None
 
 
 class SrcVideos(BaseModel):
     """Embedded model for returning the list of video links for an SRC Run."""
 
-    links: list[SrcVideoLink]
+    links: list[SrcVideoLink] = Field(default_factory=list)
+    text: str | None = None
 
 
 class SrcRunsModel(BaseModel):
@@ -267,6 +269,7 @@ class SrcRunsModel(BaseModel):
     system: SrcRunsSystem
     values: dict[str, str]
 
+    @computed_field
     @property
     def video_uri(
         self,
@@ -278,19 +281,21 @@ class SrcRunsModel(BaseModel):
     @field_validator("category", mode="before")
     @classmethod
     def unwrap_categories(cls, v):
-        if v is None:
-            return []
+        if v is None or v == [] or v == {}:
+            return None
         elif isinstance(v, dict) and "data" in v:
-            return v["data"]
+            data = v["data"]
+            return data if data not in (None, [], {}) else None
         return v
 
     @field_validator("level", mode="before")
     @classmethod
     def unwrap_level(cls, v):
-        if v is None:
-            return []
+        if v is None or v == [] or v == {}:
+            return None
         elif isinstance(v, dict) and "data" in v:
-            return v["data"]
+            data = v["data"]
+            return data if data not in (None, [], {}) else None
         return v
 
 
@@ -367,10 +372,26 @@ class SrcLeaderboardRun(BaseModel):
     run: SrcRunsModel
 
 
+class SrcLeaderboardEmbeddedPlayer(BaseModel):
+    """Permissive shape for embedded leaderboard player entries to better guard against guest users
+    within the SRC context."""
+
+    rel: str | None = None
+    id: str | None = None
+    name: str | None = None
+    names: SrcPlayersNames | None = None
+    weblink: str | None = None
+    pronouns: str | None = None
+    location: dict | None = None
+    twitch: dict | None = None
+    youtube: dict | None = None
+    assets: dict | None = None
+
+
 class SrcLeaderboardPlayers(BaseModel):
     """Embedded model for SRC Leaderboards to show player metadata to board."""
 
-    data: List[SrcPlayersModel]
+    data: List[SrcLeaderboardEmbeddedPlayer]
 
 
 class SrcLeaderboardModel(BaseModel):

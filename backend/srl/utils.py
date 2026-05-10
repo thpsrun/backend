@@ -1,8 +1,9 @@
 import calendar
+import logging
 import math
 import time
 from datetime import date
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING, Iterator, TypedDict
 
 import requests
 from dateutil.relativedelta import relativedelta
@@ -14,6 +15,14 @@ from srl.srcom.schema.src import SrcRunsTimes
 
 if TYPE_CHECKING:
     from srl.models.runs import Runs
+
+logger = logging.getLogger(__name__)
+
+SRC_HEADERS = {
+    "User-Agent": "thps.run/4.0 (https://thps.run; automation@thps.run)",
+}
+SRC_MAX_RETRIES = 10
+SRC_BACKOFF_SECS = 60
 
 
 def convert_time(
@@ -54,48 +63,69 @@ def convert_time(
 
 def src_api(
     url: str,
-    paginate: bool = False,
-) -> dict:
-    """Processes a Speedrun.com API GET request to return values from any of its endpoints.
+    raw: bool = False,
+) -> dict | list:
+    """Processes a Speedrun.com API v1 GET request to return values from any of its endpoints.
 
-    This function is primarily used to connect to a Speedrun.com API endpoint via GET. However,
-    this can be used if the API call returns valid HTTP Request Codes for `420: Enhance Your Calm`
-    and `503: Service Unavailable` *and* returns data in JSON format with the "data" key value.
+    Retries on 420 (Enhance Your Calm) and 503 (Service Unavailable) up to SRC_MAX_RETRIES
+    times with a fixed SRC_BACKOFF_SECS sleep between attempts.
 
     Arguments:
-        url (str): The complete URL of the API endpoint (usually Speedrun.com) being connected to.
-        paginate (bool): False by default. Some use cases related to pagination *OR* to disable
-            using the "data" key value lookup.
+        url (str): The complete URL of the API endpoint being called.
+        raw (bool): If True, return the full JSON envelope (e.g., when pagination links or
+            sibling fields are needed). Default unwraps and returns the "data" field.
 
     Returns:
-        response (dict): Dictionary/JSON object from the requested API.
+        dict | list: The "data" field (dict or list depending on the endpoint), or the
+            full envelope when raw=True.
     """
-    headers = {
-        "User-Agent": "thps.run/4.0 (https://thps.run; automation@thps.run)",
-    }
-    response = requests.get(url, headers=headers, timeout=30)
+    response = None
+    for attempt in range(1, SRC_MAX_RETRIES + 1):
+        response = requests.get(url, headers=SRC_HEADERS, timeout=30)
+        if response.status_code not in (420, 503):
+            break
 
-    retries = 0
-    while response.status_code == 420 or response.status_code == 503:
-        retries += 1
-        if retries >= 30:
-            raise ValueError(f"SRC API rate limit exceeded after 30 retries ({url})")
-
-        print("[DEBUG] Rate limit exceeded, waiting 60 seconds...")
-        time.sleep(60)
-        response = requests.get(url, headers=headers, timeout=30)
+        logger.warning(
+            "SRC rate limit (%s) on attempt %d/%d, sleeping %ds: %s",
+            response.status_code,
+            attempt,
+            SRC_MAX_RETRIES,
+            SRC_BACKOFF_SECS,
+            url,
+        )
+        time.sleep(SRC_BACKOFF_SECS)
+    else:
+        raise ValueError(
+            f"SRC API rate limit exceeded after {SRC_MAX_RETRIES} retries ({url})"
+        )
 
     if response.status_code != 200:
         raise ValueError(
             f"SRC API request failed with status code {response.status_code}"
         )
 
-    if paginate is False:
-        response = response.json()["data"]
-    else:
-        response = response.json()
+    payload = response.json()
+    return payload if raw else payload["data"]
 
-    return response
+
+def src_api_paginate(
+    base_url: str,
+    page_size: int = 200,
+) -> Iterator[dict]:
+    """Helper function for more SRC API pagination stuff."""
+    sep = "&" if "?" in base_url else "?"
+    url: str | None = f"{base_url}{sep}max={page_size}"
+    while url:
+        payload = src_api(url, raw=True)
+        assert isinstance(payload, dict)
+        for row in payload.get("data") or []:
+            yield row
+
+        url = None
+        for link in (payload.get("pagination") or {}).get("links") or []:
+            if link.get("rel") == "next":
+                url = link.get("uri")
+                break
 
 
 def points_formula(
@@ -129,28 +159,33 @@ class TimeDict(TypedDict):
 
 
 def time_conversion(
-    times: SrcRunsTimes,
+    times: SrcRunsTimes | dict,
 ) -> tuple[str, str, str]:
     """Processes the returned time values of a run entry in a string.
 
     Arguments:
-        times (SrcRunsTimes): Time data from a speedrun.
+        times (SrcRunsTimes | dict): Time data from a speedrun. Accepts either
+            the Pydantic model or a dict (e.g., the result of `model_dump()`).
 
     Returns:
         tuple: A tuple containing:
             - rta (str): The written format of real-time.
             - noloads (str): The written format of loads removed time (no loads).
             - igt (str): The written format of in-game.
-
-    Called Functions:
-        - `convert_time`
     """
 
-    rta = convert_time(times.realtime_t) if times.realtime_t > 0 else "0"
-    noloads = (
-        convert_time(times.realtime_noloads_t) if times.realtime_noloads_t > 0 else "0"
-    )
-    igt = convert_time(times.ingame_t) if times.ingame_t > 0 else "0"
+    if isinstance(times, dict):
+        rta_t = times.get("realtime_t") or 0
+        nl_t = times.get("realtime_noloads_t") or 0
+        igt_t = times.get("ingame_t") or 0
+    else:
+        rta_t = times.realtime_t or 0
+        nl_t = times.realtime_noloads_t or 0
+        igt_t = times.ingame_t or 0
+
+    rta = convert_time(rta_t) if rta_t > 0 else "0"
+    noloads = convert_time(nl_t) if nl_t > 0 else "0"
+    igt = convert_time(igt_t) if igt_t > 0 else "0"
 
     return rta, noloads, igt
 

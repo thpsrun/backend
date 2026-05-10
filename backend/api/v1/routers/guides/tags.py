@@ -76,8 +76,6 @@ def get_tag(
     description="""\
 Creates a brand new tag for categorizing guides.
 
-REQUIRES CONTRIBUTOR ACCESS OR HIGHER.
-
 Request Body:
 - `name` (str): Name of the tag
 - `description` (str): Description of what this tag represents
@@ -120,8 +118,6 @@ def create_tag(
     summary="Update Tag",
     description="""\
 Update an existing tag.
-
-REQUIRES CONTRIBUTOR ACCESS OR HIGHER.
 
 Supported Parameters:
 - `slug` (str): Tag slug to update
@@ -191,8 +187,6 @@ def update_tag(
     summary="Delete Tag",
     description="""\
 Delete a tag.
-
-REQUIRES CONTRIBUTOR ACCESS OR HIGHER.
 
 Supported Parameters:
 - `slug` (str): Unique ID or the slug of the tag to remove.

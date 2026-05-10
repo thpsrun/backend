@@ -352,8 +352,6 @@ def get_player(
     description="""\
 Creates a brand new player.
 
-REQUIRES MODERATOR ACCESS OR HIGHER.
-
 Request Body:
 - `id` (str | None): The player ID; if one is not given, it will auto-generate.
 - `url` (str): Speedrun.com profile URL.
@@ -458,8 +456,6 @@ def create_player(
     summary="Update Player",
     description="""\
 Updates the player based on their unique ID.
-
-REQUIRES MODERATOR ACCESS OR HIGHER.
 
 Supported Parameters:
 - `id` (str): Unique ID of the player being updated.
@@ -579,8 +575,6 @@ def update_player(
     summary="Delete Player",
     description="""\
 Deletes the selected player based on its ID.
-
-REQUIRES ADMIN ACCESS.
 
 Supported Parameters:
 - `id` (str): Unique ID of the player being deleted.

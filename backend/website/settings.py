@@ -225,6 +225,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "srl.tasks.build_streaks_task",
         "schedule": crontab(hour=0, minute=0),
     },
+    "sweep-stuck-reconciliation-jobs-15min": {
+        "task": "srl.sweep_stuck_reconciliation_jobs",
+        "schedule": crontab(minute="*/15"),
+    },
 }
 
 # POINTS CONSTANTS

@@ -307,8 +307,6 @@ def get_category(
     description="""\
 Creates a brand new category.
 
-REQUIRES MODERATOR ACCESS OR HIGHER.
-
 Request Body:
 - `id` (str): Unique ID (usually based on SRC) of the category.
 - `name` (str): Category name (e.g., "Any%", "100%").
@@ -374,8 +372,6 @@ def create_category(
     summary="Update Category",
     description="""\
 Updates the category based on its unique ID.
-
-REQUIRES MODERATOR ACCESS OR HIGHER.
 
 Supported Parameters:
 - `id` (str): Unique ID of the category being edited.
@@ -451,8 +447,6 @@ def update_category(
     summary="Delete Category",
     description="""\
 Deletes the selected category based on its ID.
-
-REQUIRES ADMIN ACCESS.
 
 Supported Parameters:
 - `id` (str): Unique ID of the category being deleted.

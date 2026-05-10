@@ -8,11 +8,13 @@ from ninja import NinjaAPI, Redoc
 from ninja.errors import ValidationError
 
 from api.v1.routers.auth.admin_api_keys import router as admin_api_keys_router
+from api.v1.routers.auth.admin_game_display import router as admin_game_display_router
 from api.v1.routers.auth.api_keys import router as api_keys_router
 from api.v1.routers.auth.bot_session import router as bot_session_router
 from api.v1.routers.auth.me import router as me_router
 from api.v1.routers.auth.pfp import router as pfp_router
 from api.v1.routers.auth.profile_bg import router as profile_bg_router
+from api.v1.routers.auth.reconcile import router as reconcile_router
 from api.v1.routers.auth.register import router as register_router
 from api.v1.routers.auth.src_key import router as src_key_router
 from api.v1.routers.auth.submissions import router as submissions_router
@@ -165,6 +167,10 @@ ninja_api: NinjaAPI = NinjaAPI(
                 "description": "Administrative sync log endpoints.",
             },
             {
+                "name": "Auth - Reconcile",
+                "description": "Superuser-only endpoints for managing SRC reconciliation jobs.",
+            },
+            {
                 "name": "Auth - API Keys",
                 "description": "Self-service endpoints for managing the "
                 "authenticated user's API keys.",
@@ -173,6 +179,11 @@ ninja_api: NinjaAPI = NinjaAPI(
                 "name": "Auth - Admin API Keys",
                 "description": "Superuser-only endpoints for inspecting and "
                 "revoking any user's API keys.",
+            },
+            {
+                "name": "Auth - Admin Game Display",
+                "description": "Superuser-only endpoints to manage main-page "
+                "visibility and category/level/variable ordering for a game.",
             },
         ],
     },
@@ -331,7 +342,11 @@ ninja_api.add_router("/auth", profile_bg_router, tags=["Auth - Profile Backgroun
 ninja_api.add_router("/auth", submissions_router, tags=["Auth - Submissions"])
 ninja_api.add_router("/auth", api_keys_router, tags=["Auth - API Keys"])
 ninja_api.add_router("/auth", admin_api_keys_router, tags=["Auth - Admin API Keys"])
+ninja_api.add_router(
+    "/auth", admin_game_display_router, tags=["Auth - Main Page Display"]
+)
 
 ninja_api.add_router("/auth", sync_logs_router, tags=["Auth - Sync Logs"])
+ninja_api.add_router("/auth", reconcile_router, tags=["Auth - Reconcile"])
 ninja_api.add_router("/auth", src_key_router, tags=["Auth - SRC API Key"])
 ninja_api.add_router("/auth", bot_session_router, tags=["Auth - SRC Sessions"])

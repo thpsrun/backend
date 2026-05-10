@@ -1,4 +1,7 @@
+from datetime import timedelta
+
 from django.http import HttpRequest
+from django.utils import timezone
 from ninja import Query, Router, Status
 from ninja.responses import codes_4xx
 from srl.models import SRCSyncTask
@@ -22,9 +25,8 @@ router = Router()
     response={200: SyncLogResponse, codes_4xx: ErrorResponse},
     summary="SRC Sync Logs (Superuser)",
     description=(
-        "Returns SRC sync task logs with full error details. "
-        "Superuser access only. Filterable by status, action, "
-        "and game. Ordered by most recent first."
+        "Superuser access only: Returns SRC sync task logs with full error details. "
+        "Filterable by status, action, game, and max age. Ordered by most recent first."
     ),
 )
 def get_sync_logs(
@@ -49,6 +51,14 @@ def get_sync_logs(
         None,
         description="Filter by game ID",
     ),
+    max_age_hours: float | None = Query(
+        None,
+        gt=0,
+        description=(
+            "Only return tasks created within the last N hours. "
+            "Accepts fractional values (e.g. 0.5, 24, 168)."
+        ),
+    ),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ) -> Status:
@@ -67,6 +77,9 @@ def get_sync_logs(
         qs = qs.filter(error_category=error_category)
     if game_id:
         qs = qs.filter(run__game_id=game_id)
+    if max_age_hours is not None:
+        cutoff = timezone.now() - timedelta(hours=max_age_hours)
+        qs = qs.filter(created_at__gte=cutoff)
 
     total = qs.count()
     tasks = qs[offset : offset + limit]
@@ -110,8 +123,7 @@ def get_sync_logs(
     response={200: SyncRetryResponse, codes_4xx: ErrorResponse},
     summary="Retry Failed Sync Task (Superuser)",
     description=(
-        "Resets a failed SRC sync task to pending and re-queues it. "
-        "Superuser access only."
+        "Superuser access only: Resets a failed SRC sync task to pending and re-queues it."
     ),
 )
 def retry_sync_task(

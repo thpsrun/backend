@@ -280,8 +280,6 @@ def get_level(
     description="""\
 Creates a brand new level.
 
-REQUIRES MODERATOR ACCESS OR HIGHER.
-
 Request Body:
 - `id` (str): Unique ID (usually based on SRC) of the level.
 - `name` (str): Level name (e.g., "Warehouse", "School").
@@ -348,8 +346,6 @@ def create_level(
     summary="Update Level",
     description="""\
 Updates the level based on its unique ID.
-
-REQUIRES MODERATOR ACCESS OR HIGHER.
 
 Supported Parameters:
 - `id` (str): Unique ID of the level being edited.
@@ -425,8 +421,6 @@ def update_level(
     summary="Delete Level",
     description="""\
 Deletes the selected level by its ID.
-
-REQUIRES ADMIN ACCESS.
 
 Supported Parameters:
 - `id` (str): Unique ID of the level being deleted.
