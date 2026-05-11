@@ -135,6 +135,10 @@ ninja_api: NinjaAPI = NinjaAPI(
                 "description": "Specific endpoints related to how the frontend operates.",
             },
             {
+                "name": "Leaderboards",
+                "description": "Specific endpoints related to the points leaderboard history.",
+            },
+            {
                 "name": "Reference",
                 "description": "Static reference data lookups that do not require authentication.",
             },
@@ -159,16 +163,12 @@ ninja_api: NinjaAPI = NinjaAPI(
                 "description": "Store and remove the authenticated player's Speedrun.com API key.",
             },
             {
+                "name": "Auth - SRC Sessions",
+                "description": "Status and refresh endpoints for the SRC v2 bot session.",
+            },
+            {
                 "name": "Auth - Submissions",
                 "description": "Run submission and moderation workflows.",
-            },
-            {
-                "name": "Auth - Sync Logs",
-                "description": "Administrative sync log endpoints.",
-            },
-            {
-                "name": "Auth - Reconcile",
-                "description": "Superuser-only endpoints for managing SRC reconciliation jobs.",
             },
             {
                 "name": "Auth - API Keys",
@@ -184,6 +184,61 @@ ninja_api: NinjaAPI = NinjaAPI(
                 "name": "Auth - Admin Game Display",
                 "description": "Superuser-only endpoints to manage main-page "
                 "visibility and category/level/variable ordering for a game.",
+            },
+            {
+                "name": "Auth - Sync Logs",
+                "description": "Administrative sync log endpoints.",
+            },
+            {
+                "name": "Auth - Reconcile",
+                "description": "Superuser-only endpoints for managing SRC reconciliation jobs.",
+            },
+        ],
+        "x-tagGroups": [
+            {
+                "name": "Resources",
+                "tags": [
+                    "Games",
+                    "Categories",
+                    "Levels",
+                    "Variables",
+                    "Runs",
+                    "Players",
+                    "Platforms",
+                    "Streams",
+                    "Reference",
+                ],
+            },
+            {
+                "name": "Site",
+                "tags": [
+                    "Website",
+                    "Leaderboards",
+                    "Guides",
+                    "Tags",
+                ],
+            },
+            {
+                "name": "Authenticated User",
+                "tags": [
+                    "Auth - Account",
+                    "Auth - Profile",
+                    "Auth - Profile Picture",
+                    "Auth - Profile Background",
+                    "Auth - SRC API Key",
+                    "Auth - Submissions",
+                    "Auth - API Keys",
+                ],
+            },
+            {
+                "name": "Administration",
+                "tags": [
+                    "Auth - Admin API Keys",
+                    "Auth - Admin Game Display",
+                    "Auth - Sync Logs",
+                    "Auth - Reconcile",
+                    "Auth - SRC Sessions",
+                ],
             },
         ],
     },
@@ -343,7 +398,7 @@ ninja_api.add_router("/auth", submissions_router, tags=["Auth - Submissions"])
 ninja_api.add_router("/auth", api_keys_router, tags=["Auth - API Keys"])
 ninja_api.add_router("/auth", admin_api_keys_router, tags=["Auth - Admin API Keys"])
 ninja_api.add_router(
-    "/auth", admin_game_display_router, tags=["Auth - Main Page Display"]
+    "/auth", admin_game_display_router, tags=["Auth - Admin Game Display"]
 )
 
 ninja_api.add_router("/auth", sync_logs_router, tags=["Auth - Sync Logs"])
