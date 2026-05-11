@@ -26,11 +26,6 @@ from srl.models import (
     VariableValues,
 )
 from srl.views import (
-    GameReorderView,
-    GameVisibilityView,
-    LegacyOrderingRedirectView,
-    LegacyVisibilityRedirectView,
-    ManageGameDisplayView,
     RefreshGameRunsView,
     UpdateGameRunsView,
     UpdateGameView,
@@ -62,8 +57,6 @@ class GameAdmin(admin.ModelAdmin):
         "update_game",
         "update_game_runs",
         "refresh_game_runs",
-        "manage_main_visibility",
-        "manage_ordering",
     ]
     search_fields = ["name"]
 
@@ -103,34 +96,6 @@ class GameAdmin(admin.ModelAdmin):
             reverse("admin:refresh_game_runs") + f"?game_ids={','.join(game_ids)}"
         )
 
-    @admin.action(description="Manage Main Page Visibility")
-    def manage_main_visibility(
-        self,
-        _: HttpRequest,
-        queryset: QuerySet["Games"],
-    ) -> HttpResponse:
-        """Opens the merged display editor for the selected game."""
-        game = queryset.first()
-        if game:
-            return redirect(
-                reverse("admin:srl_game_display", args=[game.id]),
-            )
-        return redirect(reverse("admin:srl_games_changelist"))
-
-    @admin.action(description="Manage Category & Level Ordering")
-    def manage_ordering(
-        self,
-        _: HttpRequest,
-        queryset: QuerySet["Games"],
-    ) -> HttpResponse:
-        """Opens the merged display editor for the selected game."""
-        game = queryset.first()
-        if game:
-            return redirect(
-                reverse("admin:srl_game_display", args=[game.id]),
-            )
-        return redirect(reverse("admin:srl_games_changelist"))
-
     def get_urls(
         self,
     ) -> list[URLPattern]:
@@ -151,31 +116,6 @@ class GameAdmin(admin.ModelAdmin):
                 "refresh-game-runs/",
                 self.admin_site.admin_view(RefreshGameRunsView.as_view()),
                 name="refresh_game_runs",
-            ),
-            path(
-                "<str:game_id>/manage-display/",
-                self.admin_site.admin_view(ManageGameDisplayView.as_view()),
-                name="srl_game_display",
-            ),
-            path(
-                "<str:game_id>/reorder/",
-                self.admin_site.admin_view(GameReorderView.as_view()),
-                name="srl_game_reorder",
-            ),
-            path(
-                "<str:game_id>/visibility/",
-                self.admin_site.admin_view(GameVisibilityView.as_view()),
-                name="srl_game_visibility",
-            ),
-            path(
-                "<str:game_id>/manage-main-visibility/",
-                self.admin_site.admin_view(LegacyVisibilityRedirectView.as_view()),
-                name="srl_game_legacy_main_visibility",
-            ),
-            path(
-                "<str:game_id>/manage-ordering/",
-                self.admin_site.admin_view(LegacyOrderingRedirectView.as_view()),
-                name="srl_game_legacy_ordering",
             ),
         ]
         return custom_urls + urls
