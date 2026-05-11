@@ -19,7 +19,6 @@ from srl.models.reconciliation import (
     ReconSourceOfTruth,
     ReconStatus,
 )
-from srl.tasks import dispatch_phase_2, dispatch_phase_3
 
 LOCK_TTL_SECONDS = 3600
 ERROR_SUMMARY_MAX_LEN = 4000
@@ -407,6 +406,8 @@ def finalize_after_drain(
         job.phase = next_phase
         job.save(update_fields=["phase"])
         dispatch_target = next_phase
+
+    from srl.tasks import dispatch_phase_2, dispatch_phase_3
 
     job_id_str = str(job_id)
     dispatcher = (
