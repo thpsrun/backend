@@ -13,6 +13,7 @@ class APIKeyRevokedReason(models.TextChoices):
     USER = "user", "Revoked by owner"
     PERMISSION_REVOKED = "permission_revoked", "Permission revoked"
     ADMIN = "admin", "Revoked by admin"
+    BANNED = "banned", "Banned by admin"
 
 
 class APIKeyManager(BaseAPIKeyManager):

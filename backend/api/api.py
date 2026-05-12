@@ -9,6 +9,7 @@ from ninja.errors import ValidationError
 
 from api.v1.routers.auth.admin_api_keys import router as admin_api_keys_router
 from api.v1.routers.auth.admin_game_display import router as admin_game_display_router
+from api.v1.routers.auth.admin_users import router as admin_users_router
 from api.v1.routers.auth.api_keys import router as api_keys_router
 from api.v1.routers.auth.bot_session import router as bot_session_router
 from api.v1.routers.auth.me import router as me_router
@@ -29,6 +30,7 @@ from api.v1.routers.pages.leaderboard_history import (
     router as leaderboard_history_router,
 )
 from api.v1.routers.pages.navbar import router as navbar_router
+from api.v1.routers.resources.awards import router as awards_router
 from api.v1.routers.resources.categories import router as categories_router
 from api.v1.routers.resources.countries import router as countries_router
 from api.v1.routers.resources.games import router as games_router
@@ -143,54 +145,61 @@ ninja_api: NinjaAPI = NinjaAPI(
                 "description": "Static reference data lookups that do not require authentication.",
             },
             {
-                "name": "Auth - Account",
+                "name": "Account",
                 "description": "Account registration endpoints.",
             },
             {
-                "name": "Auth - Profile",
+                "name": "Profile",
                 "description": "Read, update, and delete the authenticated player's profile.",
             },
             {
-                "name": "Auth - Profile Picture",
+                "name": "Profile Picture",
                 "description": "Upload the authenticated player's profile picture.",
             },
             {
-                "name": "Auth - Profile Background",
+                "name": "Profile Background",
                 "description": "Upload and remove the authenticated player's profile background.",
             },
             {
-                "name": "Auth - SRC API Key",
+                "name": "SRC API Key",
                 "description": "Store and remove the authenticated player's Speedrun.com API key.",
             },
             {
-                "name": "Auth - SRC Sessions",
+                "name": "SRC Sessions",
                 "description": "Status and refresh endpoints for the SRC v2 bot session.",
             },
             {
-                "name": "Auth - Submissions",
+                "name": "Submissions",
                 "description": "Run submission and moderation workflows.",
             },
             {
-                "name": "Auth - API Keys",
+                "name": "API Keys",
                 "description": "Self-service endpoints for managing the "
                 "authenticated user's API keys.",
             },
             {
-                "name": "Auth - Admin API Keys",
+                "name": "Admin API Keys",
                 "description": "Superuser-only endpoints for inspecting and "
                 "revoking any user's API keys.",
             },
             {
-                "name": "Auth - Admin Game Display",
+                "name": "Admin Game Display",
                 "description": "Superuser-only endpoints to manage main-page "
                 "visibility and category/level/variable ordering for a game.",
             },
             {
-                "name": "Auth - Sync Logs",
+                "name": "Admin Users",
+                "description": "Superuser-only endpoints to manage users: force "
+                "password reset, revoke sessions, ban / un-ban, set moderator "
+                "status per game, grant or revoke awards, and manage profile "
+                "pictures.",
+            },
+            {
+                "name": "Sync Logs",
                 "description": "Administrative sync log endpoints.",
             },
             {
-                "name": "Auth - Reconcile",
+                "name": "Reconcile",
                 "description": "Superuser-only endpoints for managing SRC reconciliation jobs.",
             },
         ],
@@ -221,23 +230,24 @@ ninja_api: NinjaAPI = NinjaAPI(
             {
                 "name": "Authenticated User",
                 "tags": [
-                    "Auth - Account",
-                    "Auth - Profile",
-                    "Auth - Profile Picture",
-                    "Auth - Profile Background",
-                    "Auth - SRC API Key",
-                    "Auth - Submissions",
-                    "Auth - API Keys",
+                    "Account",
+                    "Profile",
+                    "Profile Picture",
+                    "Profile Background",
+                    "SRC API Key",
+                    "Submissions",
+                    "API Keys",
                 ],
             },
             {
                 "name": "Administration",
                 "tags": [
-                    "Auth - Admin API Keys",
-                    "Auth - Admin Game Display",
-                    "Auth - Sync Logs",
-                    "Auth - Reconcile",
-                    "Auth - SRC Sessions",
+                    "Admin API Keys",
+                    "Admin Game Display",
+                    "Admin Users",
+                    "Sync Logs",
+                    "Reconcile",
+                    "SRC Sessions",
                 ],
             },
         ],
@@ -389,19 +399,19 @@ ninja_api.add_router("/website", navbar_router, tags=["Website"])
 ninja_api.add_router("", history_router, tags=["Website"])
 
 ninja_api.add_router("/countries", countries_router, tags=["Reference"])
+ninja_api.add_router("/awards", awards_router, tags=["Reference"])
 
-ninja_api.add_router("/auth", register_router, tags=["Auth - Account"])
-ninja_api.add_router("/auth", me_router, tags=["Auth - Profile"])
-ninja_api.add_router("/auth", pfp_router, tags=["Auth - Profile Picture"])
-ninja_api.add_router("/auth", profile_bg_router, tags=["Auth - Profile Background"])
-ninja_api.add_router("/auth", submissions_router, tags=["Auth - Submissions"])
-ninja_api.add_router("/auth", api_keys_router, tags=["Auth - API Keys"])
-ninja_api.add_router("/auth", admin_api_keys_router, tags=["Auth - Admin API Keys"])
-ninja_api.add_router(
-    "/auth", admin_game_display_router, tags=["Auth - Admin Game Display"]
-)
+ninja_api.add_router("/auth", register_router, tags=["Account"])
+ninja_api.add_router("/auth", me_router, tags=["Profile"])
+ninja_api.add_router("/auth", pfp_router, tags=["Profile Picture"])
+ninja_api.add_router("/auth", profile_bg_router, tags=["Profile Background"])
+ninja_api.add_router("/auth", submissions_router, tags=["Submissions"])
+ninja_api.add_router("/auth", api_keys_router, tags=["API Keys"])
+ninja_api.add_router("/auth", admin_api_keys_router, tags=["Admin API Keys"])
+ninja_api.add_router("/auth", admin_game_display_router, tags=["Admin Game Display"])
+ninja_api.add_router("/auth", admin_users_router, tags=["Admin Users"])
 
-ninja_api.add_router("/auth", sync_logs_router, tags=["Auth - Sync Logs"])
-ninja_api.add_router("/auth", reconcile_router, tags=["Auth - Reconcile"])
-ninja_api.add_router("/auth", src_key_router, tags=["Auth - SRC API Key"])
-ninja_api.add_router("/auth", bot_session_router, tags=["Auth - SRC Sessions"])
+ninja_api.add_router("/auth", sync_logs_router, tags=["Sync Logs"])
+ninja_api.add_router("/auth", reconcile_router, tags=["Reconcile"])
+ninja_api.add_router("/auth", src_key_router, tags=["SRC API Key"])
+ninja_api.add_router("/auth", bot_session_router, tags=["SRC Sessions"])

@@ -188,19 +188,18 @@ def get_guide(
     if "game" in embed_list and guide.game:
         guide_data.game = GameSchema.model_validate(guide.game)
     if "tags" in embed_list:
-        guide_data.tags = [
-            TagSchema.model_validate(tag) for tag in guide.tags.all()
-        ]
+        guide_data.tags = [TagSchema.model_validate(tag) for tag in guide.tags.all()]
 
     return Status(200, guide_data)
 
 
 @router.post(
     "/",
-    response={200: GuideSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={201: GuideSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
     summary="Create New Guide",
     description="""\
-Creates a brand new guide.
+Creates a brand new guide. Any claimed player can create a guide; the new
+guide is owned by the calling user.
 
 Request Body:
 - `title` (str): Name of the guide.
@@ -209,7 +208,7 @@ Request Body:
 - `short_description` (str): Brief description of the guide (limit 500 characters).
 - `content` (str): Full guide content (markdown supported).
 """,
-    auth=authed("games.manage", target_resolver=game_from_body),
+    auth=authed("guides.create", target_resolver=game_from_body),
 )
 def create_guide(
     request: HttpRequest,
@@ -261,7 +260,7 @@ def create_guide(
                 TagSchema.model_validate(tag) for tag in guide.tags.all()
             ]
 
-            return Status(200, guide_data)
+            return Status(201, guide_data)
     except Exception as e:
         return Status(
             500,
@@ -286,7 +285,10 @@ Request Body:
 - `short_description` (str | None): Brief description of the guide (limit 500 characters).
 - `content` (str | None): Full guide content (markdown supported).
 """,
-    auth=authed("guides.edit_any", target_resolver=guide_from_path),
+    auth=authed(
+        ["guides.edit_own", "guides.edit_any"],
+        target_resolver=guide_from_path,
+    ),
 )
 def update_guide(
     request: HttpRequest,
@@ -394,7 +396,10 @@ Deletes an existing guide.
 Supported Parameters:
 - `slug` (str): Simplified, URL friendly name of the guide.
 """,
-    auth=authed("guides.delete_any", target_resolver=guide_from_path),
+    auth=authed(
+        ["guides.delete_own", "guides.delete_any"],
+        target_resolver=guide_from_path,
+    ),
 )
 def delete_guide(
     request: HttpRequest,
@@ -413,7 +418,7 @@ def delete_guide(
     try:
         title = guide.title
         guide.delete()
-        return Status(200, {"message": f"Guide '{title} deleted successfully."})
+        return Status(200, {"message": f"Guide '{title}' deleted successfully."})
     except Exception as e:
         return Status(
             500,

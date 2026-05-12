@@ -18,7 +18,6 @@ from api.permissions import (
     PLAYER_SCOPES,
     SU_ONLY_SCOPES,
     authed,
-    public_read,
 )
 from api.v1.schemas.api_keys import (
     APIKeyCreateRequest,
@@ -55,7 +54,7 @@ def _build_key_response(
     )
 
 
-def _build_create_key_response(
+def _create_apikey_response(
     key: APIKey,
     raw: str,
 ) -> APIKeyCreateResponse:
@@ -63,7 +62,7 @@ def _build_create_key_response(
     return APIKeyCreateResponse(**base.model_dump(), key=raw)
 
 
-def _user_has_capability_on_any_game(
+def _check_user_capes(
     user,
     capability: str,
 ) -> bool:
@@ -84,7 +83,7 @@ def _user_moderates_any_game(
     return Games.objects.filter(moderators=player).exists()
 
 
-def _games_user_can_scope(
+def _user_game_check(
     user,
 ) -> QuerySet[Games]:
     """Games the user has game-specific moderator powers on (or all, for SU).
@@ -100,18 +99,12 @@ def _games_user_can_scope(
     return Games.objects.filter(moderators=player)
 
 
-def _enforce_subset_of_presenting_key(
+def _enforce_presenting_key(
     request: HttpRequest,
     capabilities: list[str],
     games: list[str],
 ) -> None:
-    """If the caller authenticated via an API key, the new key's scope must be a
-    subset of the presenting key's scope.
-
-    Empty lists on the presenter mean "no restriction on this axis" and admit
-    any value. Empty lists on the new key mean "no restriction" - which is
-    broader than a non-empty presenter list, so we reject that too.
-    """
+    """Checks scope and subset of scope of the presented API key."""
     presenting: APIKey | None = getattr(request, "api_key", None)
     if presenting is None:
         return
@@ -152,9 +145,7 @@ def _enforce_subset_of_presenting_key(
 def _resolve_scope_games(
     games: list[str],
 ) -> dict[str, Games]:
-    """Fetch the requested scope games in one query and raise 400 if any are unknown.
-    Returns a {pk: Games} mapping for downstream reuse.
-    """
+    """Fetch the requested scope games in one query and raise 400 if any are unknown."""
     if not games:
         return {}
     games_map: dict[str, Games] = {
@@ -171,10 +162,6 @@ def _enforce_user_can_scope(
     capabilities: list[str],
     games_map: dict[str, Games],
 ) -> None:
-    """Reject with 400 if the user cannot actually exercise every capability they
-    are trying to bake into the key. Prevents creating a key with powers the
-    owner does not have.
-    """
     for cap in capabilities:
         if cap not in CAPABILITY_SCOPED:
             raise HttpError(400, f"Unknown capability: {cap!r}")
@@ -189,7 +176,7 @@ def _enforce_user_can_scope(
                             f"game {game_id!r}",
                         )
             else:
-                if not _user_has_capability_on_any_game(user, cap):
+                if not _check_user_capes(user, cap):
                     raise HttpError(
                         400,
                         f"Cannot scope key: you do not have {cap!r} on any game",
@@ -247,7 +234,7 @@ def create_my_key(
             f"Max active API keys per user reached ({max_per_user})",
         )
 
-    _enforce_subset_of_presenting_key(
+    _enforce_presenting_key(
         request,
         body.scope_capabilities,
         body.scope_games,
@@ -278,7 +265,7 @@ def create_my_key(
         body.scope_games,
     )
 
-    return Status(201, _build_create_key_response(key_obj, raw))
+    return Status(201, _create_apikey_response(key_obj, raw))
 
 
 @router.get(
@@ -346,15 +333,12 @@ def revoke_my_key(
     description="Returns the capabilities the authenticated user can exercise "
     "and the games on which they have any game-scoped power. Useful for the "
     "frontend to drive the API key creation UI.",
-    auth=public_read(),
+    auth=authed("api_keys.list_own"),
 )
 def my_capabilities(
     request: HttpRequest,
 ) -> Status:
     user = request.user
-    if not user.is_authenticated:
-        raise HttpError(401, "Login required")
-
     has_claimed_player: bool = user.has_perm("profile.edit_own")
     mods_any_game: bool = user.is_superuser or _user_moderates_any_game(user)
 
@@ -379,7 +363,7 @@ def my_capabilities(
 
     games: list[GameEmbed] = [
         GameEmbed(id=str(g.pk), name=g.name, slug=g.slug)
-        for g in _games_user_can_scope(user)
+        for g in _user_game_check(user)
     ]
 
     return Status(200, CapabilitiesResponse(capabilities=capabilities, games=games))

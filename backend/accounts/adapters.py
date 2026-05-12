@@ -26,6 +26,10 @@ class SocialAccountAdapter(DefaultSocialAccountAdapter):
             raise ImmediateHttpResponse(
                 HttpResponseRedirect(f"{settings.FRONTEND_URL}/login/no-link/"),
             )
+        if not sociallogin.user.is_active:
+            raise ImmediateHttpResponse(
+                HttpResponseRedirect(f"{settings.FRONTEND_URL}/login/banned/"),
+            )
 
 
 class MFAAdapter(DefaultMFAAdapter):

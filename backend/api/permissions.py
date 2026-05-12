@@ -37,7 +37,6 @@ CAPABILITY_SCOPED: dict[str, bool] = {
     "api_keys.revoke_own": False,
     "api_keys.admin": False,
     "users.admin": False,
-    "users.view_private": False,
     "profile.edit_own": False,
     "submissions.list_own": False,
     "sync_logs.admin": False,
@@ -108,7 +107,6 @@ def _register_capabilities() -> None:
     # Admin capabilities
     add_perm("api_keys.admin", is_superuser)
     add_perm("users.admin", is_superuser)
-    add_perm("users.view_private", is_superuser)
 
     # Misc
     add_perm("profile.edit_own", is_authenticated & has_claimed_player)  # type: ignore
@@ -135,6 +133,8 @@ def _resolve_caller(
     user = getattr(request, "user", None)
     if user is None or not getattr(user, "is_authenticated", False):
         raise HttpError(401, "Authentication required")
+    if not user.is_active:
+        raise HttpError(403, "Account disabled")
 
     if request.method not in ("GET", "HEAD", "OPTIONS"):
         enforce_csrf(request)
@@ -182,22 +182,38 @@ def _key_scope_admits(
 
 
 def authed(
-    capability: str,
+    capability: str | list[str],
     target_resolver: Callable[[HttpRequest], Any] | None = None,
 ) -> Callable[[HttpRequest], Any]:
+    capabilities: tuple[str, ...] = (
+        (capability,) if isinstance(capability, str) else tuple(capability)
+    )
+    if not capabilities:
+        raise ValueError("authed() requires at least one capability!")
+
     def dependency(request: HttpRequest) -> Any:
         user, key = _resolve_caller(request)
         target = target_resolver(request) if target_resolver else None
 
-        if not user.has_perm(capability, target):
-            raise HttpError(403, f"Permission denied: {capability}")
+        user_perm_failed: bool = True
+        for cap in capabilities:
+            if not user.has_perm(cap, target):
+                continue
+            user_perm_failed = False
+            if key is not None and not _key_scope_admits(key, cap, target):
+                continue
+            request.user = user
+            request.api_key = key  # type: ignore
+            return user
 
-        if key is not None and not _key_scope_admits(key, capability, target):
-            raise HttpError(403, "API key scope does not cover this action")
-
-        request.user = user
-        request.api_key = key  # type: ignore
-        return user
+        if user_perm_failed:
+            label = (
+                capabilities[0]
+                if len(capabilities) == 1
+                else f"any of {list(capabilities)}"
+            )
+            raise HttpError(403, f"Permission denied: {label}")
+        raise HttpError(403, "API key scope does not cover this action")
 
     return dependency
 
