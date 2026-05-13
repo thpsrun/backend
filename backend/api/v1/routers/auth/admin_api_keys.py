@@ -22,7 +22,7 @@ router = Router()
     "/admin/api-keys",
     response={200: list[APIKeyResponse], codes_4xx: ErrorResponse},
     summary="List API Keys For Any User",
-    description="Superuser-only: Returns every API key owned by the requested user.",
+    description="Superuser Only: Returns every API key owned by the requested user.",
     auth=authed("api_keys.admin"),
 )
 def admin_list_keys(
@@ -40,7 +40,7 @@ def admin_list_keys(
     "/admin/api-keys/{key_id}",
     response={204: None, codes_4xx: ErrorResponse},
     summary="Revoke Any API Key",
-    description="Superuser-only: revokes any API key by ID, regardless of owner.",
+    description="Superuser Only: revokes any API key by ID, regardless of owner.",
     auth=authed("api_keys.admin"),
 )
 def admin_revoke_key(

@@ -154,9 +154,16 @@ DATABASES = {
     }
 }
 
-redis_password = os.getenv("REDIS_PASSWORD", "")
+if DEBUG:
+    redis_password = os.getenv("REDIS_PASSWORD", "")
+else:
+    redis_password = _require_env("REDIS_PASSWORD")
 redis_auth = f":{redis_password}@" if redis_password else ""
 REDIS_DB = f"redis://{redis_auth}redis:6379"
+
+# Comma-separated IPs or CIDR ranges of trusted reverse proxies. When the request's
+# REMOTE_ADDR matches one of these, X-Forwarded-For is honored for rate limiting and logging.
+TRUSTED_PROXIES = os.getenv("TRUSTED_PROXIES", "")
 
 CACHES = {
     "default": {

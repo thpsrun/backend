@@ -46,7 +46,6 @@ def is_key_backable(
                 if not _user_moderates_any_game(user):
                     return False
             continue
-        return False
     return True
 
 

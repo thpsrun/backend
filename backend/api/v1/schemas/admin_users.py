@@ -69,3 +69,17 @@ class AdminPfpResponse(Schema):
                 "pfp": "/media/pfp/abc12345.jpg",
             },
         }
+
+
+class AdminProfileBGResponse(Schema):
+    profile_bg: str = Field(
+        ...,
+        description="Public URL of the saved profile background image.",
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "profile_bg": "/media/profile_bg/abc12345.jpg",
+            },
+        }

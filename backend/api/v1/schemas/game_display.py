@@ -61,7 +61,6 @@ class GameDisplayResponse(Schema):
     categories: list[DisplayItem]
     levels: list[DisplayItem]
     variable_groups: list[VariableGroup]
-    page_loaded_at: str
 
     class Config:
         json_schema_extra = {
@@ -98,7 +97,6 @@ class GameDisplayResponse(Schema):
                         ],
                     },
                 ],
-                "page_loaded_at": "2026-05-10T16:43:00+00:00",
             },
         }
 

@@ -80,21 +80,11 @@ class APIActivityLogEntryAdmin(admin.ModelAdmin):
         obj: LogEntry,
     ) -> SafeString | str:
         if obj.user:
-            if obj.user.username.startswith("api_key_"):
-                key_name: str = obj.user.last_name or obj.user.username.replace(
-                    "api_key_", ""
-                )
-                return format_html(
-                    '<span title="API Key: {}">' "<strong> {}</strong>" "</span>",
-                    obj.user.username,
-                    key_name,
-                )
-            else:
-                return format_html(
-                    '<span title="User: {}">' "<strong> {}</strong>" "</span>",
-                    obj.user.username,
-                    obj.user.get_full_name() or obj.user.username,
-                )
+            return format_html(
+                '<span title="User: {}">' "<strong> {}</strong>" "</span>",
+                obj.user.username,
+                obj.user.get_full_name() or obj.user.username,
+            )
         return "-"
 
     @admin.display(

@@ -42,6 +42,7 @@ CAPABILITY_SCOPED: dict[str, bool] = {
     "sync_logs.admin": False,
     "reconcile.admin": False,
     "games.display.admin": False,
+    "navbar.admin": False,
 }
 
 # Categorization of the game-scoped capabilities by the natural power a user needs to exercise
@@ -114,6 +115,7 @@ def _register_capabilities() -> None:
     add_perm("sync_logs.admin", is_superuser)
     add_perm("reconcile.admin", is_superuser)
     add_perm("games.display.admin", is_superuser)
+    add_perm("navbar.admin", is_superuser)
 
 
 _register_capabilities()

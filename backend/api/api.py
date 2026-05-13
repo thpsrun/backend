@@ -3,12 +3,15 @@ from textwrap import dedent
 from typing import Any
 
 import sentry_sdk
+from django.conf import settings
 from django.http import HttpRequest, HttpResponse
 from ninja import NinjaAPI, Redoc
 from ninja.errors import ValidationError
 
+from api.client_ip import client_ip
 from api.v1.routers.auth.admin_api_keys import router as admin_api_keys_router
 from api.v1.routers.auth.admin_game_display import router as admin_game_display_router
+from api.v1.routers.auth.admin_navbar import router as admin_navbar_router
 from api.v1.routers.auth.admin_users import router as admin_users_router
 from api.v1.routers.auth.api_keys import router as api_keys_router
 from api.v1.routers.auth.bot_session import router as bot_session_router
@@ -178,29 +181,34 @@ ninja_api: NinjaAPI = NinjaAPI(
                 "authenticated user's API keys.",
             },
             {
+                "name": "Sync Logs",
+                "description": "Administrative sync log endpoints.",
+            },
+            {
                 "name": "Admin API Keys",
-                "description": "Superuser-only endpoints for inspecting and "
+                "description": "Superuser Only: endpoints for inspecting and "
                 "revoking any user's API keys.",
             },
             {
                 "name": "Admin Game Display",
-                "description": "Superuser-only endpoints to manage main-page "
+                "description": "Superuser Only: endpoints to manage main-page "
                 "visibility and category/level/variable ordering for a game.",
             },
             {
+                "name": "Admin Navbar",
+                "description": "Superuser Only: endpoints to manage navigation "
+                "items and social media links for the site navbar.",
+            },
+            {
                 "name": "Admin Users",
-                "description": "Superuser-only endpoints to manage users: force "
+                "description": "Superuser Only: endpoints to manage users: force "
                 "password reset, revoke sessions, ban / un-ban, set moderator "
                 "status per game, grant or revoke awards, and manage profile "
                 "pictures.",
             },
             {
-                "name": "Sync Logs",
-                "description": "Administrative sync log endpoints.",
-            },
-            {
                 "name": "Reconcile",
-                "description": "Superuser-only endpoints for managing SRC reconciliation jobs.",
+                "description": "Superuser Only: endpoints for managing SRC reconciliation jobs.",
             },
         ],
         "x-tagGroups": [
@@ -244,6 +252,7 @@ ninja_api: NinjaAPI = NinjaAPI(
                 "tags": [
                     "Admin API Keys",
                     "Admin Game Display",
+                    "Admin Navbar",
                     "Admin Users",
                     "Sync Logs",
                     "Reconcile",
@@ -320,7 +329,7 @@ def global_exception_handler(
                 "path": request.path,
                 "method": request.method,
                 "user_agent": request.META.get("HTTP_USER_AGENT", "Unknown"),
-                "remote_addr": request.META.get("REMOTE_ADDR", "Unknown"),
+                "remote_addr": client_ip(request),
             },
         )
 
@@ -342,12 +351,16 @@ def global_exception_handler(
         },
     )
 
-    error_data = ErrorResponse(
-        error="An unexpected error occurred",
-        details={
+    details: dict[str, Any] | None = None
+    if settings.DEBUG:
+        details = {
             "exception": str(exc),
             "type": type(exc).__name__,
-        },
+        }
+
+    error_data = ErrorResponse(
+        error="An unexpected error occurred",
+        details=details,
     ).model_dump()
 
     return ninja_api.create_response(
@@ -409,6 +422,7 @@ ninja_api.add_router("/auth", submissions_router, tags=["Submissions"])
 ninja_api.add_router("/auth", api_keys_router, tags=["API Keys"])
 ninja_api.add_router("/auth", admin_api_keys_router, tags=["Admin API Keys"])
 ninja_api.add_router("/auth", admin_game_display_router, tags=["Admin Game Display"])
+ninja_api.add_router("/auth", admin_navbar_router, tags=["Admin Navbar"])
 ninja_api.add_router("/auth", admin_users_router, tags=["Admin Users"])
 
 ninja_api.add_router("/auth", sync_logs_router, tags=["Sync Logs"])

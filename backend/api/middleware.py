@@ -10,6 +10,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.http import HttpRequest, HttpResponse
 from django.utils import timezone
 
+from api.client_ip import client_ip
 from api.models import APIKey
 
 logger = logging.getLogger(__name__)
@@ -76,7 +77,7 @@ class APIActivityLogMiddleware:
         try:
             APIKey.objects.filter(pk=api_key.pk).update(
                 last_used=timezone.now(),
-                last_used_ip=self._client_ip(request),
+                last_used_ip=client_ip(request),
             )
         except Exception:
             logger.warning(
@@ -84,19 +85,6 @@ class APIActivityLogMiddleware:
                 exc_info=True,
                 extra={"path": request.path, "key_id": api_key.pk},
             )
-
-    @staticmethod
-    def _client_ip(
-        request: HttpRequest,
-    ) -> str | None:
-        """Returns the client IP, preferring X-Forwarded-For from the reverse proxy over
-        REMOTE_ADDR so requests can record the real client."""
-        xff = request.META.get("HTTP_X_FORWARDED_FOR")
-        if xff:
-            parts = [p.strip() for p in xff.split(",") if p.strip()]
-            if parts:
-                return parts[0]
-        return request.META.get("REMOTE_ADDR")
 
     def _log_api_activity(
         self,
@@ -108,7 +96,7 @@ class APIActivityLogMiddleware:
             request: The incoming HTTP request.
         """
         try:
-            api_key_obj = self._get_api_key_from_request(request)
+            api_key_obj: APIKey | None = getattr(request, "api_key", None)
             if not api_key_obj:
                 return
 
@@ -121,8 +109,6 @@ class APIActivityLogMiddleware:
                 return
 
             action_flag = self._get_action_flag(method)
-            if not action_flag:
-                return
 
             object_info = self._extract_object_info(request)
             if not object_info:
@@ -149,28 +135,6 @@ class APIActivityLogMiddleware:
                 extra={"path": request.path, "method": request.method},
             )
 
-    def _get_api_key_from_request(
-        self,
-        request: HttpRequest,
-    ) -> APIKey | None:
-        """Extract and validate the API key from the request headers.
-
-        Arguments:
-            request: The incoming HTTP request.
-
-        Returns:
-            The APIKey object if valid, None otherwise.
-        """
-        api_key_header = request.headers.get("X-API-Key")
-        if not api_key_header:
-            return None
-
-        try:
-            return APIKey.objects.get_from_key(api_key_header)
-        except Exception as e:
-            logger.warning(f"Failed to retrieve API key: {e}", exc_info=True)
-            return None
-
     def _get_or_create_api_user(
         self,
         api_key: APIKey,
@@ -186,14 +150,10 @@ class APIActivityLogMiddleware:
     def _get_action_flag(
         self,
         method: str,
-    ) -> int | None:
+    ) -> int:
         """Convert HTTP method to Django admin action flag.
 
-        Arguments:
-            method: The HTTP method (POST, PUT, PATCH, DELETE).
-
-        Returns:
-            The corresponding Django admin action flag, or None if not mapped.
+        Caller filters to MUTATING_METHODS, so method is always a key.
         """
         method_to_flag: dict[str, int] = {
             "POST": ADDITION,
@@ -201,7 +161,7 @@ class APIActivityLogMiddleware:
             "PATCH": CHANGE,
             "DELETE": DELETION,
         }
-        return method_to_flag.get(method)
+        return method_to_flag[method]
 
     def _extract_object_info(
         self,
@@ -283,10 +243,7 @@ class APIActivityLogMiddleware:
                 "DELETE": f"Deleted via API (Key: {api_key_name})",
             }
 
-            base_message = method_messages.get(
-                method or "",
-                f"{method} via API (Key: {api_key_name})",
-            )
+            base_message = method_messages[method or ""]
 
             body_summary = self._get_sanitized_body_summary(request)
             if body_summary:

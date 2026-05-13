@@ -1,3 +1,4 @@
+import io
 import logging
 import os
 from typing import Any
@@ -5,6 +6,7 @@ from typing import Any
 from allauth.account.forms import ResetPasswordForm
 from django.conf import settings
 from django.contrib.sessions.models import Session
+from django.core.files.base import ContentFile
 from django.db import transaction
 from django.db.models import Q
 from django.http import HttpRequest
@@ -19,9 +21,11 @@ from srl.models import Awards, Games, Players
 from api.models import APIKey, APIKeyRevokedReason
 from api.permissions import authed
 from api.v1.routers.auth.pfp import PFP_DIR, PFP_MAX_PIXELS
+from api.v1.routers.auth.profile_bg import PROFILE_BG_MAX_PIXELS
 from api.v1.routers.utils.images import ImageValidationError, validate_image
 from api.v1.schemas.admin_users import (
     AdminPfpResponse,
+    AdminProfileBGResponse,
     AwardEntry,
     BanRequest,
     ModeratedGame,
@@ -100,7 +104,7 @@ def _refuse_self_target(
     response={200: list[ModeratedGame], codes_4xx: ErrorResponse},
     summary="List Games Moderated By a Player",
     description=(
-        "Superuser-only: returns the games on which the resolved player is a moderator. Identifier "
+        "Superuser Only: returns the games on which the resolved player is a moderator. Identifier "
         "may be a Player ID, name, nickname, or the linked Django username. ID lookup always wins; "
         "if a name shadows another player's ID, use the explicit Player ID."
     ),
@@ -121,7 +125,7 @@ def list_moderates(
     response={204: None, codes_4xx: ErrorResponse},
     summary="Add Player As Moderator Of a Game",
     description=(
-        "Superuser-only: adds the resolved player to the game's moderator list."
+        "Superuser Only: adds the resolved player to the game's moderator list."
     ),
     auth=authed("users.admin"),
 )
@@ -147,7 +151,7 @@ def add_moderator(
     response={204: None, codes_4xx: ErrorResponse},
     summary="Remove Player As Moderator Of A Game",
     description=(
-        "Superuser-only: removes the resolved player from the game's moderator list."
+        "Superuser Only: removes the resolved player from the game's moderator list."
     ),
     auth=authed("users.admin"),
 )
@@ -172,7 +176,7 @@ def remove_moderator(
     "/admin/users/{ident}/awards",
     response={200: list[AwardEntry], codes_4xx: ErrorResponse},
     summary="List Awards Held By a Player",
-    description="Superuser-only: returns the awards on the resolved player's profile.",
+    description="Superuser Only: returns the awards on the resolved player's profile.",
     auth=authed("users.admin"),
 )
 def list_awards(
@@ -189,7 +193,7 @@ def list_awards(
     "/admin/users/{ident}/awards/{award_id}",
     response={204: None, codes_4xx: ErrorResponse},
     summary="Grant Award To a Player",
-    description="Superuser-only: adds the award to the resolved player.",
+    description="Superuser Only: adds the award to the resolved player.",
     auth=authed("users.admin"),
 )
 def add_award(
@@ -213,7 +217,7 @@ def add_award(
     "/admin/users/{ident}/awards/{award_id}",
     response={204: None, codes_4xx: ErrorResponse},
     summary="Revoke Award From a Player",
-    description="Superuser-only: removes the award from the resolved player.",
+    description="Superuser Only: removes the award from the resolved player.",
     auth=authed("users.admin"),
 )
 def remove_award(
@@ -238,7 +242,7 @@ def remove_award(
     response={200: AdminPfpResponse, codes_4xx: ErrorResponse},
     summary="Upload Profile Picture For a Player",
     description=(
-        "Superuser-only: writes a new profile picture for the resolved "
+        "Superuser Only: writes a new profile picture for the resolved "
         "player. Same validation rules as the /me/pfp endpoint: JPEG, PNG, "
         "WEBP, or GIF, up to 5 MB and 4 MP. Saves to static/pfp/`playerid`.jpg."
     ),
@@ -307,7 +311,7 @@ def admin_upload_pfp(
     response={204: None, codes_4xx: ErrorResponse},
     summary="Delete Profile Picture For a Player",
     description=(
-        "Superuser-only: removes the player's profile picture file from disk (if present) and "
+        "Superuser Only: removes the player's profile picture file from disk (if present) and "
         "clears the URL on the player row."
     ),
     auth=authed("users.admin"),
@@ -333,12 +337,121 @@ def admin_delete_pfp(
     return Status(204, None)
 
 
+@router.post(
+    "/admin/users/{ident}/profile-bg",
+    response={200: AdminProfileBGResponse, codes_4xx: ErrorResponse},
+    summary="Upload Profile Background For a Player",
+    description=(
+        "Superuser Only: writes a new profile background image for the resolved "
+        "player. Same validation rules as the /me/profile-bg endpoint: JPEG, "
+        "PNG, WEBP, or GIF, up to 10 MB and 12 MP. Saves to MEDIA_ROOT/profile_bg/."
+    ),
+    auth=authed("users.admin"),
+)
+def admin_upload_profile_bg(
+    request: HttpRequest,
+    ident: str,
+    file: UploadedFile = File(...),  # type: ignore
+) -> Status:
+    player = _resolve_player(ident)
+
+    if not player.user:
+        return Status(
+            404,
+            ErrorResponse(
+                error=f"Player {player.id} has no claimed user account",
+                details=None,
+            ),
+        )
+
+    if not file.size or file.size > 10 * 1024 * 1024:
+        return Status(
+            400,
+            ErrorResponse(
+                error="Image exceeds maximum size of 10 MB",
+                details=None,
+            ),
+        )
+
+    raw: bytes = b"".join(file.chunks())
+
+    try:
+        rgb = validate_image(raw, file.content_type, max_pixels=PROFILE_BG_MAX_PIXELS)
+    except ImageValidationError as e:
+        return Status(
+            400,
+            ErrorResponse(
+                error=e.message,
+                details=None,
+            ),
+        )
+
+    buffer = io.BytesIO()
+    rgb.save(buffer, "JPEG", quality=85)
+    buffer.seek(0)
+
+    safe_id = "".join(c for c in player.id if c.isalnum() or c in "-_")
+    filename = f"{safe_id}.jpg"
+
+    if player.user.profile_bg:
+        player.user.profile_bg.delete(save=False)
+
+    player.user.profile_bg.save(
+        filename,
+        ContentFile(buffer.getvalue()),
+        save=True,
+    )
+
+    logger.info(
+        "admin upload profile_bg: actor=%s player=%s",
+        request.user.pk,
+        player.id,
+    )
+    return Status(
+        200,
+        AdminProfileBGResponse(profile_bg=player.user.profile_bg.url),
+    )
+
+
+@router.delete(
+    "/admin/users/{ident}/profile-bg",
+    response={204: None, codes_4xx: ErrorResponse},
+    summary="Delete Profile Background For a Player",
+    description=("Superuser Only: removes the player's profile background image."),
+    auth=authed("users.admin"),
+)
+def admin_delete_profile_bg(
+    request: HttpRequest,
+    ident: str,
+) -> Status:
+    player = _resolve_player(ident)
+
+    if not player.user:
+        return Status(
+            404,
+            ErrorResponse(
+                error=f"Player {player.id} has no claimed user account",
+                details=None,
+            ),
+        )
+
+    if player.user.profile_bg:
+        player.user.profile_bg.delete(save=True)
+
+    logger.info(
+        "admin delete profile_bg: actor=%s player=%s",
+        request.user.pk,
+        player.id,
+    )
+    return Status(204, None)
+
+
 @router.delete(
     "/admin/users/{ident}/sessions",
     response={200: SessionsRevokedResponse, codes_4xx: ErrorResponse},
     summary="Revoke All Active Sessions For a User",
     description=(
-        "Superuser-only: deletes the specified user account (cannot be done to own account)"
+        "Superuser Only: deletes the specified user account (cannot be done to own account)"
     ),
     auth=authed("users.admin"),
 )
@@ -363,7 +476,7 @@ def admin_revoke_sessions(
     response={204: None, codes_4xx: ErrorResponse},
     summary="Force Password Reset For a User",
     description=(
-        "Superuser-only: sets the user's password to unusable, deletes all of their unexpired "
+        "Superuser Only: sets the user's password to unusable, deletes all of their unexpired "
         "sessions, then sends a password reset email to the address on file."
     ),
     auth=authed("users.admin"),
@@ -412,7 +525,7 @@ def admin_password_reset(
     response={204: None, codes_4xx: ErrorResponse},
     summary="Ban a User",
     description=(
-        "Superuser-only: revokes all specified player's API keys, flips is_active to False, "
+        "Superuser Only: revokes all specified player's API keys, flips is_active to False, "
         "deletes all of their sessions, and sets Players.sync_paused to True."
     ),
     auth=authed("users.admin"),
@@ -457,7 +570,7 @@ def admin_ban_user(
     response={204: None, codes_4xx: ErrorResponse},
     summary="Un-Ban a User",
     description=(
-        "Superuser-only: flips is_active back to True and clears Players.sync_paused."
+        "Superuser Only: flips is_active back to True and clears Players.sync_paused."
     ),
     auth=authed("users.admin"),
 )
