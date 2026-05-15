@@ -3,6 +3,7 @@ from pathlib import Path
 
 import sentry_sdk
 from celery.schedules import crontab
+from corsheaders.defaults import default_headers as _cors_default_headers
 from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
@@ -93,6 +94,10 @@ MIDDLEWARE = [
 
 CORS_ALLOWED_ORIGINS = [FRONTEND_URL]
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_HEADERS = (
+    *_cors_default_headers,
+    "x-remember-me",
+)
 
 ROOT_URLCONF = "website.urls"
 
@@ -259,6 +264,7 @@ MFA_SUPPORTED_TYPES = ["totp", "webauthn", "recovery_codes"]
 MFA_PASSKEY_LOGIN_ENABLED = True
 MFA_PASSKEY_SIGNUP_ENABLED = False
 MFA_WEBAUTHN_ALLOW_INSECURE_ORIGIN = DEBUG  # WebAuthn refuses HTTP except on localhost
+SESSION_COOKIE_AGE = 60 * 60 * 24 * 30
 
 # SOCIAL AUTH (Discord + Twitch - apps registered externally, credentials in .env)
 SOCIALACCOUNT_PROVIDERS = {
@@ -278,7 +284,6 @@ SOCIALACCOUNT_PROVIDERS = {
     },
 }
 
-SESSION_COOKIE_AGE = 60 * 60 * 24 * 7  # 7 days in seconds
 
 # ALLAUTH HEADLESS
 HEADLESS_ONLY = True
