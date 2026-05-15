@@ -11,6 +11,7 @@ class ReconcileScope(str, Enum):
     RUN = "RUN"
     LEADERBOARD = "LEADERBOARD"
     GAME = "GAME"
+    SERIES = "SERIES"
 
 
 class SourceOfTruth(str, Enum):
@@ -87,9 +88,8 @@ class ReconcileRequest(Schema):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "scope": "GAME",
+                "scope": "SERIES",
                 "source_of_truth": "SRC",
-                "target_id": "thps3",
             },
         },
     )

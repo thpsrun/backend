@@ -2,7 +2,6 @@ from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404
 from ninja import Router, Status
 from ninja.errors import HttpError
-from ninja.responses import codes_4xx
 from srl.game_display import (
     apply_reorder,
     apply_visibility,
@@ -23,7 +22,12 @@ router = Router()
 
 @router.get(
     "/admin/games/{game_id}/display",
-    response={200: GameDisplayResponse, codes_4xx: ErrorResponse},
+    response={
+        200: GameDisplayResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+    },
     summary="Get Game Display",
     description=(
         "Superuser Only: returns the current categories, levels, and variable groups for a game, "
@@ -42,7 +46,13 @@ def get_game_display(
 
 @router.post(
     "/admin/games/{game_id}/display/reorder",
-    response={204: None, codes_4xx: ErrorResponse},
+    response={
+        204: None,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+    },
     summary="Reorder Categories, Levels, or Variable Values",
     description=(
         "Superuser Only: assigns indexed `order` values to the IDs provided within a given scope."
@@ -71,7 +81,13 @@ def post_reorder(
 
 @router.post(
     "/admin/games/{game_id}/display/visibility",
-    response={204: None, codes_4xx: ErrorResponse},
+    response={
+        204: None,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+    },
     summary="Toggle Main Page Visibility For Category Or Variable Value",
     description=(
         "Superuser Only: sets `appear_on_main` on a single category or variable value. "

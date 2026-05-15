@@ -24,6 +24,7 @@ LOCK_TTL_SECONDS = 3600
 ERROR_SUMMARY_MAX_LEN = 4000
 ITEM_BATCH_SIZE = 100
 CANCEL_CHECK_INTERVAL_SECONDS = 2.0
+_COUNTED_RECORD_TYPES = {"run", "series_game"}
 
 
 class CancellationRequested(Exception):
@@ -161,12 +162,34 @@ def _record_item(
             phase=job.phase or ReconPhase.P1.value,
         ),
     )
-    if record_type == "run":
+    if record_type in _COUNTED_RECORD_TYPES:
         bucket = ReconAction(action).bucket
         if bucket:
             _bump_count(bucket)
     if len(items) >= ITEM_BATCH_SIZE:
         flush_counts()
+
+
+def record_reconciliation_item(
+    record_type: str,
+    record_id: Any,
+    action: str,
+    *,
+    changes: dict | None = None,
+    error: str = "",
+) -> None:
+    """Public helper to record a ReconciliationItem from outside the correct path."""
+    job = current_job()
+    if job is None:
+        return
+    _record_item(
+        job,
+        record_type,
+        record_id,
+        action,
+        changes or {},
+        error,
+    )
 
 
 def flush_counts() -> None:
@@ -360,7 +383,7 @@ def _next_phase(
 ) -> str | None:
     """Return the next phase to dispatch, or None if current is not a valid pre-finalize state."""
     if job.phase == ReconPhase.P1.value:
-        if job.scope == ReconScope.RUN.value:
+        if job.scope in (ReconScope.RUN.value, ReconScope.SERIES.value):
             return ReconPhase.P3.value
         return ReconPhase.P2.value
     if job.phase == ReconPhase.P2.value:

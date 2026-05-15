@@ -61,14 +61,35 @@ class PlayerSearchResultSchema(BaseEmbedSchema):
         name (str): Player name on Speedrun.com.
         nickname (str | None): Custom nickname override.
         country_id (str | None): Country code ID.
+        pfp (str | None): Profile picture URL.
         gradients (GradientsEmbed | None): Player's name gradient colors; None if unclaimed or
             no colors set.
     """
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        arbitrary_types_allowed=True,
+        json_schema_extra={
+            "example": {
+                "id": "v8lponvj",
+                "name": "ThePackle",
+                "nickname": None,
+                "country_id": "us",
+                "pfp": None,
+                "gradients": {
+                    "gradient_1": "#ff0000",
+                    "gradient_2": "#00ff00",
+                    "gradient_3": "#0000ff",
+                },
+            },
+        },
+    )
 
     id: str = Field(..., max_length=10)
     name: str
     nickname: str | None = None
     country_id: str | None = None
+    pfp: str | None = None
     gradients: GradientsEmbed | None = None
 
     @field_validator("country_id", mode="before")

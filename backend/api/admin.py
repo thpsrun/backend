@@ -9,7 +9,7 @@ from django.contrib.sites.models import Site
 from django.http import HttpRequest
 from rest_framework_api_key.models import APIKey as _LegacyAbstractAPIKey
 
-from api.models import APIKey
+from api.models import APIActivityLog, APIKey
 
 # Django allauth registers some admin models that are unnecessary.
 for adminmodel in (_LegacyAbstractAPIKey, Site, SocialApp, SocialToken):
@@ -85,3 +85,58 @@ class APIKeyAdmin(admin.ModelAdmin):
         "last_used",
         "last_used_ip",
     )
+
+
+@admin.register(APIActivityLog)
+class APIActivityLogAdmin(admin.ModelAdmin):
+    list_display = (
+        "created_at",
+        "method",
+        "path",
+        "status_code",
+        "auth_method",
+        "user",
+        "key_label_snapshot",
+        "target_repr",
+        "ip",
+    )
+    list_filter = (
+        "auth_method",
+        "method",
+        "action",
+        "status_code",
+        "target_app",
+        "target_model",
+    )
+    search_fields = (
+        "path",
+        "user__username",
+        "key_label_snapshot",
+        "target_id",
+        "target_repr",
+        "ip",
+    )
+    date_hierarchy = "created_at"
+    ordering = ("-created_at",)
+    list_select_related = ("user", "api_key")
+    readonly_fields = tuple(field.name for field in APIActivityLog._meta.get_fields())
+
+    def has_add_permission(
+        self,
+        request: HttpRequest,
+    ) -> bool:
+        return False
+
+    def has_change_permission(
+        self,
+        request: HttpRequest,
+        obj: Any = None,
+    ) -> bool:
+        return False
+
+    def has_delete_permission(
+        self,
+        request: HttpRequest,
+        obj: Any = None,
+    ) -> bool:
+        return False

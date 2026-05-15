@@ -3,7 +3,6 @@ from datetime import timedelta
 from django.http import HttpRequest
 from django.utils import timezone
 from ninja import Query, Router, Status
-from ninja.responses import codes_4xx
 from srl.models import SRCSyncTask
 from srl.tasks import sync_src_action, sync_src_settings
 
@@ -22,7 +21,11 @@ router = Router()
 @router.get(
     "/admin/sync-logs",
     auth=authed("sync_logs.admin"),
-    response={200: SyncLogResponse, codes_4xx: ErrorResponse},
+    response={
+        200: SyncLogResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+    },
     summary="SRC Sync Logs (Superuser)",
     description=(
         "Superuser access only: Returns SRC sync task logs with full error details. "
@@ -120,7 +123,13 @@ def get_sync_logs(
 @router.post(
     "/admin/sync-logs/{task_id}/retry",
     auth=authed("sync_logs.admin"),
-    response={200: SyncRetryResponse, codes_4xx: ErrorResponse},
+    response={
+        200: SyncRetryResponse,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+    },
     summary="Retry Failed Sync Task (Superuser)",
     description=(
         "Superuser access only: Resets a failed SRC sync task to pending and re-queues it."

@@ -4,7 +4,6 @@ from datetime import datetime, timedelta, timezone
 from django.conf import settings
 from django.http import HttpRequest
 from ninja import Router, Status
-from ninja.responses import codes_4xx
 from srl.models import BotSession, SRCSyncTask
 from srl.srcom.v2 import is_v2_enabled
 from srl.srcom.v2.session import refresh_bot_session
@@ -57,7 +56,11 @@ def _to_response(
 @router.get(
     "/admin/bot-session",
     auth=authed("sync_logs.admin"),
-    response={200: BotSessionResponse, codes_4xx: ErrorResponse},
+    response={
+        200: BotSessionResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+    },
     summary="SRC v2 Bot Session Status",
     description=(
         "Returns the status of the shared SRC v2 bot session: "
@@ -74,7 +77,11 @@ def get_bot_session(
 @router.post(
     "/admin/bot-session/refresh",
     auth=authed("sync_logs.admin"),
-    response={200: BotSessionResponse, codes_4xx: ErrorResponse},
+    response={
+        200: BotSessionResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+    },
     summary="Trigger v2 Bot Session Refresh",
     description=(
         "Manually triggers refresh_bot_session(). Intended for ops "
@@ -91,7 +98,11 @@ def post_refresh(
 @router.put(
     "/admin/bot-session/kill-switch",
     auth=authed("sync_logs.admin"),
-    response={200: KillSwitchResponse, codes_4xx: ErrorResponse},
+    response={
+        200: KillSwitchResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+    },
     summary="Set v2 Kill Switch Override",
     description=(
         "Sets the runtime override for SRC_V2_ENABLED. Send "

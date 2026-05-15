@@ -5,7 +5,6 @@ from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.http import HttpRequest
 from ninja import Router, Status
-from ninja.responses import codes_4xx
 from srl.encryption import encrypt_src_key
 from srl.models import Players, RunPlayers
 
@@ -21,7 +20,14 @@ router = Router()
 
 @router.post(
     "/register",
-    response={201: RegisterResponse, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        201: RegisterResponse,
+        400: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        409: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Register Account",
     description="""\
 Verifies the caller's Speedrun.com identity via their SRC API key,

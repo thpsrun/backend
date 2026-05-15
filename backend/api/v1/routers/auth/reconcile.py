@@ -9,7 +9,7 @@ from ninja import Router
 from srl.models import ReconciliationJob
 from srl.models.reconciliation import ReconAction, ReconStatus
 from srl.srcom.reconciliation import acquire_lock, lock_holder, release_lock
-from srl.tasks import run_reconciliation_job
+from srl.tasks import run_reconciliation_job, run_series_reconciliation
 
 from api.permissions import authed
 from api.v1.schemas.reconciliation import (
@@ -20,6 +20,7 @@ from api.v1.schemas.reconciliation import (
     JobListOut,
     JobOut,
     ReconcileRequest,
+    ReconcileScope,
 )
 
 router = Router()
@@ -107,7 +108,10 @@ def start_reconciliation(
             detail="A reconciliation is already in progress for this target.",
             existing_job_id=UUID(existing_id),
         )
-    run_reconciliation_job.delay(str(job.id))
+    if payload.scope == ReconcileScope.SERIES:
+        run_series_reconciliation.delay(str(job.id))
+    else:
+        run_reconciliation_job.delay(str(job.id))
     return 202, _job_to_out(job)
 
 

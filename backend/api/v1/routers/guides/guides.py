@@ -5,7 +5,6 @@ from django.db.models import Q
 from django.http import HttpRequest
 from guides.models import Guides, Tags
 from ninja import Query, Router, Status
-from ninja.responses import codes_4xx
 from srl.models.games import Games
 
 from api.permissions import authed, public_read
@@ -75,7 +74,11 @@ _AUTHOR_SELECT_RELATED: tuple[str, ...] = (
 
 @router.get(
     "/all",
-    response={200: list[GuideListSchema], codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: list[GuideListSchema],
+        400: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="List All Guides",
     description="""\
 Gets all guides within the database, with optional querying and embeds.
@@ -140,7 +143,12 @@ def list_guides(
 
 @router.get(
     "/{slug}",
-    response={200: GuideSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: GuideSchema,
+        400: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Get Guide by Slug",
     description="""\
 Get a specific guide by its slug.
@@ -195,7 +203,13 @@ def get_guide(
 
 @router.post(
     "/",
-    response={201: GuideSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        201: GuideSchema,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Create New Guide",
     description="""\
 Creates a brand new guide. Any claimed player can create a guide; the new
@@ -273,7 +287,14 @@ def create_guide(
 
 @router.put(
     "/{slug}",
-    response={200: GuideSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: GuideSchema,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Update Guide",
     description="""\
 Modifies an existing guide.
@@ -388,7 +409,13 @@ def update_guide(
 
 @router.delete(
     "/{slug}",
-    response={200: dict[str, str], codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: dict[str, str],
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Delete Guide",
     description="""\
 Deletes an existing guide.

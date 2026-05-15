@@ -3,7 +3,6 @@ from typing import Annotated, Any
 from django.db.models import Q
 from django.http import HttpRequest
 from ninja import Query, Router, Status
-from ninja.responses import codes_4xx
 from srl.models import Categories, Games, Levels
 
 from api.permissions import public_read
@@ -60,7 +59,8 @@ def _parse_value_slugs(
     "/history/{game_slug}/category/{category_slug}",
     response={
         200: dict[str, Any],
-        codes_4xx: ErrorResponse,
+        400: ErrorResponse,
+        404: ErrorResponse,
         500: ErrorResponse,
     },
     summary="Get Full-Game WR History",
@@ -164,7 +164,8 @@ def get_fg_wr_history(
     "/history/{game_slug}/level/{level_slug}/{category_slug}",
     response={
         200: dict[str, Any],
-        codes_4xx: ErrorResponse,
+        400: ErrorResponse,
+        404: ErrorResponse,
         500: ErrorResponse,
     },
     summary="Get IL WR History",

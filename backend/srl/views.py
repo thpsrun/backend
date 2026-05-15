@@ -2,7 +2,7 @@ from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect
 from django.views.generic import ListView
 
-from srl.srcom import sync_game, sync_game_runs, sync_obsolete_runs, sync_players
+from srl.srcom import sync_game, sync_game_runs, sync_players
 
 
 class UpdateGameView(ListView):
@@ -57,17 +57,5 @@ class UpdatePlayerView(ListView):
         player_ids = request.GET.get("player_ids", "").split(",")
         for player in player_ids:
             sync_players.delay(player)
-
-        return redirect("/illiad/srl/players/")
-
-
-class ImportObsoleteView(ListView):
-    def get(
-        self,
-        request: HttpRequest,
-    ) -> HttpResponse:
-        player_ids = request.GET.get("player_ids", "").split(",")
-        for player in player_ids:
-            sync_obsolete_runs(player)
 
         return redirect("/illiad/srl/players/")

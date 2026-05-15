@@ -2,6 +2,8 @@ from datetime import datetime
 
 from ninja import Schema
 
+from api.v1.schemas.players import GradientsEmbed
+
 
 class WRHistoryPlayerSchema(Schema):
     """Schema to define player information within the WR History.
@@ -9,10 +11,15 @@ class WRHistoryPlayerSchema(Schema):
     Attributes:
         name (str): The name of the player.
         nickname (str): Optional name of the player that is displayed insteado of the name.
+        pfp (str | None): Profile picture URL.
+        gradients (GradientsEmbed | None): Player's name gradient colors; None if unclaimed
+            or no colors set.
     """
 
     name: str
     nickname: str | None = None
+    pfp: str | None = None
+    gradients: GradientsEmbed | None = None
 
 
 class WRHistoryEntrySchema(Schema):

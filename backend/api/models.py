@@ -16,6 +16,20 @@ class APIKeyRevokedReason(models.TextChoices):
     BANNED = "banned", "Banned by admin"
 
 
+class APIActivityAuthMethod(models.TextChoices):
+    API_KEY = "api_key", "API Key"
+    SESSION = "session", "Session"
+    ANONYMOUS = "anonymous", "Anonymous"
+
+
+class APIActivityAction(models.TextChoices):
+    CREATE = "create", "Create"
+    UPDATE = "update", "Update"
+    DELETE = "delete", "Delete"
+    READ = "read", "Read"
+    OTHER = "other", "Other"
+
+
 class APIKeyManager(BaseAPIKeyManager):
     def get_usable_keys(
         self,
@@ -106,3 +120,64 @@ class APIKey(AbstractAPIKey):
         self.revoked_at = timezone.now()
         self.save(update_fields=["revoked", "revoked_reason", "revoked_at"])
         return True
+
+
+class APIActivityLog(models.Model):
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="api_activity",
+    )
+    api_key = models.ForeignKey(
+        "api.APIKey",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="activity",
+    )
+    auth_method = models.CharField(
+        max_length=16,
+        choices=APIActivityAuthMethod.choices,
+        default=APIActivityAuthMethod.ANONYMOUS,
+    )
+
+    key_label_snapshot = models.CharField(max_length=100, blank=True, default="")
+    method = models.CharField(max_length=8)
+    path = models.CharField(max_length=512)
+    action = models.CharField(
+        max_length=16,
+        choices=APIActivityAction.choices,
+        default=APIActivityAction.OTHER,
+    )
+    status_code = models.PositiveSmallIntegerField()
+    ip = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=255, blank=True, default="")
+    target_app = models.CharField(max_length=64, blank=True, default="")
+    target_model = models.CharField(max_length=64, blank=True, default="")
+    target_id = models.CharField(max_length=64, blank=True, default="")
+    target_repr = models.CharField(max_length=255, blank=True, default="")
+    change_summary = models.JSONField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "API Activity Entry"
+        verbose_name_plural = "API Activity"
+        ordering = ("-created_at",)
+        indexes = [
+            models.Index(fields=["user", "-created_at"], name="api_actl_user_cr_idx"),
+            models.Index(fields=["api_key", "-created_at"], name="api_actl_key_cr_idx"),
+            models.Index(
+                fields=["target_app", "target_model", "target_id"],
+                name="api_actl_target_idx",
+            ),
+            models.Index(fields=["status_code"], name="api_actl_status_idx"),
+            models.Index(fields=["method"], name="api_actl_method_idx"),
+        ]
+
+    def __str__(
+        self,
+    ) -> str:
+        who = self.user_id or self.api_key_id or "anon"
+        return f"{self.created_at:%Y-%m-%d %H:%M:%S} {self.method} {self.path} ({who})"

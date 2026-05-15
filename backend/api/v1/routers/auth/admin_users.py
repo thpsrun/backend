@@ -15,7 +15,6 @@ from django.utils import timezone
 from ninja import File, Router, Status
 from ninja.errors import HttpError
 from ninja.files import UploadedFile
-from ninja.responses import codes_4xx
 from srl.models import Awards, Games, Players
 
 from api.models import APIKey, APIKeyRevokedReason
@@ -101,7 +100,13 @@ def _refuse_self_target(
 
 @router.get(
     "/admin/users/{ident}/moderates",
-    response={200: list[ModeratedGame], codes_4xx: ErrorResponse},
+    response={
+        200: list[ModeratedGame],
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        409: ErrorResponse,
+    },
     summary="List Games Moderated By a Player",
     description=(
         "Superuser Only: returns the games on which the resolved player is a moderator. Identifier "
@@ -122,7 +127,13 @@ def list_moderates(
 
 @router.post(
     "/admin/users/{ident}/moderates/{game_id}",
-    response={204: None, codes_4xx: ErrorResponse},
+    response={
+        204: None,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        409: ErrorResponse,
+    },
     summary="Add Player As Moderator Of a Game",
     description=(
         "Superuser Only: adds the resolved player to the game's moderator list."
@@ -148,7 +159,13 @@ def add_moderator(
 
 @router.delete(
     "/admin/users/{ident}/moderates/{game_id}",
-    response={204: None, codes_4xx: ErrorResponse},
+    response={
+        204: None,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        409: ErrorResponse,
+    },
     summary="Remove Player As Moderator Of A Game",
     description=(
         "Superuser Only: removes the resolved player from the game's moderator list."
@@ -174,7 +191,13 @@ def remove_moderator(
 
 @router.get(
     "/admin/users/{ident}/awards",
-    response={200: list[AwardEntry], codes_4xx: ErrorResponse},
+    response={
+        200: list[AwardEntry],
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        409: ErrorResponse,
+    },
     summary="List Awards Held By a Player",
     description="Superuser Only: returns the awards on the resolved player's profile.",
     auth=authed("users.admin"),
@@ -191,7 +214,13 @@ def list_awards(
 
 @router.post(
     "/admin/users/{ident}/awards/{award_id}",
-    response={204: None, codes_4xx: ErrorResponse},
+    response={
+        204: None,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        409: ErrorResponse,
+    },
     summary="Grant Award To a Player",
     description="Superuser Only: adds the award to the resolved player.",
     auth=authed("users.admin"),
@@ -215,7 +244,13 @@ def add_award(
 
 @router.delete(
     "/admin/users/{ident}/awards/{award_id}",
-    response={204: None, codes_4xx: ErrorResponse},
+    response={
+        204: None,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        409: ErrorResponse,
+    },
     summary="Revoke Award From a Player",
     description="Superuser Only: removes the award from the resolved player.",
     auth=authed("users.admin"),
@@ -239,7 +274,15 @@ def remove_award(
 
 @router.post(
     "/admin/users/{ident}/pfp",
-    response={200: AdminPfpResponse, codes_4xx: ErrorResponse},
+    response={
+        200: AdminPfpResponse,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        409: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Upload Profile Picture For a Player",
     description=(
         "Superuser Only: writes a new profile picture for the resolved "
@@ -308,7 +351,13 @@ def admin_upload_pfp(
 
 @router.delete(
     "/admin/users/{ident}/pfp",
-    response={204: None, codes_4xx: ErrorResponse},
+    response={
+        204: None,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        409: ErrorResponse,
+    },
     summary="Delete Profile Picture For a Player",
     description=(
         "Superuser Only: removes the player's profile picture file from disk (if present) and "
@@ -339,7 +388,14 @@ def admin_delete_pfp(
 
 @router.post(
     "/admin/users/{ident}/profile-bg",
-    response={200: AdminProfileBGResponse, codes_4xx: ErrorResponse},
+    response={
+        200: AdminProfileBGResponse,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        409: ErrorResponse,
+    },
     summary="Upload Profile Background For a Player",
     description=(
         "Superuser Only: writes a new profile background image for the resolved "
@@ -415,7 +471,13 @@ def admin_upload_profile_bg(
 
 @router.delete(
     "/admin/users/{ident}/profile-bg",
-    response={204: None, codes_4xx: ErrorResponse},
+    response={
+        204: None,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        409: ErrorResponse,
+    },
     summary="Delete Profile Background For a Player",
     description=("Superuser Only: removes the player's profile background image."),
     auth=authed("users.admin"),
@@ -448,7 +510,14 @@ def admin_delete_profile_bg(
 
 @router.delete(
     "/admin/users/{ident}/sessions",
-    response={200: SessionsRevokedResponse, codes_4xx: ErrorResponse},
+    response={
+        200: SessionsRevokedResponse,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        409: ErrorResponse,
+    },
     summary="Revoke All Active Sessions For a User",
     description=(
         "Superuser Only: deletes the specified user account (cannot be done to own account)"
@@ -473,7 +542,14 @@ def admin_revoke_sessions(
 
 @router.post(
     "/admin/users/{ident}/password-reset",
-    response={204: None, codes_4xx: ErrorResponse},
+    response={
+        204: None,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        409: ErrorResponse,
+    },
     summary="Force Password Reset For a User",
     description=(
         "Superuser Only: sets the user's password to unusable, deletes all of their unexpired "
@@ -522,7 +598,14 @@ def admin_password_reset(
 
 @router.post(
     "/admin/users/{ident}/ban",
-    response={204: None, codes_4xx: ErrorResponse},
+    response={
+        204: None,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        409: ErrorResponse,
+    },
     summary="Ban a User",
     description=(
         "Superuser Only: revokes all specified player's API keys, flips is_active to False, "
@@ -567,7 +650,14 @@ def admin_ban_user(
 
 @router.delete(
     "/admin/users/{ident}/ban",
-    response={204: None, codes_4xx: ErrorResponse},
+    response={
+        204: None,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        409: ErrorResponse,
+    },
     summary="Un-Ban a User",
     description=(
         "Superuser Only: flips is_active back to True and clears Players.sync_paused."

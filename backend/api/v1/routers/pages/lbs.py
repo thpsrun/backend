@@ -3,7 +3,6 @@ from typing import Annotated, Any
 from django.db.models import Q
 from django.http import HttpRequest
 from ninja import Query, Router, Status
-from ninja.responses import codes_4xx
 from srl.models import Categories, Games, Levels
 
 from api.permissions import public_read
@@ -87,7 +86,12 @@ def _resolve_game(
 
 @router.get(
     "/lbs/{game_slug}/category/{category_slug}",
-    response={200: dict[str, Any], codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: dict[str, Any],
+        400: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Get Full-Game Category Leaderboard",
     description="""\
 Get the leaderboard for a specific full-game category, optionally filtered by
@@ -211,7 +215,12 @@ def get_category_leaderboard(
 
 @router.get(
     "/lbs/{game_slug}/levels",
-    response={200: dict[str, Any], codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: dict[str, Any],
+        400: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Get IL Summary Grid",
     description="""\
 Get the Individual Level summary grid for a game. Returns the top 5 runs for
@@ -297,7 +306,12 @@ def get_il_summary(
 
 @router.get(
     "/lbs/{game_slug}/level/{level_slug}/{category_slug}",
-    response={200: dict[str, Any], codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: dict[str, Any],
+        400: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Get IL Category Leaderboard",
     description="""\
 Get the full leaderboard for a specific level + IL category combination,

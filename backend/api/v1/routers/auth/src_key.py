@@ -3,7 +3,6 @@ import logging
 import requests as http_requests
 from django.http import HttpRequest
 from ninja import Router, Status
-from ninja.responses import codes_4xx
 from srl.encryption import encrypt_src_key
 from srl.models import Players
 
@@ -19,7 +18,12 @@ router = Router()
 
 @router.post(
     "/me/src-key",
-    response={200: SRCKeyStatusResponse, codes_4xx: ErrorResponse},
+    response={
+        200: SRCKeyStatusResponse,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+    },
     summary="Store SRC API Key",
     description=(
         "Stores an encrypted Speedrun.com API key for the authenticated player. "
@@ -95,7 +99,12 @@ def set_src_key(
 
 @router.delete(
     "/me/src-key",
-    response={204: None, codes_4xx: ErrorResponse},
+    response={
+        204: None,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+    },
     summary="Remove SRC API Key",
     description=(
         "Removes the stored SRC API key for the authenticated player. "

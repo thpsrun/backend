@@ -193,11 +193,6 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-# API RATE LIMITING
-RATELIMIT_RATE = "200/m"
-RATELIMIT_RESPONSE = '{"ERROR": "Too many requests. Please try again later."}'
-RATELIMIT_ENABLE = True
-
 
 # Internationalization
 LANGUAGE_CODE = "en-us"

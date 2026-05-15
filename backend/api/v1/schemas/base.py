@@ -53,22 +53,6 @@ class ValidationErrorResponse(BaseModel):
     validation_errors: list[dict[str, Any]]
 
 
-class PaginatedResponse(BaseModel):
-    """Standardized pagination response schema for the API.
-
-    Attributes:
-        count (int): Total number of items being returned.
-        next (str | None): URL for the next page.
-        previous (str | None): URL for previous page.
-        results (List[Dict[str, Any]]): Actual data being returned.
-    """
-
-    count: int
-    next: str | None = None
-    previous: str | None = None
-    results: list[dict[str, Any]]
-
-
 class BaseEmbedSchema(BaseModel):
     model_config = ConfigDict(
         from_attributes=True,

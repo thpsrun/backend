@@ -4,7 +4,6 @@ import requests as http_requests
 from django.db import transaction
 from django.http import HttpRequest
 from ninja import Router, Status
-from ninja.responses import codes_4xx
 from srl.encryption import decrypt_src_key
 from srl.leaderboard.trigger import recalculate_run
 from srl.models import Players, Runs, RunVariableValues, SRCSyncTask
@@ -86,6 +85,7 @@ def _build_run_players(
             "countrycode": (
                 rp.player.countrycode.id if rp.player.countrycode else None
             ),
+            "pfp": rp.player.pfp,
             "gradients": extract_gradients(rp.player),
         }
         for rp in rps
@@ -158,7 +158,11 @@ def _build_src_run_payload(
 @router.get(
     "/submissions",
     auth=authed("submissions.list_own"),
-    response={200: SubmissionHubResponse, codes_4xx: ErrorResponse},
+    response={
+        200: SubmissionHubResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+    },
     summary="Submission Hub",
     description=(
         "Returns the authenticated player's pending run submissions. "
@@ -248,7 +252,13 @@ def get_submissions(
 @router.put(
     "/submissions/{run_id}/status",
     auth=authed("runs.verify", target_resolver=run_from_path),
-    response={200: VerifyRejectResponse, codes_4xx: ErrorResponse},
+    response={
+        200: VerifyRejectResponse,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+    },
     summary="Verify or Reject a Run",
     description=(
         "Verifies or rejects a pending run. Updates the local database "
@@ -359,7 +369,13 @@ def update_run_status(
 @router.put(
     "/submissions/{run_id}/players",
     auth=authed("runs.edit_any", target_resolver=run_from_path),
-    response={200: ChangePlayersResponse, codes_4xx: ErrorResponse},
+    response={
+        200: ChangePlayersResponse,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+    },
     summary="Change Run Players",
     description=(
         "Changes the players credited on a run. Updates local database "
@@ -488,7 +504,11 @@ def update_run_players(
     "/submissions/submit",
     response={
         201: RunSubmitResponse,
-        codes_4xx: ErrorResponse,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        422: ErrorResponse,
+        429: ErrorResponse,
         503: ErrorResponse,
     },
     auth=authed("runs.submit", target_resolver=game_from_body),

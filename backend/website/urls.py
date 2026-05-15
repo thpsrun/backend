@@ -15,7 +15,6 @@ admin.site.index_title = "Admin Panel"
 urlpatterns = [
     path("illiad/", admin.site.urls),
     path("api/v1/", ninja_api.urls),
-    path("docs/", include("guides.urls")),
     path("accounts/", include("allauth.urls")),
     path("_allauth/", include("allauth.headless.urls")),
 ] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

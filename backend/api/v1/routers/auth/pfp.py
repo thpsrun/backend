@@ -5,7 +5,6 @@ from django.conf import settings
 from django.http import HttpRequest
 from ninja import File, Router, Status
 from ninja.files import UploadedFile
-from ninja.responses import codes_4xx
 from srl.models import Players
 
 from api.permissions import authed
@@ -24,7 +23,13 @@ os.makedirs(PFP_DIR, exist_ok=True)
 
 @router.post(
     "/me/pfp",
-    response={200: PfpUploadResponse, codes_4xx: ErrorResponse},
+    response={
+        200: PfpUploadResponse,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Upload Profile Picture",
     description=(
         "Uploads a new profile picture for the authenticated player. "

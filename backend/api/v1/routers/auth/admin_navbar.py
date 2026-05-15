@@ -14,7 +14,6 @@ from nav.services import (
 )
 from ninja import Router, Status
 from ninja.errors import HttpError
-from ninja.responses import codes_4xx
 
 from api.permissions import authed
 from api.v1.schemas.base import ErrorResponse
@@ -61,7 +60,11 @@ def _social_payload(
 
 @router.get(
     "/admin/navbar",
-    response={200: NavbarStateResponse, codes_4xx: ErrorResponse},
+    response={
+        200: NavbarStateResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+    },
     summary="Get Navbar Admin State",
     description=(
         "Superuser Only: returns the full nav tree (including hidden items) and social links, "
@@ -77,7 +80,12 @@ def get_navbar_admin(
 
 @router.post(
     "/admin/navbar/items",
-    response={201: NavbarAdminItem, codes_4xx: ErrorResponse},
+    response={
+        201: NavbarAdminItem,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+    },
     summary="Create Nav Item",
     description="Superuser Only: create a new navigation item, optionally under a parent.",
     auth=authed("navbar.admin"),
@@ -95,7 +103,13 @@ def post_nav_item(
 
 @router.patch(
     "/admin/navbar/items/{item_id}",
-    response={200: NavbarAdminItem, codes_4xx: ErrorResponse},
+    response={
+        200: NavbarAdminItem,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+    },
     summary="Update Nav Item",
     description=(
         "Superuser Only: partially update a navigation item. Only fields present in the request "
@@ -119,7 +133,13 @@ def patch_nav_item(
 
 @router.delete(
     "/admin/navbar/items/{item_id}",
-    response={204: None, codes_4xx: ErrorResponse},
+    response={
+        204: None,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        409: ErrorResponse,
+    },
     summary="Delete Nav Item",
     description=(
         "Superuser Only: delete a navigation item. Rejects with 409 if the item has children; "
@@ -141,7 +161,12 @@ def delete_nav_item_endpoint(
 
 @router.post(
     "/admin/navbar/items/reorder",
-    response={204: None, codes_4xx: ErrorResponse},
+    response={
+        204: None,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+    },
     summary="Reorder Nav Items Under a Parent",
     description=(
         "Superuser Only: assigns indexed `order` values to the items provided, in the order "
@@ -166,7 +191,12 @@ def post_nav_reorder(
 
 @router.post(
     "/admin/navbar/social",
-    response={201: NavbarAdminSocial, codes_4xx: ErrorResponse},
+    response={
+        201: NavbarAdminSocial,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+    },
     summary="Create Social Link",
     description="Superuser Only: create a new social media link.",
     auth=authed("navbar.admin"),
@@ -184,7 +214,13 @@ def post_social(
 
 @router.patch(
     "/admin/navbar/social/{link_id}",
-    response={200: NavbarAdminSocial, codes_4xx: ErrorResponse},
+    response={
+        200: NavbarAdminSocial,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+    },
     summary="Update Social Link",
     description=(
         "Superuser Only: partially update a social link. Only fields present in the request "
@@ -207,7 +243,12 @@ def patch_social(
 
 @router.delete(
     "/admin/navbar/social/{link_id}",
-    response={204: None, codes_4xx: ErrorResponse},
+    response={
+        204: None,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+    },
     summary="Delete Social Link",
     description="Superuser Only: delete a social media link.",
     auth=authed("navbar.admin"),
@@ -223,7 +264,12 @@ def delete_social(
 
 @router.post(
     "/admin/navbar/social/reorder",
-    response={204: None, codes_4xx: ErrorResponse},
+    response={
+        204: None,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+    },
     summary="Reorder Social Links",
     description=(
         "Superuser Only: assigns indexed `order` values across all social links. `ordered_ids` "

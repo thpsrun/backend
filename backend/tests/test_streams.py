@@ -60,11 +60,45 @@ class StreamsReadTest(TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertIsInstance(data, list)
-        self.assertGreater(len(data), 0, "Expected at least one mock stream")
+        self.assertGreater(len(data), 0, "Expected at least one live stream")
         first_stream = data[0]
-        self.assertIsNotNone(first_stream.get("title"))
-        self.assertIsNotNone(first_stream.get("player"))
-        self.assertIsNotNone(first_stream.get("game"))
+        self.assertEqual(first_stream.get("title"), "Testing my speedruns!")
+        self.assertEqual(first_stream["player"]["id"], "player1")
+        self.assertEqual(first_stream["game"]["id"], "game1")
+
+    def test_live_streams_filter_by_game(
+        self,
+    ) -> None:
+        response = self.client.get("/live?game_id=game1")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertGreater(len(data), 0)
+        for stream in data:
+            self.assertEqual(stream["game"]["id"], "game1")
+
+    def test_live_streams_filter_no_match(
+        self,
+    ) -> None:
+        response = self.client.get("/live?game_id=does-not-exist")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), [])
+
+    def test_get_stream_by_player(
+        self,
+    ) -> None:
+        response = self.client.get(f"/{self.player.id}")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["title"], "Testing my speedruns!")
+        self.assertEqual(data["player"]["id"], "player1")
+        self.assertEqual(data["game"]["id"], "game1")
+
+    def test_get_stream_not_found(
+        self,
+    ) -> None:
+        response = self.client.get("/no-such-player")
+        self.assertEqual(response.status_code, 404)
+        self.assertIn("does not exist", response.json()["error"])
 
 
 class StreamsWriteTest(AuthTestBase):

@@ -2,7 +2,6 @@ from typing import Annotated, Any
 
 from django.http import HttpRequest
 from ninja import Query, Router, Status
-from ninja.responses import codes_4xx
 
 from api.permissions import public_read
 from api.v1.routers.utils import get_cached_embed
@@ -13,7 +12,11 @@ router = Router()
 
 @router.get(
     "/main",
-    response={200: dict[str, Any], codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: dict[str, Any],
+        400: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Get Main Page Data",
     description="""\
 Get aggregated data for the website main page including latest world records,

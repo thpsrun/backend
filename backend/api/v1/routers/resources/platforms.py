@@ -3,7 +3,6 @@ from typing import Annotated
 from django.db.models import Q
 from django.http import HttpRequest
 from ninja import Query, Router, Status
-from ninja.responses import codes_4xx
 from srl.models import Platforms
 
 from api.permissions import authed, public_read
@@ -65,7 +64,12 @@ def get_all_platforms(
 
 @router.get(
     "/{id}",
-    response={200: PlatformSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: PlatformSchema,
+        400: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Get Platform by ID",
     description="""\
 Retrieve a single platform by its ID or its slug.
@@ -119,7 +123,13 @@ def get_platform(
 
 @router.post(
     "/",
-    response={201: PlatformSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        201: PlatformSchema,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Create Platform",
     description="""\
 Creates a brand new platform.
@@ -167,7 +177,13 @@ def create_platform(
 
 @router.put(
     "/{id}",
-    response={200: PlatformSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: PlatformSchema,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Update Platform",
     description="""\
 Updates the platform based on its unique ID.
@@ -216,7 +232,13 @@ def update_platform(
 
 @router.delete(
     "/{id}",
-    response={200: dict[str, str], codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: dict[str, str],
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Delete Platform",
     description="""\
 Deletes the selected platform based on its ID.

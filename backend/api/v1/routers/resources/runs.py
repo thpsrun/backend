@@ -4,7 +4,6 @@ from django.db import transaction
 from django.db.models import Q
 from django.http import HttpRequest
 from ninja import Query, Router, Status
-from ninja.responses import codes_4xx
 from srl.leaderboard.trigger import recalculate_run
 from srl.models import (
     Categories,
@@ -142,7 +141,11 @@ def apply_run_embeds(
 
 @router.get(
     "/all",
-    response={200: list[RunSchema], codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: list[RunSchema],
+        400: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Get All Runs",
     description="""\
 Retrieve runs with extensive filtering and search capabilities.
@@ -263,7 +266,12 @@ def get_all_runs(
 
 @router.get(
     "/{id}",
-    response={200: RunSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: RunSchema,
+        400: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Get Run by ID",
     description="""\
 Retrieve a single run by its ID with full details and optional embeds.
@@ -357,7 +365,13 @@ def get_run(
 
 @router.post(
     "/",
-    response={201: RunSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        201: RunSchema,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Create Run",
     description="""\
 Create a new speedrun record with full validation.
@@ -599,7 +613,14 @@ def create_run(
 
 @router.put(
     "/{id}",
-    response={200: RunSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: RunSchema,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Update Run",
     description="""\
 Updates the run based on its unique ID.
@@ -866,7 +887,13 @@ def update_run(
 
 @router.delete(
     "/{id}",
-    response={200: dict[str, str], codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: dict[str, str],
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Delete Run",
     description="""\
 Deletes the selected run by its ID.

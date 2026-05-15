@@ -3,7 +3,6 @@ from typing import Annotated
 from django.http import HttpRequest
 from django.utils.text import slugify
 from ninja import Query, Router, Status
-from ninja.responses import codes_4xx
 from srl.models import Categories, Games, Levels, Variables, VariableValues
 
 from api.permissions import authed, public_read
@@ -79,7 +78,11 @@ def apply_value_embeds(
 
 @router.get(
     "/all",
-    response={200: list[VariableSchema], codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: list[VariableSchema],
+        400: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Get All Variables",
     description="""\
 Retrieve all variables within the `Variables` object, including optional embedding and
@@ -184,7 +187,8 @@ def get_all_variables(
     "/values/all",
     response={
         200: list[VariableValueSchema],
-        codes_4xx: ErrorResponse,
+        400: ErrorResponse,
+        404: ErrorResponse,
         500: ErrorResponse,
     },
     summary="Get All Variable Values",
@@ -284,7 +288,13 @@ def get_all_values(
 
 @router.post(
     "/values/",
-    response={201: VariableValueSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        201: VariableValueSchema,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Create Variable Value",
     description="""\
 Creates a brand new variable value.
@@ -353,7 +363,12 @@ def create_value(
 
 @router.get(
     "/values/{value_id}",
-    response={200: VariableValueSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: VariableValueSchema,
+        400: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Get Variable Value by ID",
     description="""\
 Retrieve a single variable value by its ID.
@@ -431,7 +446,14 @@ def get_value(
 
 @router.put(
     "/values/{value_id}",
-    response={200: VariableValueSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: VariableValueSchema,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Update Variable Value",
     description="""\
 Updates the variable value based on its unique ID.
@@ -500,7 +522,13 @@ def update_value(
 
 @router.delete(
     "/values/{value_id}",
-    response={200: dict[str, str], codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: dict[str, str],
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Delete Variable Value",
     description="""\
 Deletes the selected variable value by its ID.
@@ -543,7 +571,8 @@ def delete_value(
     "/{id}",
     response={
         200: VariableWithValuesSchema,
-        codes_4xx: ErrorResponse,
+        400: ErrorResponse,
+        404: ErrorResponse,
         500: ErrorResponse,
     },
     summary="Get Variable by ID",
@@ -652,7 +681,13 @@ def get_variable(
 
 @router.post(
     "/",
-    response={201: VariableSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        201: VariableSchema,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Create Variable",
     description="""\
 Creates a brand new variable with validation for scope and relationship constraints.
@@ -758,7 +793,14 @@ def create_variable(
 
 @router.put(
     "/{id}",
-    response={200: VariableSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: VariableSchema,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Update Variable",
     description="""\
 Updates the variable based on its unique ID.
@@ -879,7 +921,13 @@ def update_variable(
 
 @router.delete(
     "/{id}",
-    response={200: dict[str, str], codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: dict[str, str],
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Delete Variable",
     description="""\
 Deletes the selected variable by its ID. Also deletes associated values.

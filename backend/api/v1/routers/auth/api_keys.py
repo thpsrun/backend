@@ -8,7 +8,6 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from ninja import Router, Status
 from ninja.errors import HttpError
-from ninja.responses import codes_4xx
 from srl.models import Games
 
 from api.models import APIKey, APIKeyRevokedReason
@@ -191,7 +190,11 @@ def _enforce_user_can_scope(
 
 @router.get(
     "/me/api-keys",
-    response={200: list[APIKeyResponse], codes_4xx: ErrorResponse},
+    response={
+        200: list[APIKeyResponse],
+        401: ErrorResponse,
+        403: ErrorResponse,
+    },
     summary="List My API Keys",
     description="Returns every API key the authenticated user owns, newest first.",
     auth=authed("api_keys.list_own"),
@@ -205,7 +208,12 @@ def list_my_keys(
 
 @router.post(
     "/me/api-keys",
-    response={201: APIKeyCreateResponse, codes_4xx: ErrorResponse},
+    response={
+        201: APIKeyCreateResponse,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+    },
     summary="Create An API Key",
     description="""\
 Creates a new API key for the authenticated user. The raw key string is
@@ -270,7 +278,12 @@ def create_my_key(
 
 @router.get(
     "/me/api-keys/{key_id}",
-    response={200: APIKeyResponse, codes_4xx: ErrorResponse},
+    response={
+        200: APIKeyResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+    },
     summary="Get An API Key",
     description="Returns a single API key owned by the authenticated user.",
     auth=authed("api_keys.list_own"),
@@ -285,7 +298,12 @@ def get_my_key(
 
 @router.patch(
     "/me/api-keys/{key_id}",
-    response={200: APIKeyResponse, codes_4xx: ErrorResponse},
+    response={
+        200: APIKeyResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+    },
     summary="Update An API Key",
     description="Updates the label or description on an API key. Scope and "
     "expiry are immutable after creation.",
@@ -311,7 +329,12 @@ def patch_my_key(
 
 @router.delete(
     "/me/api-keys/{key_id}",
-    response={204: None, codes_4xx: ErrorResponse},
+    response={
+        204: None,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+    },
     summary="Revoke An API Key",
     description="Revokes one of the authenticated user's API keys. Revocation "
     "is permanent; the row is kept for audit history.",
@@ -328,7 +351,11 @@ def revoke_my_key(
 
 @router.get(
     "/me/capabilities",
-    response={200: CapabilitiesResponse, codes_4xx: ErrorResponse},
+    response={
+        200: CapabilitiesResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+    },
     summary="Get My Capabilities",
     description="Returns the capabilities the authenticated user can exercise "
     "and the games on which they have any game-scoped power. Useful for the "

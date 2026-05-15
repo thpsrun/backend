@@ -2,7 +2,6 @@ from typing import Annotated
 
 from django.http import HttpRequest
 from ninja import Query, Router, Status
-from ninja.responses import codes_4xx
 from srl.models import Games, Levels, Variables, VariableValues
 
 from api.permissions import authed, public_read
@@ -104,7 +103,11 @@ def apply_level_embeds(
 
 @router.get(
     "/all",
-    response={200: list[LevelSchema], codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: list[LevelSchema],
+        400: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Get All Levels",
     description="""\
 Retrieves all levels within a `Games` object, including optional embedding.
@@ -200,7 +203,12 @@ def get_all_levels(
 
 @router.get(
     "/{id}",
-    response={200: LevelSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: LevelSchema,
+        400: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Get Level by ID",
     description="""\
 Retrieve a single level based upon its ID, including optional embedding.
@@ -275,7 +283,14 @@ def get_level(
 
 @router.post(
     "/",
-    response={201: LevelSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        201: LevelSchema,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Create Level",
     description="""\
 Creates a brand new level.
@@ -342,7 +357,13 @@ def create_level(
 
 @router.put(
     "/{id}",
-    response={200: LevelSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: LevelSchema,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Update Level",
     description="""\
 Updates the level based on its unique ID.
@@ -417,7 +438,13 @@ def update_level(
 
 @router.delete(
     "/{id}",
-    response={200: dict[str, str], codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: dict[str, str],
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Delete Level",
     description="""\
 Deletes the selected level by its ID.

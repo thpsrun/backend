@@ -1,9 +1,8 @@
-from datetime import datetime, timedelta
-from typing import Annotated, Any
+from datetime import datetime
+from typing import Annotated
 
 from django.http import HttpRequest
 from ninja import Query, Router, Status
-from ninja.responses import codes_4xx
 from srl.models import Games, NowStreaming, Players
 
 from api.permissions import authed, public_read
@@ -14,56 +13,23 @@ from api.v1.schemas.streams import StreamCreateSchema, StreamSchema, StreamUpdat
 router = Router()
 
 
-def get_mock_streaming_data() -> list[dict[str, Any]]:
-    """Mock streaming data for demonstration.
-
-    In production, this would integrate with actual streaming APIs
-    like Twitch, YouTube, etc. to get real-time streaming data.
-
-    Returns:
-        List of mock streaming data
-    """
-    # This is demo data - replace with actual API calls
-    mock_streams = [
-        {
-            "player": {"id": "player1", "name": "SpeedRunner123"},
-            "game": {"id": "thps4", "name": "Tony Hawk's Pro Skater 4"},
-            "title": "Going for Any% WR - Day 47",
-            "offline_ct": 0,
-            "stream_time": datetime.now() - timedelta(hours=2),
-        },
-        {
-            "player": {"id": "player2", "name": "THPSMaster"},
-            "game": {"id": "thps2", "name": "Tony Hawk's Pro Skater 2"},
-            "title": "100% Speedrun Practice",
-            "offline_ct": 0,
-            "stream_time": datetime.now() - timedelta(minutes=45),
-        },
-    ]
-
-    return mock_streams
-
-
 @router.get(
     "/live",
-    response={200: list[StreamSchema], codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: list[StreamSchema],
+        500: ErrorResponse,
+    },
     summary="Get Live Streamers",
     description="""\
 Get list of currently live streamers playing speedrun games.
 
 Supported Parameters:
-- `game_id`: Filter by specific game being streamed
-- `platform`: Filter by streaming platform (twitch, youtube, etc.)
-- `min_viewers`: Minimum viewer count
-- `limit`: Maximum results to return (default 20, max 50)
+- `game_id`: Filter by specific game being streamed.
+- `limit`: Maximum results to return (default 20, max 50).
 
 Examples:
-- `/streams/live` - All live streamers
-- `/streams/live?game_id=thps4` - Streamers playing THPS4
-- `/streams/live?min_viewers=100` - Streamers with 100+ viewers
-
-Note: This endpoint provides mock data for demonstration.
-In production, integrate with actual streaming platform APIs.
+- `/streams/live` - All live streamers.
+- `/streams/live?game_id=thps4` - Streamers playing THPS4.
 """,
     auth=public_read(),
 )
@@ -73,23 +39,15 @@ def get_live_streams(
     limit: Annotated[int, Query(ge=1, le=50, description="Max results")] = 20,
 ) -> Status:
     try:
-        # TODO: DELETE BEFORE PROD.
-        streams_data = get_mock_streaming_data()
+        queryset = NowStreaming.objects.select_related("streamer", "game").order_by(
+            "-stream_time",
+        )
 
-        filtered_streams = []
-        for stream in streams_data:
-            if game_id and stream["game"]:
-                if stream["game"]["id"] != game_id:
-                    continue
+        if game_id:
+            queryset = queryset.filter(game_id=game_id)
 
-            filtered_streams.append(stream)
-
-        limited_streams = filtered_streams[:limit]
-
-        stream_schemas = []
-        for stream_data in limited_streams:
-            stream_schema = StreamSchema(**stream_data)
-            stream_schemas.append(stream_schema)
+        streams = list(queryset[:limit])
+        stream_schemas = [StreamSchema.model_validate(s) for s in streams]
 
         return Status(200, stream_schemas)
 
@@ -103,9 +61,58 @@ def get_live_streams(
         )
 
 
+@router.get(
+    "/{player_id}",
+    response={200: StreamSchema, 404: ErrorResponse, 500: ErrorResponse},
+    summary="Get Stream by Player",
+    description="""\
+Retrieve the live stream record for a single player.
+
+Supported Parameters:
+- `player_id` (str): Unique ID of the player whose stream is being requested.
+""",
+    auth=public_read(),
+)
+def get_stream(
+    request: HttpRequest,
+    player_id: str,
+) -> Status:
+    try:
+        stream = (
+            NowStreaming.objects.select_related("streamer", "game")
+            .filter(streamer_id=player_id)
+            .first()
+        )
+        if not stream:
+            return Status(
+                404,
+                ErrorResponse(
+                    error="Stream does not exist for this player",
+                    details=None,
+                ),
+            )
+
+        return Status(200, StreamSchema.model_validate(stream))
+
+    except Exception as e:
+        return Status(
+            500,
+            ErrorResponse(
+                error="Failed to retrieve stream",
+                details={"exception": str(e)},
+            ),
+        )
+
+
 @router.post(
     "/",
-    response={201: StreamSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        201: StreamSchema,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Create Stream",
     description="""\
 Creates a new stream record for a player.
@@ -179,7 +186,14 @@ def create_stream(
 
 @router.put(
     "/{player_id}",
-    response={200: StreamSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: StreamSchema,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Update Stream",
     description="""\
 Updates the stream for a specific player.
@@ -258,7 +272,13 @@ def update_stream(
 
 @router.delete(
     "/{player_id}",
-    response={200: dict[str, str], codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: dict[str, str],
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Delete Stream",
     description="""\
 Deletes the stream for a specific player.

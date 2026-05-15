@@ -5,7 +5,6 @@ from django.http import HttpRequest
 from django.shortcuts import get_object_or_404
 from ninja import Router, Status
 from ninja.errors import HttpError
-from ninja.responses import codes_4xx
 
 from api.models import APIKey, APIKeyRevokedReason
 from api.permissions import authed
@@ -20,7 +19,12 @@ router = Router()
 
 @router.get(
     "/admin/api-keys",
-    response={200: list[APIKeyResponse], codes_4xx: ErrorResponse},
+    response={
+        200: list[APIKeyResponse],
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+    },
     summary="List API Keys For Any User",
     description="Superuser Only: Returns every API key owned by the requested user.",
     auth=authed("api_keys.admin"),
@@ -38,7 +42,12 @@ def admin_list_keys(
 
 @router.delete(
     "/admin/api-keys/{key_id}",
-    response={204: None, codes_4xx: ErrorResponse},
+    response={
+        204: None,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+    },
     summary="Revoke Any API Key",
     description="Superuser Only: revokes any API key by ID, regardless of owner.",
     auth=authed("api_keys.admin"),

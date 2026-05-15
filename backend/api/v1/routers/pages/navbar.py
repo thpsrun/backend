@@ -1,7 +1,6 @@
 from django.http import HttpRequest
 from nav.models import NavItem, SocialLink
 from ninja import Router, Status
-from ninja.responses import codes_4xx
 
 from api.permissions import public_read
 from api.v1.routers.utils import cache_response, navbar_cache_key
@@ -70,7 +69,10 @@ def _navbar_cache_key(
 
 @router.get(
     "/navbar",
-    response={200: NavbarResponse, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: NavbarResponse,
+        500: ErrorResponse,
+    },
     summary="Get Navbar Data",
     description=(
         "Get the full navigation tree and social media links for the website. "

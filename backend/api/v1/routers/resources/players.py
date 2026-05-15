@@ -3,7 +3,6 @@ from typing import Annotated
 from django.db.models import Count, Q, QuerySet, Sum
 from django.http import HttpRequest
 from ninja import Query, Router, Status
-from ninja.responses import codes_4xx
 from srl.models import CountryCodes, Players, Runs
 
 from api.permissions import authed, public_read
@@ -156,7 +155,7 @@ def apply_player_embeds(
 
 @router.get(
     "/search",
-    response={200: list[PlayerSearchResultSchema], codes_4xx: ErrorResponse},
+    response={200: list[PlayerSearchResultSchema]},
     summary="Search Players",
     description="""\
 Search for players by name or nickname. Returns lightweight results
@@ -196,6 +195,7 @@ def search_players(
                 name=p.name,
                 nickname=p.nickname,
                 country_id=p.countrycode.id if p.countrycode else None,
+                pfp=p.pfp,
                 gradients=extract_gradients(p),
             )
             for p in players
@@ -205,7 +205,12 @@ def search_players(
 
 @router.get(
     "/{id}",
-    response={200: PlayerResponse, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: PlayerResponse,
+        400: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Get Player by ID",
     description="""\
 Retrieve a single player by their ID, including optional embedding.
@@ -347,7 +352,13 @@ def get_player(
 
 @router.post(
     "/",
-    response={201: PlayerResponse, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        201: PlayerResponse,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Create Player",
     description="""\
 Creates a brand new player.
@@ -452,7 +463,14 @@ def create_player(
 
 @router.put(
     "/{id}",
-    response={200: PlayerResponse, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: PlayerResponse,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Update Player",
     description="""\
 Updates the player based on their unique ID.
@@ -571,7 +589,13 @@ def update_player(
 
 @router.delete(
     "/{id}",
-    response={200: dict[str, str], codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: dict[str, str],
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Delete Player",
     description="""\
 Deletes the selected player based on its ID.

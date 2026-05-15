@@ -3,7 +3,6 @@ from django.db.models import Q
 from django.http import HttpRequest
 from guides.models import Tags
 from ninja import Router, Status
-from ninja.responses import codes_4xx
 
 from api.permissions import authed, public_read
 from api.v1.schemas.base import ErrorResponse
@@ -19,7 +18,10 @@ router = Router()
 
 @router.get(
     "/all",
-    response={200: list[TagListSchema], codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: list[TagListSchema],
+        500: ErrorResponse,
+    },
     summary="List All Tags",
     description="""\
 Returns a list of all available tags to categorize guides.
@@ -38,7 +40,11 @@ def list_tags(
 
 @router.get(
     "/{slug}",
-    response={200: TagSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: TagSchema,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Get Tag by Slug",
     description="""\
 Get a specific tag by its slug.
@@ -71,7 +77,13 @@ def get_tag(
 
 @router.post(
     "/",
-    response={200: TagSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: TagSchema,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Create Tag",
     description="""\
 Creates a brand new tag for categorizing guides.
@@ -114,7 +126,14 @@ def create_tag(
 
 @router.put(
     "/{slug}",
-    response={200: TagSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: TagSchema,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Update Tag",
     description="""\
 Update an existing tag.
@@ -183,7 +202,13 @@ def update_tag(
 
 @router.delete(
     "/{slug}",
-    response={200: dict[str, str], codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: dict[str, str],
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Delete Tag",
     description="""\
 Delete a tag.

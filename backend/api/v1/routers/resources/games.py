@@ -3,7 +3,6 @@ from typing import Annotated
 from django.db.models import Case, F, IntegerField, Prefetch, Q, Value, When
 from django.http import HttpRequest
 from ninja import Query, Router, Status
-from ninja.responses import codes_4xx
 from srl.models import Categories, Games, Levels, Variables, VariableValues
 
 from api.permissions import authed, public_read
@@ -207,7 +206,11 @@ def _build_platforms_embed(
 
 @router.get(
     "/all",
-    response={200: list[GameSchema], codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: list[GameSchema],
+        400: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Get All Games",
     description="""\
 Retrieves all games within the `Games` object, including optional embedding and
@@ -276,7 +279,12 @@ def get_all_games(
 
 @router.get(
     "/{id}",
-    response={200: GameSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: GameSchema,
+        400: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Get Game by ID",
     description="""\
 Retrieves a single game by its ID or its slug, including optional embedding.
@@ -343,7 +351,13 @@ def get_game(
 
 @router.post(
     "/",
-    response={201: GameSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        201: GameSchema,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Create Game",
     description="""\
 Creates a brand new game.
@@ -412,7 +426,13 @@ def create_game(
 
 @router.put(
     "/{id}",
-    response={200: GameSchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: GameSchema,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Update Game",
     description="""\
 Updates the game based on its unique ID or slug.
@@ -463,7 +483,13 @@ def update_game(
 
 @router.delete(
     "/{id}",
-    response={200: dict[str, str], codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: dict[str, str],
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Delete Game",
     description="""\
 Deletes the selected game.

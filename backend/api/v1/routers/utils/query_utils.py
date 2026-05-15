@@ -107,13 +107,14 @@ def _export_players(
             entry["country"] = (
                 rp.player.countrycode.name if rp.player.countrycode else None
             )
+        entry["pfp"] = rp.player.pfp
         entry["gradients"] = extract_gradients(rp.player)
         players.append(entry)
 
     return (
         players
         if players
-        else [{"name": "Anonymous", "country": None, "gradients": None}]
+        else [{"name": "Anonymous", "country": None, "pfp": None, "gradients": None}]
     )
 
 
@@ -219,6 +220,7 @@ def main_player_data_export(
                 if rp.player.countrycode
                 else None
             ),
+            "pfp": rp.player.pfp,
             "gradients": extract_gradients(rp.player),
         }
         for rp in run_players
@@ -232,6 +234,7 @@ def main_player_data_export(
                 "name": "Anonymous",
                 "nickname": None,
                 "country": None,
+                "pfp": None,
                 "gradients": None,
             }
         ]
@@ -995,11 +998,19 @@ def query_wr_history(
                 {
                     "name": rp.player.name,
                     "nickname": rp.player.nickname or None,
+                    "pfp": rp.player.pfp,
                     "gradients": extract_gradients(rp.player),
                 }
             )
         if not players:
-            players = [{"name": "Anonymous", "nickname": None, "gradients": None}]
+            players = [
+                {
+                    "name": "Anonymous",
+                    "nickname": None,
+                    "pfp": None,
+                    "gradients": None,
+                },
+            ]
 
         results.append(
             {

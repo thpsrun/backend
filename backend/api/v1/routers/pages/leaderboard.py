@@ -3,7 +3,6 @@ from typing import Annotated, Any
 from django.db.models import Q
 from django.http import HttpRequest
 from ninja import Query, Router, Status
-from ninja.responses import codes_4xx
 from srl.models import Games
 
 from api.permissions import public_read
@@ -34,7 +33,6 @@ router = Router()
     "/pointslb",
     response={
         200: list[PointLeaderboardEntrySchema],
-        codes_4xx: ErrorResponse,
         500: ErrorResponse,
     },
     summary="Get Overall Series Point Leaderboard",
@@ -68,7 +66,12 @@ def get_overall_leaderboard(
 
 @router.get(
     "/pointslb/{game_id}",
-    response={200: dict[str, Any], codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: dict[str, Any],
+        400: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Get Per-Game Leaderboard",
     description="""\
 Get the points leaderboard for a specific game, ranking all runners by their

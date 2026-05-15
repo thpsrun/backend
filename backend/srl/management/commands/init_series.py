@@ -3,16 +3,8 @@ import argparse
 from django.core.management.base import BaseCommand, CommandError
 
 from srl.models import Players, Series
-from srl.srcom import (
-    sync_categories,
-    sync_game,
-    sync_game_runs,
-    sync_levels,
-    sync_obsolete_runs,
-    sync_platforms,
-    sync_variables,
-)
-from srl.srcom.schema.src import SrcGamesModel
+from srl.srcom import sync_obsolete_runs
+from srl.srcom.series import import_new_game, iter_series_games
 from srl.utils import src_api
 
 
@@ -111,14 +103,10 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(f"\n{action} Series: {series_obj}"))
 
         self.stdout.write("\nFetching games in series...")
-        src_games = src_api(
-            f"https://speedrun.com/api/v1/series/{series_id}/games?max=50"
-        )
 
-        if not isinstance(src_games, list):
-            raise CommandError(
-                f"There as an error consulting the SRC API: {type(src_games).__name__}"
-            )
+        src_games = list(iter_series_games(series_id))
+        if not src_games:
+            self.stdout.write(self.style.WARNING(" - No games found in series."))
 
         self.stdout.write(self.style.SUCCESS(f" - Found {len(src_games)} game(s)\n"))
 
@@ -130,67 +118,22 @@ class Command(BaseCommand):
             )
 
             try:
-                game_data_raw = src_api(
-                    f"https://speedrun.com/api/v1/games/"
-                    f"{game_id}?embed=platforms,levels,categories,variables"
-                )
-            except ValueError as e:
-                self.stdout.write(self.style.ERROR(f" - Failed to fetch game: {e}"))
-                continue
-
-            try:
-                game_data = SrcGamesModel.model_validate(game_data_raw)
+                summary = import_new_game(game_id, skip_runs=skip_runs)
             except Exception as e:
-                self.stdout.write(
-                    self.style.ERROR(f" - Failed to validate game data: {e}")
-                )
+                self.stdout.write(self.style.ERROR(f" - Failed: {e}"))
                 continue
 
-            for platform in game_data.platforms:
-                sync_platforms.delay(platform.model_dump())
-            platform_names = ", ".join(p.name or p.id for p in game_data.platforms)
-            self.stdout.write(
-                f" - Platforms ({len(game_data.platforms)}): {platform_names}"
-            )
+            self.stdout.write(f" - Platforms: {summary['platforms']}")
+            self.stdout.write(f" - Categories: {summary['categories']}")
+            self.stdout.write(f" - Levels: {summary['levels']}")
+            self.stdout.write(f" - Variables: {summary['variables']}")
 
-            sync_game.delay(game_data.id)
-
-            cat_count = len(game_data.categories) if game_data.categories else 0
-            if game_data.categories:
-                for category in game_data.categories:
-                    sync_categories.delay(category.model_dump())
-                cat_names = ", ".join(
-                    f"{c.name} ({c.type})" for c in game_data.categories
-                )
-                self.stdout.write(f" - Categories ({cat_count}): {cat_names}")
-
-            level_count = len(game_data.levels) if game_data.levels else 0
-            if game_data.levels:
-                for level in game_data.levels:
-                    sync_levels.delay(level.model_dump())
-                level_names = ", ".join(lv.name for lv in game_data.levels)
-                self.stdout.write(f" - Levels ({level_count}): {level_names}")
-
-            if game_data.variables:
-                subcat_count = sum(1 for v in game_data.variables if v.is_subcategory)
-                for variable in game_data.variables:
-                    sync_variables.delay(variable.model_dump())
-                var_names = ", ".join(
-                    f"{v.name} [{v.scope.type}]{'*' if v.is_subcategory else ''}"
-                    for v in game_data.variables
-                )
-                self.stdout.write(
-                    f" - Variables ({len(game_data.variables)}, "
-                    f"{subcat_count} subcategories): {var_names}"
-                )
-
-            if not skip_runs:
-                sync_game_runs.delay(game_data.id, 0)
-                self.stdout.write(" - Queued leaderboard run sync")
-            else:
+            if skip_runs:
                 self.stdout.write(
                     self.style.WARNING(" - Skipped run import (--skip-runs)")
                 )
+            else:
+                self.stdout.write(" - Queued leaderboard run sync")
 
             self.stdout.write("")
 

@@ -7,7 +7,6 @@ from django.db import transaction
 from django.http import HttpRequest
 from django.utils import timezone
 from ninja import Router, Status
-from ninja.responses import codes_4xx
 from srl.models import CountryCodes, Players
 
 from api.permissions import authed
@@ -107,7 +106,11 @@ def _build_profile_response(
 
 @router.get(
     "/me",
-    response={200: PlayerProfileResponse, codes_4xx: ErrorResponse},
+    response={
+        200: PlayerProfileResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+    },
     summary="Get My Profile",
     description="Returns the current authenticated player's profile.",
     auth=authed("profile.edit_own"),
@@ -120,7 +123,12 @@ def get_me(
 
 @router.patch(
     "/me",
-    response={200: PlayerProfileResponse, codes_4xx: ErrorResponse},
+    response={
+        200: PlayerProfileResponse,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+    },
     summary="Update My Profile",
     description="""\
 Updates editable fields on the current authenticated player's profile.
@@ -212,7 +220,12 @@ def update_me(
 
 @router.delete(
     "/me",
-    response={204: None, codes_4xx: ErrorResponse},
+    response={
+        204: None,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Delete My Account",
     description="""\
 Deletes the authenticated player's account.

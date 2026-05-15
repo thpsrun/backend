@@ -3,7 +3,6 @@ from typing import Annotated
 from django.db.models import Q
 from django.http import HttpRequest
 from ninja import Query, Router, Status
-from ninja.responses import codes_4xx
 from srl.models import Categories, Games, Variables, VariableValues
 
 from api.permissions import authed, public_read
@@ -116,7 +115,11 @@ def apply_category_embeds(
 
 @router.get(
     "/all",
-    response={200: list[CategorySchema], codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: list[CategorySchema],
+        400: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Get All Categories",
     description="""\
 Retrieves all categories within a `Games` object, including optional embedding and
@@ -228,7 +231,12 @@ def get_all_categories(
 
 @router.get(
     "/{id}",
-    response={200: CategorySchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: CategorySchema,
+        400: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Get Category by ID",
     description="""\
 Retrieves a single category based upon its ID, including optional embedding.
@@ -302,7 +310,14 @@ def get_category(
 
 @router.post(
     "/",
-    response={201: CategorySchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        201: CategorySchema,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Create Category",
     description="""\
 Creates a brand new category.
@@ -368,7 +383,14 @@ def create_category(
 
 @router.put(
     "/{id}",
-    response={200: CategorySchema, codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: CategorySchema,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Update Category",
     description="""\
 Updates the category based on its unique ID.
@@ -443,7 +465,13 @@ def update_category(
 
 @router.delete(
     "/{id}",
-    response={200: dict[str, str], codes_4xx: ErrorResponse, 500: ErrorResponse},
+    response={
+        200: dict[str, str],
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Delete Category",
     description="""\
 Deletes the selected category based on its ID.

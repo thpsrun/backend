@@ -5,7 +5,6 @@ from django.core.files.base import ContentFile
 from django.http import HttpRequest
 from ninja import File, Router, Status
 from ninja.files import UploadedFile
-from ninja.responses import codes_4xx
 from srl.models import Players
 
 from api.permissions import authed
@@ -22,7 +21,13 @@ PROFILE_BG_MAX_PIXELS: int = 12_000_000
 
 @router.post(
     "/me/profile-bg",
-    response={200: ProfileBGUploadResponse, codes_4xx: ErrorResponse},
+    response={
+        200: ProfileBGUploadResponse,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        500: ErrorResponse,
+    },
     summary="Upload Profile Background",
     description=(
         "Uploads a profile background image for the authenticated player. "
@@ -92,7 +97,11 @@ def upload_profile_bg(
 
 @router.delete(
     "/me/profile-bg",
-    response={200: ProfileBGUploadResponse, codes_4xx: ErrorResponse},
+    response={
+        200: ProfileBGUploadResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+    },
     summary="Remove Profile Background",
     description="Removes the authenticated player's profile background image.",
     auth=authed("profile.edit_own"),

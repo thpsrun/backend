@@ -1,5 +1,6 @@
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
+from datetime import timezone as dt_timezone
 
 import requests as http_requests
 import sentry_sdk
@@ -8,6 +9,7 @@ from django.conf import settings as cfg
 from django.core.management import call_command
 from django.db import transaction
 from django.db.models import Min
+from django.utils import timezone
 
 from srl.encryption import decrypt_src_key
 from srl.leaderboard.recalculation import (
@@ -19,8 +21,15 @@ from srl.leaderboard.recalculation import (
 )
 from srl.leaderboard.resolution import resolve_leaderboard
 from srl.leaderboard.streaks import apply_streak_to_run
-from srl.models import Games, ReconciliationJob, Runs, RunVariableValues, SRCSyncTask
-from srl.models.reconciliation import ReconPhase, ReconScope, ReconStatus
+from srl.models import (
+    Games,
+    ReconciliationJob,
+    Runs,
+    RunVariableValues,
+    Series,
+    SRCSyncTask,
+)
+from srl.models.reconciliation import ReconAction, ReconPhase, ReconScope, ReconStatus
 from srl.srcom.leaderboards import (
     sync_game_runs,
     sync_leaderboards,
@@ -30,6 +39,7 @@ from srl.srcom.leaderboards import (
 from srl.srcom.recon_accumulators import get_affected_players, get_affected_variants
 from srl.srcom.reconciliation import (
     CancellationRequested,
+    check_cancelled,
     check_reconciliation,
     decrement_pending,
     dispatch_chain_with_recon,
@@ -38,8 +48,10 @@ from srl.srcom.reconciliation import (
     flush_counts,
     reconciliation_context,
     record_failure,
+    record_reconciliation_item,
     release_lock,
 )
+from srl.srcom.series import import_new_game, iter_series_games, sync_series
 from srl.srcom.utils import create_leaderboard_link, variables_hash
 from srl.srcom.v2 import is_v2_enabled
 from srl.srcom.v2.client import (
@@ -530,7 +542,7 @@ def replay_failed_edits() -> int:
     skipped; stale edits should be reviewed individually.
     """
 
-    cutoff = datetime.now(timezone.utc) - timedelta(
+    cutoff = datetime.now(dt_timezone.utc) - timedelta(
         days=getattr(cfg, "SRC_V2_REPLAY_MAX_AGE_DAYS", 7),
     )
     qs = SRCSyncTask.objects.filter(
@@ -661,6 +673,129 @@ def run_reconciliation_job(
                     sync_game_runs(job.target_id)
                 else:
                     raise ValueError(f"Unknown scope: {job.scope}")
+            except CancellationRequested:
+                pass
+            except Exception as e:
+                record_failure(job_id, str(e)[:1000])
+            finally:
+                try:
+                    flush_counts()
+                except Exception:
+                    pass
+    finally:
+        try:
+            if decrement_pending(job_id):
+                finalize_after_drain(job_id)
+        except Exception:
+            pass
+
+
+@shared_task(bind=True, name="srl.run_series_reconciliation")
+def run_series_reconciliation(
+    self,
+    job_id: str,
+) -> None:
+    """Drive a SERIES-scoped reconciliation job over a Series in the local DB to find new games."""
+    job = ReconciliationJob.objects.get(id=job_id)
+    job.celery_task_id = self.request.id or ""
+    job.status = ReconStatus.RUNNING.value
+    job.phase = ReconPhase.P1.value
+    job.started_at = timezone.now()
+
+    job.pending_children = 1
+    job.save(
+        update_fields=[
+            "celery_task_id",
+            "status",
+            "phase",
+            "started_at",
+            "pending_children",
+        ],
+    )
+
+    try:
+        with reconciliation_context(job):
+            try:
+                existing_ids = set(
+                    Games.objects.values_list("id", flat=True),
+                )
+
+                for series in Series.objects.all().only("id"):
+                    check_cancelled()
+
+                    try:
+                        sync_series(series.id)
+                    except Exception as series_exc:
+                        record_reconciliation_item(
+                            "series",
+                            series.id,
+                            ReconAction.FAILED.value,
+                            error=str(series_exc)[:500],
+                        )
+                        record_failure(
+                            job_id,
+                            f"series {series.id}: {str(series_exc)[:200]}",
+                        )
+                        continue
+
+                    try:
+                        games_iter = iter_series_games(series.id)
+                    except Exception as iter_exc:
+                        record_failure(
+                            job_id,
+                            f"series {series.id} games list: {str(iter_exc)[:200]}",
+                        )
+                        continue
+
+                    for src_game in games_iter:
+                        check_cancelled()
+                        src_game_id = src_game.get("id") or ""
+                        src_game_name = (src_game.get("names") or {}).get(
+                            "international",
+                            src_game_id,
+                        )
+                        if not src_game_id:
+                            continue
+
+                        if src_game_id in existing_ids:
+                            record_reconciliation_item(
+                                "series_game",
+                                src_game_id,
+                                ReconAction.SKIPPED_NO_CHANGE.value,
+                                changes={
+                                    "series_id": series.id,
+                                    "name": src_game_name,
+                                    "reason": "already_in_db",
+                                },
+                            )
+                            continue
+
+                        try:
+                            summary = import_new_game(src_game_id)
+                        except Exception as game_exc:
+                            record_reconciliation_item(
+                                "series_game",
+                                src_game_id,
+                                ReconAction.FAILED.value,
+                                changes={
+                                    "series_id": series.id,
+                                    "name": src_game_name,
+                                },
+                                error=str(game_exc)[:500],
+                            )
+                            record_failure(
+                                job_id,
+                                f"{src_game_id}: {str(game_exc)[:200]}",
+                            )
+                            continue
+
+                        existing_ids.add(src_game_id)
+                        record_reconciliation_item(
+                            "series_game",
+                            src_game_id,
+                            ReconAction.CREATED.value,
+                            changes={"series_id": series.id, **summary},
+                        )
             except CancellationRequested:
                 pass
             except Exception as e:

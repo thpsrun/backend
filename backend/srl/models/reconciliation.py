@@ -7,6 +7,7 @@ class ReconScope(models.TextChoices):
     RUN = "RUN", "Run"
     LEADERBOARD = "LEADERBOARD", "Leaderboard"
     GAME = "GAME", "Game"
+    SERIES = "SERIES", "Series"
 
 
 class ReconSourceOfTruth(models.TextChoices):
