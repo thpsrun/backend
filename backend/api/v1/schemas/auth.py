@@ -139,14 +139,12 @@ class PlayerUpdateEmbed(Schema):
 
 
 class SocialsUpdateEmbed(Schema):
-    twitch: str | None = Field(None, max_length=200)
     youtube: str | None = Field(None, max_length=200)
     twitter: str | None = Field(None, max_length=200)
     bluesky: str | None = Field(None, max_length=200)
     therun_gg: str | None = Field(None, max_length=30)
 
     @field_validator(
-        "twitch",
         "youtube",
         "twitter",
         "bluesky",

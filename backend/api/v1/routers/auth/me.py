@@ -170,7 +170,7 @@ def update_me(
 
     if body.socials is not None:
         socials_fields = body.socials.model_fields_set
-        for field in ("twitch", "youtube", "twitter", "bluesky"):
+        for field in ("youtube", "twitter", "bluesky"):
             if field in socials_fields:
                 setattr(player, field, getattr(body.socials, field))
                 player_update_fields.append(field)
