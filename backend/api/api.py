@@ -16,6 +16,7 @@ from api.v1.routers.auth.admin_users import router as admin_users_router
 from api.v1.routers.auth.api_keys import router as api_keys_router
 from api.v1.routers.auth.bot_session import router as bot_session_router
 from api.v1.routers.auth.me import router as me_router
+from api.v1.routers.auth.me_auth import router as me_auth_router
 from api.v1.routers.auth.pfp import router as pfp_router
 from api.v1.routers.auth.profile_bg import router as profile_bg_router
 from api.v1.routers.auth.reconcile import router as reconcile_router
@@ -181,6 +182,12 @@ ninja_api: NinjaAPI = NinjaAPI(
                 "authenticated user's API keys.",
             },
             {
+                "name": "Auth Self-Service",
+                "description": "Self-service endpoints for managing the "
+                "authenticated user's password, linked OAuth accounts, and "
+                "passkeys.",
+            },
+            {
                 "name": "Sync Logs",
                 "description": "Administrative sync log endpoints.",
             },
@@ -245,6 +252,7 @@ ninja_api: NinjaAPI = NinjaAPI(
                     "SRC API Key",
                     "Submissions",
                     "API Keys",
+                    "Auth Self-Service",
                 ],
             },
             {
@@ -416,6 +424,7 @@ ninja_api.add_router("/awards", awards_router, tags=["Reference"])
 
 ninja_api.add_router("/auth", register_router, tags=["Account"])
 ninja_api.add_router("/auth", me_router, tags=["Profile"])
+ninja_api.add_router("/auth", me_auth_router, tags=["Auth Self-Service"])
 ninja_api.add_router("/auth", pfp_router, tags=["Profile Picture"])
 ninja_api.add_router("/auth", profile_bg_router, tags=["Profile Background"])
 ninja_api.add_router("/auth", submissions_router, tags=["Submissions"])

@@ -1,8 +1,15 @@
 import re
-from datetime import date
+from datetime import date, datetime
 
 from ninja import Schema
-from pydantic import EmailStr, Field, ValidationInfo, field_validator, model_validator
+from pydantic import (
+    ConfigDict,
+    EmailStr,
+    Field,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
 from api.v1.schemas.common import (
     BasePlayerInfoSchema,
@@ -177,3 +184,102 @@ class PlayerUpdateRequest(Schema):
     player: PlayerUpdateEmbed | None = None
     socials: SocialsUpdateEmbed | None = None
     customizations: CustomizationsUpdateEmbed | None = None
+
+
+class SocialAccountListItem(Schema):
+    provider: str
+    uid: str
+    username: str | None = None
+    last_login: datetime | None = None
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "provider": "discord",
+                "uid": "123456789",
+                "username": "anastasia",
+                "last_login": "2026-05-15T10:00:00Z",
+            },
+        },
+    )
+
+
+class AuthenticatorListItem(Schema):
+    type: str
+    id: int
+    name: str | None = None
+    added_at: datetime | None = None
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "type": "webauthn",
+                "id": 7,
+                "name": "YubiKey 5C",
+                "added_at": "2026-05-15T10:00:00Z",
+            },
+        },
+    )
+
+
+class AuthMethodsResponse(Schema):
+    has_usable_password: bool
+    social_accounts: list[SocialAccountListItem]
+    authenticators: list[AuthenticatorListItem]
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "has_usable_password": True,
+                "social_accounts": [
+                    {
+                        "provider": "discord",
+                        "uid": "123",
+                        "username": "anastasia",
+                        "last_login": "2026-05-15T10:00:00Z",
+                    },
+                ],
+                "authenticators": [
+                    {
+                        "type": "webauthn",
+                        "id": 7,
+                        "name": "YubiKey 5C",
+                        "added_at": "2026-05-15T10:00:00Z",
+                    },
+                ],
+            },
+        },
+    )
+
+
+class SocialAccountListResponse(Schema):
+    social_accounts: list[SocialAccountListItem]
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "social_accounts": [
+                    {
+                        "provider": "discord",
+                        "uid": "123",
+                        "username": "anastasia",
+                        "last_login": "2026-05-15T10:00:00Z",
+                    },
+                ],
+            },
+        },
+    )
+
+
+class DeletePasswordRequest(Schema):
+    password: str | None = None
+    mfa_code: str | None = None
+    webauthn_assertion: dict | None = None
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "password": "currentPassword123",
+            },
+        },
+    )

@@ -1,44 +1,125 @@
+import re
+
 from allauth.account.internal.flows.login import AUTHENTICATION_METHODS_SESSION_KEY
 from allauth.core import context
 from allauth.core.exceptions import ImmediateHttpResponse
 from allauth.mfa.adapter import DefaultMFAAdapter
+from allauth.mfa.models import Authenticator
 from allauth.socialaccount.adapter import DefaultSocialAccountAdapter
+from allauth.socialaccount.models import SocialAccount, SocialLogin
 from django.conf import settings
-from django.http import HttpResponseRedirect
+from django.contrib.auth.base_user import AbstractBaseUser
+from django.core.exceptions import ValidationError
+from django.http import HttpRequest, HttpResponseRedirect
+from srl.models import Players
+
+TWITCH_LOGIN_RE: re.Pattern[str] = re.compile(r"^[A-Za-z0-9_]{1,25}$")
+
+
+def _check_oauth_unique(
+    sociallogin: SocialLogin,
+    exclude_user: AbstractBaseUser | None = None,
+) -> None:
+    extra = sociallogin.account.extra_data or {}
+    provider = sociallogin.account.provider
+    qs = Players.objects.exclude(user__isnull=True)
+
+    if exclude_user is not None:
+        qs = qs.exclude(user=exclude_user)
+
+    if provider == "discord":
+        handle = (extra.get("username") or "")[:32]
+        if handle and qs.filter(discord__iexact=handle).exists():
+            raise ValidationError("discord_handle_taken")
+
+    elif provider == "twitch":
+        login = extra.get("login")
+        if login and TWITCH_LOGIN_RE.match(login):
+            url = f"https://twitch.tv/{login}"
+            if qs.filter(twitch__iexact=url).exists():
+                raise ValidationError("twitch_handle_taken")
 
 
 class SocialAccountAdapter(DefaultSocialAccountAdapter):
     def is_open_for_signup(  # type: ignore
         self,
-        request,
-        sociallogin,
+        request: HttpRequest,
+        sociallogin: SocialLogin,
     ) -> bool:
-        # This disables the ability for social accounts to create new users.
-        return False
+        return True
 
-    def pre_social_login(self, request, sociallogin):
-        # On a connect flow (user is already logged in and linking from settings),
-        # let allauth proceed so it can attach the SocialAccount to the current user.
-        # The "must already be linked" rule only applies to the LOGIN flow.
+    def pre_social_login(self, request: HttpRequest, sociallogin: SocialLogin) -> None:
+        existing_user = sociallogin.user if sociallogin.is_existing else None
+        _check_oauth_unique(sociallogin, exclude_user=existing_user)
         if sociallogin.state.get("process") == "connect":
             return
-        if not sociallogin.is_existing:
-            raise ImmediateHttpResponse(
-                HttpResponseRedirect(f"{settings.FRONTEND_URL}/login/no-link/"),
-            )
-        if not sociallogin.user.is_active:
-            raise ImmediateHttpResponse(
-                HttpResponseRedirect(f"{settings.FRONTEND_URL}/login/banned/"),
-            )
+
+        if sociallogin.user:
+            if not sociallogin.is_existing:
+                raise ImmediateHttpResponse(
+                    HttpResponseRedirect(f"{settings.FRONTEND_URL}/login/no-link/"),
+                )
+
+            if not sociallogin.user.is_active:
+                raise ImmediateHttpResponse(
+                    HttpResponseRedirect(f"{settings.FRONTEND_URL}/login/banned/"),
+                )
+
+    def validate_disconnect(
+        self,
+        account: SocialAccount,
+        accounts: list[SocialAccount],
+    ) -> None:
+        user = account.user
+        if user.has_usable_password():
+            return super().validate_disconnect(account, accounts)
+
+        remaining_social = [a for a in accounts if a.pk != account.pk]
+        has_passkey = Authenticator.objects.filter(
+            user=user,
+            type="webauthn",
+        ).exists()
+
+        if not remaining_social and not has_passkey:
+            raise ValidationError("last_auth_method")
+
+        return super().validate_disconnect(account, accounts)
 
 
 class MFAAdapter(DefaultMFAAdapter):
     def is_mfa_enabled(self, user, types=None) -> bool:
         if user.is_anonymous:
             return False
+
         request = context.request
+
         if request is not None:
             methods = request.session.get(AUTHENTICATION_METHODS_SESSION_KEY, [])
             if methods and methods[-1].get("method") == "socialaccount":
                 return False
+
         return super().is_mfa_enabled(user, types=types)
+
+    def can_delete_authenticator(
+        self,
+        authenticator: Authenticator,
+    ) -> bool:
+        if authenticator.type != "webauthn":
+            return super().can_delete_authenticator(authenticator)
+
+        user = authenticator.user
+        if user.has_usable_password():
+            return super().can_delete_authenticator(authenticator)
+
+        other_passkey = (
+            Authenticator.objects.filter(
+                user=user,
+                type="webauthn",
+            )
+            .exclude(pk=authenticator.pk)
+            .exists()
+        )
+        has_social = SocialAccount.objects.filter(user=user).exists()
+        if not other_passkey and not has_social:
+            return False
+        return super().can_delete_authenticator(authenticator)
