@@ -21,9 +21,9 @@ from srl.srcom.utils import filter_by_variable_map
 from srl.utils import calculate_bonus, points_formula, runs_share_player
 
 TIME_COLUMN_MAP: dict[str, str] = {
-    "realtime": "time_secs",
-    "realtime_noloads": "timenl_secs",
-    "ingame": "timeigt_secs",
+    "rta": "time_secs",
+    "lrt": "timenl_secs",
+    "igt": "timeigt_secs",
 }
 
 # TODO: Yes this is a lot of spaghetti code. Please forgive me for now lol
@@ -214,7 +214,7 @@ def _build_event_stream(
     for run in runs:
         is_obsolete = bool(run.obsolete)
         obsoleted_at = run.obsoleted_at
-        effective_date = run.effective_date
+        effective_date = run.effective_date  # type: ignore
 
         events.append((effective_date, "ADD", 0, run))
         if is_obsolete and obsoleted_at is not None and obsoleted_at > effective_date:
@@ -229,7 +229,6 @@ class _WalkerState:
     runtype: str
     is_ce: bool
     max_points: int
-    time_field: str
 
     active_pool: dict[str, tuple[Runs, float]] = field(default_factory=dict)
     active_entries: dict[str, tuple["RunHistory", float]] = field(default_factory=dict)
@@ -361,7 +360,7 @@ def _handle_add(
     run: Runs,
     event_date: datetime,
 ) -> None:
-    run_time = float(getattr(run, state.time_field) or 0)
+    run_time = float(run.p_time_secs or 0.0)
     if not run_time:
         return
 
@@ -471,7 +470,7 @@ def _handle_add(
     else:
         is_short = _is_short_run(run_time, state.runtype)
         formula_points = points_formula(
-            state.current_wr_time,
+            state.current_wr_time,  # type: ignore
             run_time,
             state.max_points,
             short=is_short,
@@ -598,7 +597,7 @@ def _handle_remove(
             promoted_run, _ = state.active_pool[promoted_id]
             is_short = _is_short_run(promoted_time, state.runtype)
             formula_points = points_formula(
-                state.current_wr_time,
+                state.current_wr_time,  # type: ignore
                 promoted_time,
                 state.max_points,
                 short=is_short,
@@ -650,14 +649,12 @@ def process_leaderboard(
     leaderboard: dict,
     dry_run: bool,
     game_is_ce: dict[str, bool],
-    game_time_columns: dict[str, dict[str, str]],
-    value_timings: dict[str, str] | None = None,
-    variable_timings: dict[str, str] | None = None,
-    category_timings: dict[str, str] | None = None,
 ) -> tuple[int, int, int]:
     runs = list(
         get_runs_for_leaderboard(leaderboard).prefetch_related(
             Prefetch("players", queryset=Players.objects.only("id")),
+            "runvariablevalues_set__variable",
+            "runvariablevalues_set__value",
         ),
     )
     if not runs:
@@ -666,13 +663,6 @@ def process_leaderboard(
     game_id = leaderboard["game_id"]
     runtype = leaderboard["runtype"]
     is_ce = game_is_ce.get(game_id, False)
-    time_field = resolve_time_column(
-        leaderboard,
-        game_time_columns=game_time_columns,
-        value_timings=value_timings or {},
-        variable_timings=variable_timings or {},
-        category_timings=category_timings or {},
-    )
     max_points = (
         settings.POINTS_MAX_CE
         if is_ce
@@ -683,7 +673,6 @@ def process_leaderboard(
         runtype=runtype,
         is_ce=is_ce,
         max_points=max_points,
-        time_field=time_field,
     )
 
     events = _build_event_stream(runs)

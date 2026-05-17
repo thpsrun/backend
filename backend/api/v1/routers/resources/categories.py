@@ -1,5 +1,6 @@
 from typing import Annotated
 
+from django.core.exceptions import ValidationError
 from django.db.models import Q
 from django.http import HttpRequest
 from ninja import Query, Router, Status
@@ -101,6 +102,8 @@ def apply_category_embeds(
                         "appear_on_main": val.appear_on_main,
                         "archive": val.archive,
                         "rules": val.rules,
+                        "defaulttime": val.defaulttime,
+                        "allowed_methods": val.allowed_methods,
                     }
                     for val in values
                 ]
@@ -316,6 +319,7 @@ def get_category(
         401: ErrorResponse,
         403: ErrorResponse,
         404: ErrorResponse,
+        422: ErrorResponse,
         500: ErrorResponse,
     },
     summary="Create Category",
@@ -366,9 +370,20 @@ def create_category(
                 ),
             )
 
-        create_data = category_data.model_dump(exclude={"game_id"})
+        create_data = category_data.model_dump(exclude={"game_id"}, exclude_unset=True)
         create_data["id"] = category_id
-        category = Categories.objects.create(game=game, **create_data)
+        category = Categories(game=game, **create_data)
+        try:
+            category.full_clean()
+        except ValidationError as e:
+            return Status(
+                422,
+                ErrorResponse(
+                    error="Validation failed",
+                    details={"errors": e.message_dict},
+                ),
+            )
+        category.save()
 
         return Status(201, CategorySchema.model_validate(category))
     except Exception as e:
@@ -389,6 +404,7 @@ def create_category(
         401: ErrorResponse,
         403: ErrorResponse,
         404: ErrorResponse,
+        422: ErrorResponse,
         500: ErrorResponse,
     },
     summary="Update Category",
@@ -451,6 +467,16 @@ def update_category(
         for field, value in update_data.items():
             setattr(category, field, value)
 
+        try:
+            category.full_clean()
+        except ValidationError as e:
+            return Status(
+                422,
+                ErrorResponse(
+                    error="Validation failed",
+                    details={"errors": e.message_dict},
+                ),
+            )
         category.save()
         return Status(200, CategorySchema.model_validate(category))
     except Exception as e:

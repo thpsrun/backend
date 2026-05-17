@@ -1,7 +1,9 @@
 from api.v1.routers.resources.games import router as games_router
+from django.core.exceptions import ValidationError
 from django.test import Client, TestCase
 from ninja.testing import TestClient
-from srl.models import Games, Platforms
+from srl.models import Categories, Games, Platforms
+from srl.models.base import LeaderboardChoices
 
 from tests.test_auth import AuthTestBase
 
@@ -24,8 +26,8 @@ class GamesReadTest(TestCase):
             twitch="Test Game",
             release="2000-01-01",
             boxart="https://speedrun.com/game1/cover",
-            defaulttime="realtime",
-            idefaulttime="realtime",
+            defaulttime="rta",
+            idefaulttime="rta",
             pointsmax=1000,
             ipointsmax=100,
         )
@@ -93,8 +95,8 @@ class GamesWriteTest(AuthTestBase):
                 "twitch": "New Test Game",
                 "release": "2024-06-15",
                 "boxart": "https://example.com/boxart.png",
-                "defaulttime": "realtime",
-                "idefaulttime": "realtime",
+                "defaulttime": "rta",
+                "idefaulttime": "rta",
             },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
@@ -117,8 +119,8 @@ class GamesWriteTest(AuthTestBase):
                 "twitch": "Custom ID Game",
                 "release": "2024-06-15",
                 "boxart": "https://example.com/boxart.png",
-                "defaulttime": "realtime",
-                "idefaulttime": "realtime",
+                "defaulttime": "rta",
+                "idefaulttime": "rta",
             },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
@@ -138,8 +140,8 @@ class GamesWriteTest(AuthTestBase):
                 "twitch": "Duplicate ID Game",
                 "release": "2024-06-15",
                 "boxart": "https://example.com/boxart.png",
-                "defaulttime": "realtime",
-                "idefaulttime": "realtime",
+                "defaulttime": "rta",
+                "idefaulttime": "rta",
             },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
@@ -159,8 +161,8 @@ class GamesWriteTest(AuthTestBase):
                 "twitch": "Unauthorized Game",
                 "release": "2024-06-15",
                 "boxart": "https://example.com/boxart.png",
-                "defaulttime": "realtime",
-                "idefaulttime": "realtime",
+                "defaulttime": "rta",
+                "idefaulttime": "rta",
             },
             content_type="application/json",
             HTTP_X_API_KEY="invalid.key.here",
@@ -205,8 +207,8 @@ class GamesWriteTest(AuthTestBase):
             twitch="To Delete",
             release="2024-01-01",
             boxart="https://example.com/boxart.png",
-            defaulttime="realtime",
-            idefaulttime="realtime",
+            defaulttime="rta",
+            idefaulttime="rta",
         )
 
         response = self.client.delete(
@@ -227,3 +229,245 @@ class GamesWriteTest(AuthTestBase):
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 404)
+
+
+class GameTimingClean(TestCase):
+
+    def _make(
+        self,
+        **kwargs,
+    ) -> Games:
+        defaults: dict = {
+            "id": "gtest1",
+            "name": "Test Game",
+            "slug": "test-game",
+            "release": "2000-01-01",
+            "boxart": "https://example.com/boxart",
+            "defaulttime": LeaderboardChoices.REALTIME,
+            "idefaulttime": LeaderboardChoices.REALTIME,
+            "pointsmax": 1000,
+            "ipointsmax": 250,
+            "allowed_methods_fg": [
+                LeaderboardChoices.REALTIME,
+                LeaderboardChoices.INGAME,
+            ],
+            "allowed_methods_il": [
+                LeaderboardChoices.REALTIME,
+                LeaderboardChoices.INGAME,
+            ],
+        }
+        defaults.update(kwargs)
+        return Games(**defaults)
+
+    def test_defaulttime_must_be_in_allowed_methods_fg(
+        self,
+    ) -> None:
+        g = self._make(
+            defaulttime=LeaderboardChoices.INGAME,
+            allowed_methods_fg=[LeaderboardChoices.REALTIME],
+        )
+        with self.assertRaises(ValidationError) as cm:
+            g.full_clean()
+        self.assertIn("defaulttime", cm.exception.message_dict)
+
+    def test_idefaulttime_must_be_in_allowed_methods_il(
+        self,
+    ) -> None:
+        g = self._make(
+            idefaulttime=LeaderboardChoices.INGAME,
+            allowed_methods_il=[LeaderboardChoices.REALTIME],
+        )
+        with self.assertRaises(ValidationError) as cm:
+            g.full_clean()
+        self.assertIn("idefaulttime", cm.exception.message_dict)
+
+    def test_empty_allowed_methods_fg_rejected(
+        self,
+    ) -> None:
+        g = self._make(allowed_methods_fg=[])
+        with self.assertRaises(ValidationError) as cm:
+            g.full_clean()
+        self.assertIn("allowed_methods_fg", cm.exception.message_dict)
+
+    def test_empty_allowed_methods_il_rejected(
+        self,
+    ) -> None:
+        g = self._make(allowed_methods_il=[])
+        with self.assertRaises(ValidationError) as cm:
+            g.full_clean()
+        self.assertIn("allowed_methods_il", cm.exception.message_dict)
+
+    def test_valid_game_clean(
+        self,
+    ) -> None:
+        self._make().full_clean()  # should not raise
+
+
+class GameNarrowingCascade(TestCase):
+
+    @classmethod
+    def setUpTestData(
+        cls,
+    ) -> None:
+        cls.game = Games.objects.create(
+            id="cgame1",
+            name="C Game",
+            slug="c-game",
+            twitch="C Game",
+            release="2000-01-01",
+            boxart="https://example.com/boxart",
+            defaulttime=LeaderboardChoices.REALTIME,
+            idefaulttime=LeaderboardChoices.REALTIME,
+            pointsmax=1000,
+            ipointsmax=250,
+            allowed_methods_fg=[
+                LeaderboardChoices.REALTIME,
+                LeaderboardChoices.INGAME,
+            ],
+            allowed_methods_il=[
+                LeaderboardChoices.REALTIME,
+                LeaderboardChoices.INGAME,
+            ],
+        )
+        cls.cat = Categories.objects.create(
+            id="ccat1",
+            name="Any%",
+            slug="any",
+            type="per-game",
+            url="https://example.com/any",
+            game=cls.game,
+            allowed_methods=[LeaderboardChoices.INGAME],
+            defaulttime=LeaderboardChoices.INGAME,
+        )
+
+    def test_game_narrowing_rejected_if_category_uses_removed_method(
+        self,
+    ) -> None:
+        self.game.allowed_methods_fg = [LeaderboardChoices.REALTIME]
+        with self.assertRaises(ValidationError) as cm:
+            self.game.full_clean()
+        self.assertIn("allowed_methods_fg", cm.exception.message_dict)
+        self.assertIn(self.cat.id, str(cm.exception))
+
+    def test_game_widening_always_safe(
+        self,
+    ) -> None:
+        self.game.allowed_methods_fg = [
+            LeaderboardChoices.REALTIME,
+            LeaderboardChoices.REALTIME_NOLOADS,
+            LeaderboardChoices.INGAME,
+        ]
+        self.game.full_clean()
+
+
+class GamesTimingWriteTest(AuthTestBase):
+
+    def setUp(
+        self,
+    ) -> None:
+        super().setUp()
+        self.platform = Platforms.objects.create(
+            id="pc-timing-w",
+            name="PC TW",
+            slug="pc-timing-w",
+        )
+        self.tw_game = Games.objects.create(
+            id="twgame1",
+            name="TW Game",
+            slug="tw-game",
+            twitch="TW Game",
+            release="2000-01-01",
+            boxart="https://example.com/boxart",
+            defaulttime=LeaderboardChoices.REALTIME,
+            idefaulttime=LeaderboardChoices.REALTIME,
+            pointsmax=1000,
+            ipointsmax=250,
+        )
+        self.tw_game.platforms.add(self.platform)
+        self.client = TestClient(games_router)  # type: ignore
+
+    def test_put_game_accepts_allowed_methods(
+        self,
+    ) -> None:
+        response = self.client.put(
+            "/twgame1",
+            json={
+                "defaulttime": "rta",
+                "allowed_methods_fg": ["rta", "igt"],
+            },  # type: ignore
+            headers={"X-API-Key": self.api_key},
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("rta", data["allowed_methods_fg"])
+        self.assertIn("igt", data["allowed_methods_fg"])
+
+    def test_put_game_rejects_invalid_primary(
+        self,
+    ) -> None:
+        # defaulttime not in allowed_methods_fg -> model validation should reject
+        response = self.client.put(
+            "/twgame1",
+            json={
+                "defaulttime": "igt",
+                "allowed_methods_fg": ["rta"],
+            },  # type: ignore
+            headers={"X-API-Key": self.api_key},
+        )
+        self.assertEqual(response.status_code, 422)
+        data = response.json()
+        self.assertIn("errors", data["details"])
+
+    def test_post_game_with_allowed_methods(
+        self,
+    ) -> None:
+        response = self.client.post(
+            "/",
+            json={
+                "name": "Timing Test Game",
+                "slug": "timing-test-game",
+                "release": "2010-01-01",
+                "boxart": "https://example.com/boxart.png",
+                "defaulttime": "rta",
+                "idefaulttime": "rta",
+                "allowed_methods_fg": ["rta", "igt"],
+                "allowed_methods_il": ["rta"],
+            },  # type: ignore
+            headers={"X-API-Key": self.api_key},
+        )
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertIn("rta", data["allowed_methods_fg"])
+        self.assertIn("igt", data["allowed_methods_fg"])
+
+    def test_post_game_rejects_primary_not_in_allowed(
+        self,
+    ) -> None:
+        response = self.client.post(
+            "/",
+            json={
+                "name": "Bad Timing Game",
+                "slug": "bad-timing-game",
+                "release": "2010-01-01",
+                "boxart": "https://example.com/boxart.png",
+                "defaulttime": "igt",
+                "idefaulttime": "rta",
+                "allowed_methods_fg": ["rta"],
+                "allowed_methods_il": ["rta"],
+            },  # type: ignore
+            headers={"X-API-Key": self.api_key},
+        )
+        self.assertEqual(response.status_code, 422)
+        data = response.json()
+        self.assertIn("errors", data["details"])
+
+
+class GameSchemaTimingFields(TestCase):
+
+    def test_game_base_schema_has_allowed_methods(
+        self,
+    ) -> None:
+        from api.v1.schemas.games import GameBaseSchema
+        fields = GameBaseSchema.model_fields
+        self.assertIn("allowed_methods_fg", fields)
+        self.assertIn("allowed_methods_il", fields)

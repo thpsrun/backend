@@ -9,18 +9,34 @@ from typing import Any
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import caches
-from django.db.models.signals import m2m_changed, post_delete, post_save, pre_delete
+from django.db.models.signals import (
+    m2m_changed,
+    post_delete,
+    post_save,
+    pre_delete,
+    pre_save,
+)
 from django.dispatch import receiver
 from django.utils import timezone
-from srl.models import RunHistory
+from srl.models import Categories, RunHistory, Variables, VariableValues
 from srl.models.games import Games
 from srl.models.players import Players
+from srl.tasks import rebackfill_game_runs
 
 from api.backability import is_key_backable
 from api.models import APIKey, APIKeyRevokedReason
 from api.v1.routers.utils.cache_utils import _HISTORY_CACHE_PREFIX
 
 logger = logging.getLogger(__name__)
+
+_GAME_TIMING_FIELDS = frozenset(
+    {
+        "defaulttime",
+        "idefaulttime",
+        "allowed_methods_fg",
+        "allowed_methods_il",
+    }
+)
 
 
 def _revoke_unbackable_keys(
@@ -179,7 +195,7 @@ def _is_first(
         .values_list("id", flat=True)
         .first()
     )
-    return earliest == row.id
+    return earliest == row.id  # type: ignore
 
 
 def _yearly_periods(
@@ -269,3 +285,129 @@ def disable_history_signals():
     finally:
         post_save.connect(on_runhistory_saved, sender=RunHistory)
         post_delete.connect(on_runhistory_deleted, sender=RunHistory)
+
+
+# Any timing-shape change on Game/Category/Variable/VariableValue fires
+# rebackfill_game_runs, which internally chains recalculate_game_boards.
+# One signal, one task, one source of truth.
+_CHILD_TIMING_FIELDS = frozenset({"defaulttime", "allowed_methods"})
+
+
+def _check_dirty(
+    instance: Any,
+    sender: type,
+    fields: frozenset[str],
+) -> bool:
+    if not instance.pk:
+        return False
+    try:
+        prev = sender.objects.get(pk=instance.pk)
+    except sender.DoesNotExist:
+        return False
+    return any(getattr(prev, f, None) != getattr(instance, f, None) for f in fields)
+
+
+@receiver(pre_save, sender=Games)
+def _capture_game_timing_change(
+    sender: Any,
+    instance: Games,
+    **kwargs: Any,
+) -> None:
+    instance._timing_dirty = _check_dirty(instance, Games, _GAME_TIMING_FIELDS)  # type: ignore
+
+
+@receiver(post_save, sender=Games)
+def _fire_rebackfill_on_game_timing_change(
+    sender: Any,
+    instance: Games,
+    created: bool,
+    **kwargs: Any,
+) -> None:
+    if created:
+        return
+    if getattr(instance, "_timing_dirty", False):
+        rebackfill_game_runs.delay(instance.slug)
+
+
+@receiver(pre_save, sender=Categories)
+def _capture_category_timing_change(
+    sender: Any,
+    instance: Categories,
+    **kwargs: Any,
+) -> None:
+    instance._timing_dirty = _check_dirty(  # type: ignore
+        instance,
+        Categories,
+        _CHILD_TIMING_FIELDS,
+    )
+
+
+@receiver(post_save, sender=Categories)
+def _fire_rebackfill_on_category_timing_change(
+    sender: Any,
+    instance: Categories,
+    created: bool,
+    **kwargs: Any,
+) -> None:
+    if created:
+        return
+    if not instance.game:
+        return
+    if getattr(instance, "_timing_dirty", False):
+        rebackfill_game_runs.delay(instance.game.slug)
+
+
+@receiver(pre_save, sender=Variables)
+def _capture_variable_timing_change(
+    sender: Any,
+    instance: Variables,
+    **kwargs: Any,
+) -> None:
+    instance._timing_dirty = _check_dirty(  # type: ignore
+        instance,
+        Variables,
+        _CHILD_TIMING_FIELDS,
+    )
+
+
+@receiver(post_save, sender=Variables)
+def _fire_rebackfill_on_variable_timing_change(
+    sender: Any,
+    instance: Variables,
+    created: bool,
+    **kwargs: Any,
+) -> None:
+    if created:
+        return
+    if not instance.game:
+        return
+    if getattr(instance, "_timing_dirty", False):
+        rebackfill_game_runs.delay(instance.game.slug)
+
+
+@receiver(pre_save, sender=VariableValues)
+def _capture_value_timing_change(
+    sender: Any,
+    instance: VariableValues,
+    **kwargs: Any,
+) -> None:
+    instance._timing_dirty = _check_dirty(  # type: ignore
+        instance,
+        VariableValues,
+        _CHILD_TIMING_FIELDS,
+    )
+
+
+@receiver(post_save, sender=VariableValues)
+def _fire_rebackfill_on_value_timing_change(
+    sender: Any,
+    instance: VariableValues,
+    created: bool,
+    **kwargs: Any,
+) -> None:
+    if created:
+        return
+    if not instance.var or not instance.var.game:
+        return
+    if getattr(instance, "_timing_dirty", False):
+        rebackfill_game_runs.delay(instance.var.game.slug)

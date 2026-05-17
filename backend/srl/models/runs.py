@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError
 from django.db import models
 
 from srl.models.categories import Categories
@@ -243,9 +244,9 @@ class Runs(models.Model):
 
     # Maps timing method -> (display string field, seconds field)
     _TIMING_FIELD_MAP: dict[str, tuple[str, str]] = {
-        "realtime": ("time", "time_secs"),
-        "realtime_noloads": ("timenl", "timenl_secs"),
-        "ingame": ("timeigt", "timeigt_secs"),
+        "rta": ("time", "time_secs"),
+        "lrt": ("timenl", "timenl_secs"),
+        "igt": ("timeigt", "timeigt_secs"),
     }
 
     def _primary_timing_method(
@@ -254,7 +255,7 @@ class Runs(models.Model):
         # Precedence: VariableValue > Variable > Category > Game (idefaulttime for IL).
         # Callers should prefetch runvariablevalues_set__value and
         # runvariablevalues_set__variable to avoid extra queries when iterating runs.
-        rvvs = list(self.runvariablevalues_set.all())
+        rvvs = list(self.runvariablevalues_set.all())  # type: ignore
         for rvv in rvvs:
             if rvv.value.defaulttime:
                 return rvv.value.defaulttime
@@ -267,13 +268,53 @@ class Runs(models.Model):
             return self.game.idefaulttime
         return self.game.defaulttime
 
+    def _resolved_allowed_methods(
+        self,
+    ) -> list[str]:
+        rvvs = list(self.runvariablevalues_set.all())  # type: ignore
+        for rvv in rvvs:
+            if rvv.value.allowed_methods is not None:
+                return list(rvv.value.allowed_methods)
+        for rvv in rvvs:
+            if rvv.variable.allowed_methods is not None:
+                return list(rvv.variable.allowed_methods)
+        if self.category and self.category.allowed_methods is not None:
+            return list(self.category.allowed_methods)
+        if self.runtype == "il":
+            return list(self.game.allowed_methods_il)
+        return list(self.game.allowed_methods_fg)
+
+    def validate_allowed_method_data(
+        self,
+    ) -> None:
+        allowed = self._resolved_allowed_methods()
+        missing: list[str] = []
+        for method in allowed:
+            _, secs_field = self._TIMING_FIELD_MAP[method]
+            value = getattr(self, secs_field)
+            if not value or value <= 0:
+                missing.append(method)
+        if missing:
+            raise ValidationError(
+                f"Run requires the following timing methods: {allowed}. "
+                f"Missing or zero: {missing}",
+            )
+
     @property
     def p_time(
         self,
     ) -> str | None:
         method = self._primary_timing_method()
-        field, _ = self._TIMING_FIELD_MAP[method]
-        return getattr(self, field)
+        field, secs_field = self._TIMING_FIELD_MAP[method]
+        secs_value = getattr(self, secs_field)
+        if secs_value and secs_value > 0:
+            return getattr(self, field)
+        for candidate in self._resolved_allowed_methods():
+            cand_field, cand_secs = self._TIMING_FIELD_MAP[candidate]
+            cand_value = getattr(self, cand_secs)
+            if cand_value and cand_value > 0:
+                return getattr(self, cand_field)
+        return None
 
     @property
     def p_time_secs(
@@ -281,7 +322,15 @@ class Runs(models.Model):
     ) -> float | None:
         method = self._primary_timing_method()
         _, secs_field = self._TIMING_FIELD_MAP[method]
-        return getattr(self, secs_field)
+        value = getattr(self, secs_field)
+        if value and value > 0:
+            return value
+        for candidate in self._resolved_allowed_methods():
+            _, cand_secs = self._TIMING_FIELD_MAP[candidate]
+            cand_value = getattr(self, cand_secs)
+            if cand_value and cand_value > 0:
+                return cand_value
+        return None
 
     def __str__(self):
         return self.id

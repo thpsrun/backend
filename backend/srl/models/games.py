@@ -1,8 +1,10 @@
 from django.conf import settings
+from django.contrib.postgres.fields import ArrayField
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.text import slugify
 
-from srl.models.base import LeaderboardChoices
+from srl.models.base import LeaderboardChoices, all_methods_default
 from srl.models.platforms import Platforms
 from srl.models.players import Players
 
@@ -52,6 +54,32 @@ class Games(models.Model):
             "speedruns and another standard for ILs. This setting lets you change the "
             "game-specific IL timing method.<br />NOTE: This defaults to RTA upon a game "
             "being created and must be set manually."
+        ),
+    )
+    allowed_methods_fg = ArrayField(
+        base_field=models.CharField(
+            max_length=20,
+            choices=LeaderboardChoices.choices,
+        ),
+        default=all_methods_default,
+        blank=False,
+        verbose_name="Allowed FG Timing Methods",
+        help_text=(
+            "Timing methods allowed for full-game runs of this game. Must include "
+            "defaulttime."
+        ),
+    )
+    allowed_methods_il = ArrayField(
+        base_field=models.CharField(
+            max_length=20,
+            choices=LeaderboardChoices.choices,
+        ),
+        default=all_methods_default,
+        blank=False,
+        verbose_name="Allowed IL Timing Methods",
+        help_text=(
+            "Timing methods allowed for individual-level runs of this game. Must include "
+            "idefaulttime."
         ),
     )
     platforms = models.ManyToManyField(
@@ -110,6 +138,56 @@ class Games(models.Model):
         self,
     ) -> bool:
         return "category extension" in self.name.lower()
+
+    def clean(self) -> None:
+        super().clean()
+        errors: dict = {}
+        if not self.allowed_methods_fg:
+            errors["allowed_methods_fg"] = "Must contain at least one timing method."
+        if not self.allowed_methods_il:
+            errors["allowed_methods_il"] = "Must contain at least one timing method."
+        if self.allowed_methods_fg and self.defaulttime not in self.allowed_methods_fg:
+            errors["defaulttime"] = (
+                f"defaulttime ({self.defaulttime}) must be one of allowed_methods_fg "
+                f"({list(self.allowed_methods_fg)})."
+            )
+        if self.allowed_methods_il and self.idefaulttime not in self.allowed_methods_il:
+            errors["idefaulttime"] = (
+                f"idefaulttime ({self.idefaulttime}) must be one of allowed_methods_il "
+                f"({list(self.allowed_methods_il)})."
+            )
+        if self.pk and self.allowed_methods_fg:
+            fg_set = set(self.allowed_methods_fg)
+            bad_cats = self.categories_set.filter(  # type: ignore
+                type="per-game",
+                allowed_methods__isnull=False,
+            )
+            offenders = [
+                c.id for c in bad_cats if not set(c.allowed_methods).issubset(fg_set)
+            ]
+            if offenders:
+                errors["allowed_methods_fg"] = (
+                    f"Cannot narrow: per-game categories rely on removed methods. "
+                    f"Offending category ids: {offenders}"
+                )
+
+        if self.pk and self.allowed_methods_il:
+            il_set = set(self.allowed_methods_il)
+            bad_cats = self.categories_set.filter(  # type: ignore
+                type="per-level",
+                allowed_methods__isnull=False,
+            )
+            offenders = [
+                c.id for c in bad_cats if not set(c.allowed_methods).issubset(il_set)
+            ]
+            if offenders:
+                errors["allowed_methods_il"] = (
+                    f"Cannot narrow: per-level categories rely on removed methods. "
+                    f"Offending category ids: {offenders}"
+                )
+
+        if errors:
+            raise ValidationError(errors)
 
     def save(self, *args, **kwargs):
         if not self.slug:

@@ -37,6 +37,7 @@ from srl.srcom.utils import (
     create_leaderboard_link,
     create_run_default,
     filter_by_variable_map,
+    src_method_to_internal,
     update_obsolete,
     update_standings,
     variables_hash,
@@ -125,11 +126,11 @@ def _build_base_context(
     if src_lb.level:
         level_info = Levels.objects.only("id", "name").get(id=src_lb.level)
         max_points = game_info.ipointsmax
-        if game_info.idefaulttime == "realtime_noloads":
+        if game_info.idefaulttime == "lrt":
             lrt_fix_check = True
     else:
         max_points = game_info.pointsmax
-        if game_info.defaulttime == "realtime_noloads":
+        if game_info.defaulttime == "lrt":
             lrt_fix_check = True
 
     run_variables = src_lb.runs[0].run.values
@@ -282,10 +283,6 @@ def _ensure_category_for_obsolete_run(
     if Categories.objects.filter(id=src_run.category).exists():
         return True
 
-    # Old runs may reference categories that were removed from the game's
-    # current category list. Sync on demand. SRC sometimes 404s the standalone
-    # /categories/<id> for deprecated categories but still serves them embedded
-    # on the run, so fall back to that form.
     try:
         sync_categories(src_run.category)
     except Exception:
@@ -335,10 +332,7 @@ def _persist_obsolete_run(
     game_info: Games,
 ) -> bool:
     """Insert a verified obsolete run + its players + var values. Returns True if inserted."""
-    lrt_fix_check = (
-        game_info.defaulttime == "realtime_noloads"
-        or game_info.idefaulttime == "realtime_noloads"
-    )
+    lrt_fix_check = game_info.defaulttime == "lrt" or game_info.idefaulttime == "lrt"
     default = create_run_default(
         src_run.model_dump(),
         place=0,
@@ -431,11 +425,6 @@ def sync_obsolete_runs(
 
             if Runs.objects.filter(id=src_run.id).exists():
                 counters["exists"] += 1
-                # Record the existence-check as a SKIPPED_NO_CHANGE so the
-                # reconciliation log reflects that this run was verified
-                # against SRC, even though no fields needed updating.
-                # reconciliation_upsert_check(defaults={}) hits the existence-check
-                # branch and records the item without mutating anything.
                 reconciliation_upsert_check(
                     Runs,
                     defaults={},
@@ -446,13 +435,7 @@ def sync_obsolete_runs(
 
             try:
                 _persist_obsolete_run(src_run, game_info)
-            except Exception as exc:
-                logger.warning(
-                    "sync_obsolete_runs: db error on run %s for player %s: %s",
-                    src_run.id,
-                    player,
-                    exc,
-                )
+            except Exception:
                 counters["db_err"] += 1
                 continue
 
@@ -527,13 +510,14 @@ def sync_run(
                     run_data.times.model_dump(),
                 )
 
-            if context_data.default_time_type == "realtime":
+            default_time = src_method_to_internal(context_data.default_time_type)
+            if default_time == "rta":
                 wr = (
                     wr_times.timeigt_secs
                     if wr_times.time_secs == 0
                     else wr_times.time_secs
                 )
-            elif context_data.default_time_type == "realtime_noloads":
+            elif default_time == "lrt":
                 wr = wr_times.timenl_secs
             else:
                 wr = (

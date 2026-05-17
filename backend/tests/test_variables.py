@@ -1,7 +1,9 @@
 from api.v1.routers.resources.variables import router as variables_router
+from django.core.exceptions import ValidationError
 from django.test import TestCase
 from ninja.testing import TestClient
 from srl.models import Categories, Games, Platforms, Variables, VariableValues
+from srl.models.base import LeaderboardChoices
 
 from tests.test_auth import AuthTestBase
 
@@ -24,8 +26,8 @@ class VariablesReadTest(TestCase):
             twitch="Test Game",
             release="2000-01-01",
             boxart="https://speedrun.com/game1/cover",
-            defaulttime="realtime",
-            idefaulttime="realtime",
+            defaulttime="rta",
+            idefaulttime="rta",
             pointsmax=1000,
             ipointsmax=100,
         )
@@ -233,8 +235,8 @@ class VarValuesReadTest(TestCase):
             twitch="Test Game",
             release="2000-01-01",
             boxart="https://speedrun.com/game1/cover",
-            defaulttime="realtime",
-            idefaulttime="realtime",
+            defaulttime="rta",
+            idefaulttime="rta",
             pointsmax=1000,
             ipointsmax=100,
         )
@@ -543,3 +545,276 @@ class VarValuesWriteTest(AuthTestBase):
         self.assertEqual(response.status_code, 404)
         data = response.json()
         self.assertEqual(data["error"], "Variable value does not exist")
+
+
+class VariableTimingClean(TestCase):
+
+    @classmethod
+    def setUpTestData(
+        cls,
+    ) -> None:
+        cls.game = Games.objects.create(
+            id="vtgame1",
+            name="Var Game",
+            slug="var-game",
+            twitch="Var Game",
+            release="2000-01-01",
+            boxart="https://example.com/boxart",
+            defaulttime=LeaderboardChoices.INGAME,
+            idefaulttime=LeaderboardChoices.REALTIME,
+            pointsmax=1000,
+            ipointsmax=250,
+            allowed_methods_fg=[
+                LeaderboardChoices.REALTIME,
+                LeaderboardChoices.INGAME,
+            ],
+            allowed_methods_il=[
+                LeaderboardChoices.REALTIME,
+            ],
+        )
+        cls.category = Categories.objects.create(
+            id="vtcat1",
+            game=cls.game,
+            name="Any%",
+            slug="any",
+            type="per-game",
+            url="https://example.com/any",
+            allowed_methods=[LeaderboardChoices.REALTIME],
+            defaulttime=LeaderboardChoices.REALTIME,
+        )
+
+    def _make(
+        self,
+        **kwargs,
+    ) -> Variables:
+        defaults: dict = {
+            "id": "vtest1",
+            "name": "Test Var",
+            "slug": "test-var",
+            "scope": "full-game",
+            "game": self.game,
+            "cat": self.category,
+            "defaulttime": None,
+            "allowed_methods": None,
+        }
+        defaults.update(kwargs)
+        return Variables(**defaults)
+
+    def test_variable_allowed_must_be_subset_of_category_allowed(
+        self,
+    ) -> None:
+        v = self._make(allowed_methods=[LeaderboardChoices.INGAME])
+        with self.assertRaises(ValidationError) as cm:
+            v.full_clean()
+        self.assertIn("allowed_methods", cm.exception.message_dict)
+
+    def test_variable_inherits_category_allowed_when_null(
+        self,
+    ) -> None:
+        self._make(allowed_methods=None).full_clean()
+
+    def test_variable_explicit_primary_required_when_excluding_parent_primary(
+        self,
+    ) -> None:
+        # Widen category for this test so the variable can plausibly narrow further.
+        self.category.allowed_methods = [
+            LeaderboardChoices.REALTIME,
+            LeaderboardChoices.INGAME,
+        ]
+        self.category.defaulttime = LeaderboardChoices.REALTIME
+        self.category.save()
+        v = self._make(
+            allowed_methods=[LeaderboardChoices.INGAME],
+            defaulttime=None,
+        )
+        with self.assertRaises(ValidationError) as cm:
+            v.full_clean()
+        self.assertIn("defaulttime", cm.exception.message_dict)
+
+    def test_variable_with_no_category_uses_game_allowed(
+        self,
+    ) -> None:
+        v = self._make(
+            cat=None,
+            allowed_methods=[LeaderboardChoices.INGAME],
+        )
+        v.full_clean()  # INGAME is in game.allowed_methods_fg
+
+    def test_variable_existing_scope_rule_still_fires(
+        self,
+    ) -> None:
+        # Scope=single-level requires a level; this should still raise.
+        v = self._make(scope="single-level", level=None)
+        with self.assertRaises(ValidationError):
+            v.full_clean()
+
+
+class VariableValueTimingClean(TestCase):
+
+    @classmethod
+    def setUpTestData(
+        cls,
+    ) -> None:
+        cls.game = Games.objects.create(
+            id="vvgame1",
+            name="VV Game",
+            slug="vv-game",
+            twitch="VV Game",
+            release="2000-01-01",
+            boxart="https://example.com/boxart",
+            defaulttime=LeaderboardChoices.INGAME,
+            idefaulttime=LeaderboardChoices.REALTIME,
+            pointsmax=1000,
+            ipointsmax=250,
+            allowed_methods_fg=[
+                LeaderboardChoices.REALTIME,
+                LeaderboardChoices.INGAME,
+            ],
+            allowed_methods_il=[LeaderboardChoices.REALTIME],
+        )
+        cls.category = Categories.objects.create(
+            id="vvcat1",
+            game=cls.game,
+            name="Any%",
+            slug="any",
+            type="per-game",
+            url="https://example.com/any",
+        )
+        cls.variable = Variables.objects.create(
+            id="vvvar1",
+            name="Difficulty",
+            slug="difficulty",
+            scope="full-game",
+            game=cls.game,
+            cat=cls.category,
+            allowed_methods=[
+                LeaderboardChoices.REALTIME,
+                LeaderboardChoices.INGAME,
+            ],
+            defaulttime=LeaderboardChoices.REALTIME,
+        )
+
+    def _make(
+        self,
+        **kwargs,
+    ) -> VariableValues:
+        defaults: dict = {
+            "value": "vvtest1",
+            "var": self.variable,
+            "name": "Sick",
+            "slug": "sick",
+            "defaulttime": None,
+            "allowed_methods": None,
+        }
+        defaults.update(kwargs)
+        return VariableValues(**defaults)
+
+    def test_value_must_be_subset_of_variable(
+        self,
+    ) -> None:
+        v = self._make(allowed_methods=[LeaderboardChoices.REALTIME_NOLOADS])
+        with self.assertRaises(ValidationError) as cm:
+            v.full_clean()
+        self.assertIn("allowed_methods", cm.exception.message_dict)
+
+    def test_value_explicit_primary_when_excluding_parent_primary(
+        self,
+    ) -> None:
+        v = self._make(
+            allowed_methods=[LeaderboardChoices.INGAME],
+            defaulttime=None,
+        )
+        with self.assertRaises(ValidationError) as cm:
+            v.full_clean()
+        self.assertIn("defaulttime", cm.exception.message_dict)
+
+    def test_value_explicit_primary_passes(
+        self,
+    ) -> None:
+        self._make(
+            allowed_methods=[LeaderboardChoices.INGAME],
+            defaulttime=LeaderboardChoices.INGAME,
+        ).full_clean()
+
+
+class VariableNarrowingCascade(TestCase):
+
+    @classmethod
+    def setUpTestData(
+        cls,
+    ) -> None:
+        cls.game = Games.objects.create(
+            id="vncgame1",
+            name="VNC Game",
+            slug="vnc-game",
+            twitch="VNC Game",
+            release="2000-01-01",
+            boxart="https://example.com/boxart",
+            defaulttime=LeaderboardChoices.REALTIME,
+            idefaulttime=LeaderboardChoices.REALTIME,
+            pointsmax=1000,
+            ipointsmax=250,
+            allowed_methods_fg=[
+                LeaderboardChoices.REALTIME,
+                LeaderboardChoices.INGAME,
+            ],
+            allowed_methods_il=[
+                LeaderboardChoices.REALTIME,
+                LeaderboardChoices.INGAME,
+            ],
+        )
+        cls.cat = Categories.objects.create(
+            id="vnccat1",
+            name="Any%",
+            slug="any",
+            type="per-game",
+            url="https://example.com/any",
+            game=cls.game,
+        )
+        cls.variable = Variables.objects.create(
+            id="vncvar1",
+            name="Difficulty",
+            slug="difficulty",
+            scope="full-game",
+            game=cls.game,
+            cat=cls.cat,
+            allowed_methods=[
+                LeaderboardChoices.REALTIME,
+                LeaderboardChoices.INGAME,
+            ],
+            defaulttime=LeaderboardChoices.REALTIME,
+        )
+        cls.value = VariableValues.objects.create(
+            value="vncval1",
+            var=cls.variable,
+            name="Sick",
+            slug="sick",
+            allowed_methods=[LeaderboardChoices.INGAME],
+            defaulttime=LeaderboardChoices.INGAME,
+        )
+
+    def test_variable_narrowing_rejected_if_value_uses_removed_method(
+        self,
+    ) -> None:
+        self.variable.allowed_methods = [LeaderboardChoices.REALTIME]
+        self.variable.defaulttime = LeaderboardChoices.REALTIME
+        with self.assertRaises(ValidationError) as cm:
+            self.variable.full_clean()
+        self.assertIn("allowed_methods", cm.exception.message_dict)
+
+
+class VariableSchemaTimingFields(TestCase):
+
+    def test_variable_base_schema_has_allowed_methods(
+        self,
+    ) -> None:
+        from api.v1.schemas.variables import VariableBaseSchema
+
+        self.assertIn("allowed_methods", VariableBaseSchema.model_fields)
+
+    def test_variable_value_schema_has_allowed_methods(
+        self,
+    ) -> None:
+        from api.v1.schemas.variables import VariableValueSchema
+
+        self.assertIn("allowed_methods", VariableValueSchema.model_fields)

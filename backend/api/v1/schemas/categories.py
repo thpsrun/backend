@@ -2,7 +2,12 @@ from typing import Any
 
 from pydantic import ConfigDict, Field, field_validator
 
-from api.v1.schemas.base import BaseEmbedSchema, CategoryTypeType, SlugMixin
+from api.v1.schemas.base import (
+    BaseEmbedSchema,
+    CategoryTypeType,
+    SlugMixin,
+    TimingMethodType,
+)
 from api.v1.schemas.variables import VariableWithValuesSchema
 
 
@@ -18,6 +23,10 @@ class CategoryBaseSchema(SlugMixin, BaseEmbedSchema):
         rules (str | None): Category-specific rules text.
         appear_on_main (bool): Whether to show on main page.
         archive (bool): Whether category is hidden from listings.
+        defaulttime (TimingMethodType | None): Category-level timing override. Null inherits from
+            game.
+        allowed_methods (list[TimingMethodType] | None): Narrows allowed methods for this category.
+            Must be a non-empty subset of the game's allowed methods. Null inherits.
     """
 
     id: str = Field(..., max_length=10)
@@ -31,6 +40,17 @@ class CategoryBaseSchema(SlugMixin, BaseEmbedSchema):
     )
     players: int = Field(default=1, ge=1, description="Number of players accepted")
     archive: bool = Field(default=False, description="Hidden from listings")
+    defaulttime: TimingMethodType | None = Field(
+        default=None,
+        description="Category-level timing override. Null inherits from game.",
+    )
+    allowed_methods: list[TimingMethodType] | None = Field(
+        default=None,
+        description=(
+            "When set, narrows allowed methods for this category. Must be a non-empty "
+            "subset of the game's allowed methods. Null inherits."
+        ),
+    )
 
 
 class CategorySchema(CategoryBaseSchema):
@@ -56,6 +76,8 @@ class CategorySchema(CategoryBaseSchema):
                 "rules": "Rulez.",
                 "players": 1,
                 "archive": False,
+                "defaulttime": None,
+                "allowed_methods": None,
             },
         },
     )
@@ -125,6 +147,14 @@ class CategoryCreateSchema(SlugMixin, BaseEmbedSchema):
         default=0, exclude=True, description="Sort order; managed via admin panel"
     )
     archive: bool = Field(default=False, description="Hidden from listings")
+    defaulttime: TimingMethodType | None = Field(
+        default=None,
+        description="Category-level timing override; null inherits from game.",
+    )
+    allowed_methods: list[TimingMethodType] | None = Field(
+        default=None,
+        description="Allowed timing methods; null inherits, set to a subset of game's.",
+    )
 
 
 class CategoryUpdateSchema(BaseEmbedSchema):
@@ -155,6 +185,8 @@ class CategoryUpdateSchema(BaseEmbedSchema):
         default=None, description="Sort order; managed via admin panel"
     )
     archive: bool | None = Field(default=None, description="Hidden from listings")
+    defaulttime: TimingMethodType | None = None
+    allowed_methods: list[TimingMethodType] | None = None
 
 
 class GameCategoryResponseSchema(CategoryBaseSchema):

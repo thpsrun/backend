@@ -1,6 +1,7 @@
 from typing import Any
 
 from srl.models import RunPlayers, Runs, RunVariableValues
+from srl.srcom.utils import src_method_to_internal
 
 V2_ELIGIBLE_FIELDS: frozenset[str] = frozenset(
     {
@@ -84,13 +85,13 @@ def build_settings_payload(
     run: Runs,
     snapshot: dict[str, Any],
 ) -> dict[str, Any]:
-    method = snapshot.get("primary_method") or "realtime"
+    method = src_method_to_internal(snapshot.get("primary_method")) or "rta"
 
     rta_secs = snapshot.get("time_secs")
     lrt_secs = snapshot.get("timenl_secs")
     igt_secs = snapshot.get("timeigt_secs")
 
-    if method == "realtime_noloads":
+    if method == "lrt":
         time_field = _to_runtime_tuple(lrt_secs)
         time_with_loads_field = _to_runtime_tuple(rta_secs)
     else:

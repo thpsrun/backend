@@ -17,8 +17,8 @@ def _make_game(
         twitch=game_id,
         release="2000-01-01",
         boxart=f"https://example.com/{game_id}.png",
-        defaulttime="realtime",
-        idefaulttime="realtime",
+        defaulttime="rta",
+        idefaulttime="rta",
         pointsmax=1000,
         ipointsmax=100,
     )

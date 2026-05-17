@@ -21,6 +21,8 @@ class GameBaseSchema(SlugMixin, BaseEmbedSchema):
         idefaulttime (str): Default timing method for individual level runs.
         pointsmax (int): Maximum points for world record full-game runs.
         ipointsmax (int): Maximum points for world record IL runs.
+        allowed_methods_fg (list[TimingMethodType]): Timing methods allowed for full-game runs.
+        allowed_methods_il (list[TimingMethodType]): Timing methods allowed for IL runs.
         rules (str | None): Game-level rules text.
     """
 
@@ -49,6 +51,14 @@ class GameBaseSchema(SlugMixin, BaseEmbedSchema):
     ipointsmax: int = Field(
         settings.POINTS_MAX_IL, ge=1, description="WR points for IL runs"
     )
+    allowed_methods_fg: list[TimingMethodType] = Field(
+        default_factory=list,
+        description="Timing methods allowed for full-game runs",
+    )
+    allowed_methods_il: list[TimingMethodType] = Field(
+        default_factory=list,
+        description="Timing methods allowed for individual-level runs",
+    )
 
 
 class GameSchema(GameBaseSchema):
@@ -70,10 +80,12 @@ class GameSchema(GameBaseSchema):
                 "rules": "Timing starts on first input and ends on final input.",
                 "release": "2002-10-23",
                 "boxart": "https://example.com/boxart.jpg",
-                "defaulttime": "realtime",
-                "idefaulttime": "realtime",
+                "defaulttime": "rta",
+                "idefaulttime": "rta",
                 "pointsmax": 1000,
                 "ipointsmax": 100,
+                "allowed_methods_fg": ["rta", "igt"],
+                "allowed_methods_il": ["rta"],
             },
         },
     )
@@ -143,13 +155,21 @@ class GameCreateSchema(SlugMixin, BaseEmbedSchema):
     )
     release: date
     boxart: str
-    defaulttime: TimingMethodType = Field(default="realtime")
-    idefaulttime: TimingMethodType = Field(default="realtime")
+    defaulttime: TimingMethodType = Field(default="rta")
+    idefaulttime: TimingMethodType = Field(default="rta")
     pointsmax: int = Field(
         settings.POINTS_MAX_FG, ge=1, description="WR points for full-game runs"
     )
     ipointsmax: int = Field(
         settings.POINTS_MAX_IL, ge=1, description="WR points for IL runs"
+    )
+    allowed_methods_fg: list[TimingMethodType] | None = Field(
+        default=None,
+        description="Allowed FG timing methods. If null, defaults to all three.",
+    )
+    allowed_methods_il: list[TimingMethodType] | None = Field(
+        default=None,
+        description="Allowed IL timing methods. If null, defaults to all three.",
     )
 
 
@@ -183,6 +203,8 @@ class GameUpdateSchema(BaseEmbedSchema):
     idefaulttime: TimingMethodType | None = None
     pointsmax: int | None = Field(default=None, ge=1)
     ipointsmax: int | None = Field(default=None, ge=1)
+    allowed_methods_fg: list[TimingMethodType] | None = None
+    allowed_methods_il: list[TimingMethodType] | None = None
 
 
 GameSchema.model_rebuild()

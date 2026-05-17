@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from unittest.mock import patch
+
 from api.models import APIKey, APIKeyRevokedReason
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from srl.models.games import Games
+from srl.models import Categories, Games
+from srl.models.base import LeaderboardChoices
 from srl.models.players import Players
 
 
@@ -17,8 +20,8 @@ def _make_game(
         twitch=game_id,
         release="2000-01-01",
         boxart=f"https://example.com/{game_id}.png",
-        defaulttime="realtime",
-        idefaulttime="realtime",
+        defaulttime="rta",
+        idefaulttime="rta",
         pointsmax=1000,
         ipointsmax=100,
     )
@@ -282,3 +285,82 @@ class ApiSignalTests(TestCase):
             list(key.scope_games.values_list("pk", flat=True)),
             [g2.pk],
         )
+
+
+class RebackfillSignalTest(TestCase):
+
+    @classmethod
+    def setUpTestData(
+        cls,
+    ) -> None:
+        cls.game = Games.objects.create(
+            id="sigame1",
+            name="Sig Game",
+            slug="sig-game",
+            twitch="Sig Game",
+            release="2000-01-01",
+            boxart="https://example.com/boxart",
+            defaulttime=LeaderboardChoices.REALTIME,
+            idefaulttime=LeaderboardChoices.REALTIME,
+            pointsmax=1000,
+            ipointsmax=250,
+            allowed_methods_fg=[
+                LeaderboardChoices.REALTIME,
+                LeaderboardChoices.INGAME,
+            ],
+            allowed_methods_il=[LeaderboardChoices.REALTIME],
+        )
+
+    @patch("api.signals.rebackfill_game_runs.delay")
+    def test_game_timing_save_fires_rebackfill(
+        self,
+        mock_delay,
+    ) -> None:
+        self.game.defaulttime = LeaderboardChoices.INGAME
+        self.game.save()
+        mock_delay.assert_called_once_with(self.game.slug)
+
+    @patch("api.signals.rebackfill_game_runs.delay")
+    def test_non_timing_game_save_does_not_fire(
+        self,
+        mock_delay,
+    ) -> None:
+        self.game.name = "Renamed"
+        self.game.save()
+        mock_delay.assert_not_called()
+
+    @patch("api.signals.rebackfill_game_runs.delay")
+    def test_category_timing_save_fires_rebackfill(
+        self,
+        mock_delay,
+    ) -> None:
+        cat = Categories.objects.create(
+            id="sigcat1",
+            name="Any%",
+            slug="any",
+            type="per-game",
+            url="https://example.com/any",
+            game=self.game,
+        )
+        mock_delay.reset_mock()  # ignore create-time firing
+        cat.defaulttime = LeaderboardChoices.INGAME
+        cat.save()
+        mock_delay.assert_called_once_with(self.game.slug)
+
+    @patch("api.signals.rebackfill_game_runs.delay")
+    def test_non_timing_category_save_does_not_fire(
+        self,
+        mock_delay,
+    ) -> None:
+        cat = Categories.objects.create(
+            id="sigcat2",
+            name="Any%",
+            slug="any2",
+            type="per-game",
+            url="https://example.com/any",
+            game=self.game,
+        )
+        mock_delay.reset_mock()
+        cat.name = "Renamed"
+        cat.save()
+        mock_delay.assert_not_called()

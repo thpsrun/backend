@@ -1,5 +1,6 @@
 from typing import Annotated
 
+from django.core.exceptions import ValidationError
 from django.http import HttpRequest
 from django.utils.text import slugify
 from ninja import Query, Router, Status
@@ -293,6 +294,7 @@ def get_all_values(
         400: ErrorResponse,
         401: ErrorResponse,
         403: ErrorResponse,
+        422: ErrorResponse,
         500: ErrorResponse,
     },
     summary="Create Variable Value",
@@ -340,14 +342,27 @@ def create_value(
 
         value_slug = value_data.slug if value_data.slug else slugify(value_data.name)
 
-        new_value = VariableValues.objects.create(
+        new_value = VariableValues(
             value=value_id,
             var=variable,
             name=value_data.name,
             slug=value_slug,
             archive=value_data.archive,
             rules=value_data.rules,
+            defaulttime=value_data.defaulttime,
+            allowed_methods=value_data.allowed_methods,
         )
+        try:
+            new_value.full_clean()
+        except ValidationError as e:
+            return Status(
+                422,
+                ErrorResponse(
+                    error="Validation failed",
+                    details={"errors": e.message_dict},
+                ),
+            )
+        new_value.save()
 
         return Status(201, VariableValueSchema.model_validate(new_value))
 
@@ -452,6 +467,7 @@ def get_value(
         401: ErrorResponse,
         403: ErrorResponse,
         404: ErrorResponse,
+        422: ErrorResponse,
         500: ErrorResponse,
     },
     summary="Update Variable Value",
@@ -506,6 +522,16 @@ def update_value(
         for field, val in update_data.items():
             setattr(value, field, val)
 
+        try:
+            value.full_clean()
+        except ValidationError as e:
+            return Status(
+                422,
+                ErrorResponse(
+                    error="Validation failed",
+                    details={"errors": e.message_dict},
+                ),
+            )
         value.save()
 
         return Status(200, VariableValueSchema.model_validate(value))
@@ -686,6 +712,7 @@ def get_variable(
         400: ErrorResponse,
         401: ErrorResponse,
         403: ErrorResponse,
+        422: ErrorResponse,
         500: ErrorResponse,
     },
     summary="Create Variable",
@@ -772,12 +799,22 @@ def create_variable(
             )
 
         create_data = variable_data.model_dump(
-            exclude={"game_id", "category_id", "level_id"}
+            exclude={"game_id", "category_id", "level_id"},
+            exclude_unset=True,
         )
         create_data["id"] = variable_id
-        variable = Variables.objects.create(
-            game=game, cat=category, level=level, **create_data
-        )
+        variable = Variables(game=game, cat=category, level=level, **create_data)
+        try:
+            variable.full_clean()
+        except ValidationError as e:
+            return Status(
+                422,
+                ErrorResponse(
+                    error="Validation failed",
+                    details={"errors": e.message_dict},
+                ),
+            )
+        variable.save()
 
         return Status(201, VariableSchema.model_validate(variable))
 
@@ -799,6 +836,7 @@ def create_variable(
         401: ErrorResponse,
         403: ErrorResponse,
         404: ErrorResponse,
+        422: ErrorResponse,
         500: ErrorResponse,
     },
     summary="Update Variable",
@@ -895,13 +933,13 @@ def update_variable(
             setattr(variable, field, value)
 
         try:
-            variable.clean()
-        except Exception as validation_error:
+            variable.full_clean()
+        except ValidationError as e:
             return Status(
-                400,
+                422,
                 ErrorResponse(
                     error="Validation failed",
-                    details={"validation_error": str(validation_error)},
+                    details={"errors": e.message_dict},
                 ),
             )
 

@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM python:3.14.4-alpine AS builder
+FROM python:3.14.5-alpine AS builder
 
 RUN apk add --no-cache build-base libpq-dev
 
@@ -8,7 +8,7 @@ COPY requirements.txt /tmp/requirements.txt
 RUN python -m venv /venv \
     && /venv/bin/pip install --no-cache-dir -r /tmp/requirements.txt
 
-FROM python:3.14.4-alpine
+FROM python:3.14.5-alpine
 
 ARG UID=1002
 ARG GID=1002

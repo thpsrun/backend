@@ -55,15 +55,15 @@ def run_from_path(
 def game_from_path(
     request: HttpRequest,
 ) -> Games:
-    # Order: explicit game_id > game_slug > id fallback. The id fallback only
-    # makes sense on routers whose {id} is a Games PK (i.e. games.py).
+    # Order: explicit game_id > game_slug > id fallback.
     kwargs = _path_kwargs(request)
     if "game_id" in kwargs:
         return get_object_or_404(Games, pk=kwargs["game_id"])
     if "game_slug" in kwargs:
         return get_object_or_404(Games, slug=kwargs["game_slug"])
     if "id" in kwargs:
-        return get_object_or_404(Games, pk=kwargs["id"])
+        ref = kwargs["id"]
+        return get_object_or_404(Games, Q(pk=ref) | Q(slug=ref))
     return None  # type: ignore
 
 

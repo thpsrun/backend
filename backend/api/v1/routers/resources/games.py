@@ -1,5 +1,6 @@
 from typing import Annotated
 
+from django.core.exceptions import ValidationError
 from django.db.models import Case, F, IntegerField, Prefetch, Q, Value, When
 from django.http import HttpRequest
 from ninja import Query, Router, Status
@@ -130,6 +131,8 @@ def _build_cat_embed(
                 "order": val.order,
                 "archive": val.archive,
                 "rules": val.rules,
+                "defaulttime": val.defaulttime,
+                "allowed_methods": val.allowed_methods,
             }
             for val in var.variablevalues_set.all()  # type: ignore
         ]
@@ -356,6 +359,7 @@ def get_game(
         400: ErrorResponse,
         401: ErrorResponse,
         403: ErrorResponse,
+        422: ErrorResponse,
         500: ErrorResponse,
     },
     summary="Create Game",
@@ -409,9 +413,20 @@ def create_game(
                 ),
             )
 
-        create_data = game_data.model_dump()
+        create_data = game_data.model_dump(exclude_unset=True)
         create_data["id"] = game_id
-        game = Games.objects.create(**create_data)
+        game = Games(**create_data)
+        try:
+            game.full_clean()
+        except ValidationError as e:
+            return Status(
+                422,
+                ErrorResponse(
+                    error="Validation failed",
+                    details={"errors": e.message_dict},
+                ),
+            )
+        game.save()
 
         return Status(201, GameSchema.model_validate(game))
     except Exception as e:
@@ -431,6 +446,7 @@ def create_game(
         401: ErrorResponse,
         403: ErrorResponse,
         404: ErrorResponse,
+        422: ErrorResponse,
         500: ErrorResponse,
     },
     summary="Update Game",
@@ -469,6 +485,16 @@ def update_game(
         for attr, value in game_data.model_dump(exclude_unset=True).items():
             setattr(game, attr, value)
 
+        try:
+            game.full_clean()
+        except ValidationError as e:
+            return Status(
+                422,
+                ErrorResponse(
+                    error="Validation failed",
+                    details={"errors": e.message_dict},
+                ),
+            )
         game.save()
         return Status(200, GameSchema.model_validate(game))
     except Exception as e:

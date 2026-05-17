@@ -8,6 +8,7 @@ from guides.models import Guides
 from nav.models import NavItem, SocialLink
 from srl.models import (
     Categories,
+    Games,
     Levels,
     Players,
     RunHistory,
@@ -23,16 +24,38 @@ _HISTORY_CURRENT_YEAR_TTL = 60 * 60 * 24
 
 def _cached_timestamp(
     ts_key: str,
-    queryset: QuerySet,
+    queryset: QuerySet | list[QuerySet],
     cache_name: str = "default",
 ) -> str:
     cache = caches[cache_name]
     timestamp = cache.get(ts_key)
     if timestamp is None:
-        latest = queryset.aggregate(latest=Max("updated_at"))["latest"]
+        querysets = queryset if isinstance(queryset, list) else [queryset]
+        latest_values = [
+            qs.aggregate(latest=Max("updated_at"))["latest"] for qs in querysets
+        ]
+        latest_values = [v for v in latest_values if v is not None]
+        latest = max(latest_values) if latest_values else None
         timestamp = latest.isoformat() if latest else "None"
         cache.set(ts_key, timestamp, timeout=_TS_TTL)
     return timestamp
+
+
+def _timing_config_querysets(
+    game_id: str,
+    category_id: str | None = None,
+) -> list[QuerySet]:
+    """Timing-config tables whose updated_at should bust leaderboard caches."""
+    if category_id is not None:
+        categories = Categories.objects.filter(id=category_id)
+    else:
+        categories = Categories.objects.filter(game_id=game_id)
+    return [
+        Games.objects.filter(id=game_id),
+        categories,
+        Variables.objects.filter(game_id=game_id),
+        VariableValues.objects.filter(var__game_id=game_id),
+    ]
 
 
 def leaderboard_cache_key(
@@ -52,7 +75,10 @@ def leaderboard_cache_key(
 
     timestamp = _cached_timestamp(
         f"ts:lb:{game_id}:{category_id}:{level_id}",
-        Runs.objects.filter(**filters),
+        [
+            Runs.objects.filter(**filters),
+            *_timing_config_querysets(game_id, category_id=category_id),
+        ],
     )
 
     cache_key = [
@@ -83,11 +109,14 @@ def game_leaderboard_cache_key(
 ) -> str:
     timestamp = _cached_timestamp(
         f"ts:lb:game:{game_id}",
-        Runs.objects.filter(
-            game_id=game_id,
-            obsolete=False,
-            vid_status="verified",
-        ),
+        [
+            Runs.objects.filter(
+                game_id=game_id,
+                obsolete=False,
+                vid_status="verified",
+            ),
+            *_timing_config_querysets(game_id),
+        ],
     )
 
     return f"leaderboard:game:{game_id}:{timestamp}"
@@ -270,12 +299,15 @@ def lbs_runs_cache_key(
 ) -> str:
     timestamp = _cached_timestamp(
         f"ts:lbs:runs:{game_id}:{category_id}",
-        Runs.objects.filter(
-            game_id=game_id,
-            category_id=category_id,
-            obsolete=False,
-            vid_status="verified",
-        ),
+        [
+            Runs.objects.filter(
+                game_id=game_id,
+                category_id=category_id,
+                obsolete=False,
+                vid_status="verified",
+            ),
+            *_timing_config_querysets(game_id, category_id=category_id),
+        ],
     )
 
     values_str = ",".join(sorted(value_slugs)) if value_slugs else "all"
@@ -290,11 +322,14 @@ def lbs_game_stats_cache_key(
 ) -> str:
     timestamp = _cached_timestamp(
         f"ts:lbs:stats:{game_id}",
-        Runs.objects.filter(
-            game_id=game_id,
-            obsolete=False,
-            vid_status="verified",
-        ),
+        [
+            Runs.objects.filter(
+                game_id=game_id,
+                obsolete=False,
+                vid_status="verified",
+            ),
+            *_timing_config_querysets(game_id),
+        ],
     )
 
     return f"lbs:stats:{game_id}:{timestamp}"
@@ -305,11 +340,14 @@ def lbs_game_recent_cache_key(
 ) -> str:
     timestamp = _cached_timestamp(
         f"ts:lbs:recent:{game_id}",
-        Runs.objects.filter(
-            game_id=game_id,
-            obsolete=False,
-            vid_status="verified",
-        ),
+        [
+            Runs.objects.filter(
+                game_id=game_id,
+                obsolete=False,
+                vid_status="verified",
+            ),
+            *_timing_config_querysets(game_id),
+        ],
     )
 
     return f"lbs:recent:{game_id}:{timestamp}"
@@ -321,12 +359,15 @@ def lbs_il_summary_cache_key(
 ) -> str:
     timestamp = _cached_timestamp(
         f"ts:lbs:il_summary:{game_id}",
-        Runs.objects.filter(
-            game_id=game_id,
-            runtype="il",
-            obsolete=False,
-            vid_status="verified",
-        ),
+        [
+            Runs.objects.filter(
+                game_id=game_id,
+                runtype="il",
+                obsolete=False,
+                vid_status="verified",
+            ),
+            *_timing_config_querysets(game_id),
+        ],
     )
 
     values_str = ",".join(sorted(value_slugs)) if value_slugs else ""
@@ -342,13 +383,16 @@ def lbs_il_runs_cache_key(
 ) -> str:
     timestamp = _cached_timestamp(
         f"ts:lbs:il:{game_id}:{level_id}:{category_id}",
-        Runs.objects.filter(
-            game_id=game_id,
-            level_id=level_id,
-            category_id=category_id,
-            obsolete=False,
-            vid_status="verified",
-        ),
+        [
+            Runs.objects.filter(
+                game_id=game_id,
+                level_id=level_id,
+                category_id=category_id,
+                obsolete=False,
+                vid_status="verified",
+            ),
+            *_timing_config_querysets(game_id, category_id=category_id),
+        ],
     )
 
     values_str = ",".join(sorted(value_slugs)) if value_slugs else "all"

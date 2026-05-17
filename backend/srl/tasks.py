@@ -1,10 +1,11 @@
 from collections import defaultdict
 from datetime import datetime, timedelta
 from datetime import timezone as dt_timezone
+from io import StringIO
 
 import requests as http_requests
 import sentry_sdk
-from celery import shared_task
+from celery import chain, shared_task
 from django.conf import settings as cfg
 from django.core.management import call_command
 from django.db import transaction
@@ -108,10 +109,6 @@ def recalculate_leaderboard_task(
                 leaderboard_dict,
                 dry_run=False,
                 game_is_ce=game_is_ce,
-                game_time_columns=game_time_columns,
-                value_timings=value_timings,
-                variable_timings=variable_timings,
-                category_timings=category_timings,
             )
 
 
@@ -312,7 +309,7 @@ def _handle_retryable_failure(
         sync_task.status = sync_task.Status.FAILED
         sync_task.save(update_fields=["status", "updated_at"])
         sentry_sdk.capture_message(
-            f"SRC sync task {sync_task.id} failed after "
+            f"SRC sync task {sync_task.id} failed after "  # type: ignore
             f"{sync_task.attempts} attempts: {error_msg}",
             level="error",
         )
@@ -324,7 +321,7 @@ def _handle_retryable_failure(
     )
     delay = RETRY_BACKOFF[backoff_idx]
     sync_src_action.apply_async(
-        args=[sync_task.id],
+        args=[sync_task.id],  # type: ignore
         countdown=delay,
     )
 
@@ -404,7 +401,7 @@ def sync_src_settings(
         sentry_sdk.capture_message(
             (
                 f"SRC v2 PutRunSettings forbidden on sync task "
-                f"{sync_task.id} (run {sync_task.run_id}); bot may have "
+                f"{sync_task.id} (run {sync_task.run_id}); bot may have "  # type: ignore
                 f"lost moderator status on the game."
             ),
             level="error",
@@ -427,7 +424,7 @@ def sync_src_settings(
         refresh_bot_session.delay()
         if sync_task.attempts < sync_task.max_attempts:
             sync_src_settings.apply_async(
-                args=[sync_task_id],
+                args=[sync_task_id],  # type: ignore
                 countdown=30,
             )
         else:
@@ -451,7 +448,7 @@ def sync_src_settings(
         trip_circuit_breaker(
             reason=(
                 f"PutRunSettings response did not match v2 contract on "
-                f"sync task {sync_task.id}: {exc}"
+                f"sync task {sync_task.id}: {exc}"  # type: ignore
             ),
             category=ErrorCategory.API_CONTRACT,
         )
@@ -498,7 +495,7 @@ def sync_src_settings(
                 ],
             )
             sync_src_settings.apply_async(
-                args=[sync_task_id],
+                args=[sync_task_id],  # type: ignore
                 countdown=countdown,
             )
         else:
@@ -565,7 +562,7 @@ def replay_failed_edits() -> int:
                 "updated_at",
             ],
         )
-        sync_src_settings.delay(task.id)
+        sync_src_settings.delay(task.id)  # type: ignore
         count += 1
     return count
 
@@ -896,6 +893,69 @@ def dispatch_phase_3(
                     recalculate_leaderboard_task.si(leaderboard_dict),
                     recalculate_streaks_task.si(leaderboard_dict),
                 )
+
+
+@shared_task
+def rebackfill_game_runs(
+    game_slug: str,
+) -> dict:
+    """Copy timing data into each run's resolved primary slot, then recompute points.
+
+    Runs `backfill_run_primary_data` so every run has a value in the column the leaderboard now
+    ranks by, then dispatches a full board recalc so `Run.points`/`Run.bonus` reflect the new
+    ranking.
+    """
+    buf = StringIO()
+    call_command(
+        "backfill_run_primary_data",
+        game=game_slug,
+        stdout=buf,
+    )
+    recalculate_game_boards.delay(game_slug)
+    return {
+        "game_slug": game_slug,
+        "output": buf.getvalue(),
+    }
+
+
+@shared_task
+def recalculate_game_boards(
+    game_slug: str,
+) -> dict:
+    """Rebuild every leaderboard variant for a game, then re-apply WR streaks.
+
+    Dispatches `recalculate_leaderboard_task` -> `recalculate_streaks_task` as a
+    Celery chain per unique variant so each variant's RunHistory, points, and
+    streak bonus all get rebuilt without having to call build_run_history /
+    build_streaks separately.
+    """
+    game = Games.objects.filter(slug=game_slug).first()
+    if game is None:
+        return {"game_slug": game_slug, "boards": 0}
+
+    seen: set[tuple] = set()
+    runs = Runs.objects.filter(
+        game=game,
+        obsolete=False,
+        vid_status="verified",
+    ).select_related("category", "level")
+    for run in runs:
+        leaderboard = resolve_leaderboard(run)
+        key = (
+            leaderboard["category_id"],
+            leaderboard["level_id"],
+            leaderboard["runtype"],
+            tuple(sorted((leaderboard.get("variable_value_map") or {}).items())),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        chain(
+            recalculate_leaderboard_task.si(leaderboard),
+            recalculate_streaks_task.si(leaderboard),
+        ).delay()
+
+    return {"game_slug": game_slug, "boards": len(seen)}
 
 
 @shared_task(name="srl.sweep_stuck_reconciliation_jobs")

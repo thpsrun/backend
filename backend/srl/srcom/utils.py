@@ -20,11 +20,25 @@ from srl.utils import (
     time_conversion,
 )
 
-TIME_COLUMNS: dict[str, str] = {
+METHOD_TO_TIME_FIELD: dict[str, str] = {
     "realtime": "time_secs",
     "realtime_noloads": "timenl_secs",
     "ingame": "timeigt_secs",
 }
+
+SRC_METHOD_MAP: dict[str, str] = {
+    "realtime": "rta",
+    "realtime_noloads": "lrt",
+    "ingame": "igt",
+}
+
+
+def src_method_to_internal(
+    src_value: str | None,
+) -> str | None:
+    if src_value is None:
+        return None
+    return SRC_METHOD_MAP.get(src_value, src_value)
 
 
 def variables_hash(
@@ -202,7 +216,7 @@ def update_standings(
         level_id (str | None): Unique SRC ID of the level for IL leaderboards.
     """
     with check_reconciliation(recon_job_id):
-        time_col = TIME_COLUMNS[default_time_type]
+        time_col = METHOD_TO_TIME_FIELD[default_time_type]
 
         base_qs = Runs.objects.only(
             "place",
@@ -296,7 +310,7 @@ def update_obsolete(
         level_id (str | None): Unique SRC ID of the level for IL leaderboards.
     """
     with check_reconciliation(recon_job_id):
-        time_col = TIME_COLUMNS[default_time_type]
+        time_col = METHOD_TO_TIME_FIELD[default_time_type]
 
         base_qs = Runs.objects.filter(
             runtype=run_type,

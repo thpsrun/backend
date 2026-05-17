@@ -4,9 +4,31 @@ from django.db.models.fields.files import ImageFieldFile
 
 
 class LeaderboardChoices(models.TextChoices):
-    REALTIME = "realtime", "RTA"
-    REALTIME_NOLOADS = "realtime_noloads", "LRT"
-    INGAME = "ingame", "IGT"
+    REALTIME = "rta", "RTA"
+    REALTIME_NOLOADS = "lrt", "LRT"
+    INGAME = "igt", "IGT"
+
+
+def all_methods_default() -> list[str]:
+    return [
+        LeaderboardChoices.REALTIME,
+        LeaderboardChoices.REALTIME_NOLOADS,
+        LeaderboardChoices.INGAME,
+    ]
+
+
+METHOD_TO_TIME_FIELD: dict[str, str] = {
+    LeaderboardChoices.REALTIME.value: "time_secs",
+    LeaderboardChoices.REALTIME_NOLOADS.value: "timenl_secs",
+    LeaderboardChoices.INGAME.value: "timeigt_secs",
+}
+
+
+TIMING_FALLBACK_PRIORITY: list[str] = [
+    LeaderboardChoices.REALTIME.value,
+    LeaderboardChoices.INGAME.value,
+    LeaderboardChoices.REALTIME_NOLOADS.value,
+]
 
 
 def validate_award_image(

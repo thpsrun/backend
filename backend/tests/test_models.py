@@ -55,8 +55,8 @@ class ModelTest(TestCase):
             twitch="Tony Hank's Pro Skateboarding 2",
             release="1999-12-31",
             boxart="https://speedrun.com/",
-            defaulttime="realtime_noloads",
-            idefaulttime="ingame",
+            defaulttime="lrt",
+            idefaulttime="igt",
             pointsmax=9999,
             ipointsmax=1000,
         )

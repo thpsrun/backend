@@ -44,8 +44,8 @@ class SrlRulesTest(TestCase):
             twitch="Test Game",
             release="2000-01-01",
             boxart="https://example.com/cover",
-            defaulttime="realtime",
-            idefaulttime="realtime",
+            defaulttime="rta",
+            idefaulttime="rta",
             pointsmax=1000,
             ipointsmax=100,
         )
@@ -57,8 +57,8 @@ class SrlRulesTest(TestCase):
             twitch="Other Game",
             release="2001-01-01",
             boxart="https://example.com/other-cover",
-            defaulttime="realtime",
-            idefaulttime="realtime",
+            defaulttime="rta",
+            idefaulttime="rta",
             pointsmax=1000,
             ipointsmax=100,
         )

@@ -1,3 +1,4 @@
+from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.text import slugify
@@ -77,6 +78,21 @@ class Variables(models.Model):
             "Precedence: Variable > Category > Game."
         ),
     )
+    allowed_methods = ArrayField(
+        base_field=models.CharField(
+            max_length=20,
+            choices=LeaderboardChoices.choices,
+        ),
+        null=True,
+        blank=True,
+        default=None,
+        verbose_name="Allowed Timing Methods",
+        help_text=(
+            "When set, narrows the timing methods allowed for runs that include this "
+            "variable. Must be a non-empty subset of the parent (category/game). Null "
+            "inherits from a higher level."
+        ),
+    )
     level = models.ForeignKey(
         Levels,
         verbose_name="Associated Level",
@@ -113,6 +129,94 @@ class Variables(models.Model):
             raise ValidationError(
                 'If a "level" is set, then "scope" must be set to "single-level".'
             )
+
+        errors: dict = {}
+        parent_allowed = self._resolved_parent_allowed()
+        parent_primary = self._resolved_parent_primary()
+
+        if self.allowed_methods is not None:
+            if len(self.allowed_methods) == 0:
+                errors["allowed_methods"] = (
+                    "Cannot be an empty list; use null to inherit."
+                )
+            elif parent_allowed is not None and not set(self.allowed_methods) <= set(
+                parent_allowed
+            ):
+                errors["allowed_methods"] = (
+                    f"Must be a subset of the parent's allowed methods "
+                    f"({list(parent_allowed)})."
+                )
+            elif (
+                self.defaulttime is None
+                and parent_primary is not None
+                and parent_primary not in self.allowed_methods
+            ):
+                errors["defaulttime"] = (
+                    f"Inherited primary ({parent_primary}) is not in the narrowed "
+                    f"allowed_methods; set defaulttime explicitly."
+                )
+
+        if self.defaulttime is not None:
+            effective_allowed = self.allowed_methods or parent_allowed
+            if (
+                effective_allowed is not None
+                and self.defaulttime not in effective_allowed
+            ):
+                errors["defaulttime"] = (
+                    f"defaulttime ({self.defaulttime}) must be one of allowed_methods "
+                    f"({list(effective_allowed)})."
+                )
+
+        if self.pk and self.allowed_methods is not None:
+            allowed_set = set(self.allowed_methods)
+            bad_vals = self.variablevalues_set.filter(allowed_methods__isnull=False)  # type: ignore
+            offenders = [
+                vv.value
+                for vv in bad_vals
+                if not set(vv.allowed_methods).issubset(allowed_set)
+            ]
+            if offenders:
+                errors["allowed_methods"] = (
+                    f"Cannot narrow: variable values rely on removed methods. "
+                    f"Offending value ids: {offenders}"
+                )
+
+        if errors:
+            raise ValidationError(errors)
+
+    def _resolved_parent_allowed(
+        self,
+    ) -> list[str] | None:
+        if self.cat is not None and self.cat.allowed_methods is not None:
+            return list(self.cat.allowed_methods)
+        if self.game is None:
+            return None
+        if self.cat is not None:
+            return list(
+                self.game.allowed_methods_il
+                if self.cat.type == "per-level"
+                else self.game.allowed_methods_fg
+            )
+        is_il = self.scope in ("all-levels", "single-level")
+        return list(
+            self.game.allowed_methods_il if is_il else self.game.allowed_methods_fg
+        )
+
+    def _resolved_parent_primary(
+        self,
+    ) -> str | None:
+        if self.cat is not None and self.cat.defaulttime is not None:
+            return self.cat.defaulttime
+        if self.game is None:
+            return None
+        if self.cat is not None:
+            return (
+                self.game.idefaulttime
+                if self.cat.type == "per-level"
+                else self.game.defaulttime
+            )
+        is_il = self.scope in ("all-levels", "single-level")
+        return self.game.idefaulttime if is_il else self.game.defaulttime
 
     def __str__(self):
         return self.name

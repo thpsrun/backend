@@ -53,30 +53,80 @@ def _variable_timing_subquery() -> Subquery:
 def _primary_time_secs_expr() -> Expression:
     """Build a Case expression that selects the time_secs field per run.
 
-    Honors the full VariableValue > Variable > Category > Game precedence
-    chain. Requires the queryset to be annotated with `_val_timing` via
-    `_value_timing_subquery` and `_var_timing` via `_variable_timing_subquery`.
+    Look, this is kinda spaghetti but there is a lot to account for lmao.
     """
     return Case(
-        When(_val_timing="realtime_noloads", then=F("timenl_secs")),
-        When(_val_timing="ingame", then=F("timeigt_secs")),
-        When(_val_timing="realtime", then=F("time_secs")),
-        When(_var_timing="realtime_noloads", then=F("timenl_secs")),
-        When(_var_timing="ingame", then=F("timeigt_secs")),
-        When(_var_timing="realtime", then=F("time_secs")),
-        When(category__defaulttime="realtime_noloads", then=F("timenl_secs")),
-        When(category__defaulttime="ingame", then=F("timeigt_secs")),
-        When(category__defaulttime="realtime", then=F("time_secs")),
+        When(_val_timing="lrt", then=F("timenl_secs")),
+        When(_val_timing="igt", then=F("timeigt_secs")),
+        When(_val_timing="rta", then=F("time_secs")),
+        When(_var_timing="lrt", then=F("timenl_secs")),
+        When(_var_timing="igt", then=F("timeigt_secs")),
+        When(_var_timing="rta", then=F("time_secs")),
+        When(category__defaulttime="lrt", then=F("timenl_secs")),
+        When(category__defaulttime="igt", then=F("timeigt_secs")),
+        When(category__defaulttime="rta", then=F("time_secs")),
         When(
             runtype="il",
-            game__idefaulttime="realtime_noloads",
+            game__idefaulttime="lrt",
             then=F("timenl_secs"),
         ),
-        When(runtype="il", game__idefaulttime="ingame", then=F("timeigt_secs")),
-        When(runtype="il", game__idefaulttime="realtime", then=F("time_secs")),
-        When(game__defaulttime="realtime_noloads", then=F("timenl_secs")),
-        When(game__defaulttime="ingame", then=F("timeigt_secs")),
+        When(runtype="il", game__idefaulttime="igt", then=F("timeigt_secs")),
+        When(runtype="il", game__idefaulttime="rta", then=F("time_secs")),
+        When(game__defaulttime="lrt", then=F("timenl_secs")),
+        When(game__defaulttime="igt", then=F("timeigt_secs")),
         default=F("time_secs"),
+    )
+
+
+def _value_allowed_subquery() -> Subquery:
+    return Subquery(
+        RunVariableValues.objects.filter(
+            run=OuterRef("pk"),
+            value__allowed_methods__isnull=False,
+        )
+        .order_by("variable_id")
+        .values("value__allowed_methods")[:1],
+    )
+
+
+def _variable_allowed_subquery() -> Subquery:
+    return Subquery(
+        RunVariableValues.objects.filter(
+            run=OuterRef("pk"),
+            variable__allowed_methods__isnull=False,
+        )
+        .order_by("variable_id")
+        .values("variable__allowed_methods")[:1],
+    )
+
+
+def _resolved_allowed_methods_expr() -> Expression:
+    return Case(
+        When(
+            _val_allowed__isnull=False,
+            then=F("_val_allowed"),
+        ),
+        When(
+            _var_allowed__isnull=False,
+            then=F("_var_allowed"),
+        ),
+        When(
+            category__allowed_methods__isnull=False,
+            then=F("category__allowed_methods"),
+        ),
+        When(
+            runtype="il",
+            then=F("game__allowed_methods_il"),
+        ),
+        default=F("game__allowed_methods_fg"),
+    )
+
+
+def annotate_resolved_allowed(qs: QuerySet) -> QuerySet:
+    return qs.annotate(
+        _val_allowed=_value_allowed_subquery(),
+        _var_allowed=_variable_allowed_subquery(),
+        resolved_allowed=_resolved_allowed_methods_expr(),
     )
 
 
@@ -84,11 +134,7 @@ def _export_players(
     run_players: "QuerySet[RunPlayers]",
     country_detail: bool = True,
 ) -> list[dict[str, Any]]:
-    """Export player list from a prefetched run_players queryset.
-
-    country_detail=True  -> country as ``{id, name}`` dict.
-    country_detail=False -> country as plain name string.
-    """
+    """Export player list from a prefetched run_players queryset."""
     players: list[dict[str, Any]] = []
     for rp in run_players:
         entry: dict[str, Any] = {
@@ -143,7 +189,16 @@ def _build_lbs_run_dict(
         "arch_video": run.arch_video,
         "url": run.url,
         "level": run.level.slug if run.level else None,
-        "times": {"p_time": run.p_time},
+        "times": {
+            "time": run.time,
+            "time_secs": run.time_secs,
+            "timenl": run.timenl,
+            "timenl_secs": run.timenl_secs,
+            "timeigt": run.timeigt,
+            "timeigt_secs": run.timeigt_secs,
+            "p_time": run.p_time,
+            "p_time_secs": run.p_time_secs,
+        },
         "players": _export_players(
             run.run_players.all(),  # type: ignore
         ),
@@ -341,7 +396,7 @@ def query_records() -> list[dict[str, Any]]:
         )
         if key in seen:
             continue
-        seen.add(key)
+        seen.add(key)  # type: ignore
 
         result.append(
             {
@@ -378,9 +433,7 @@ def query_stats() -> dict[str, Any]:
         Runs.objects.annotate(
             _val_timing=_value_timing_subquery(),
             _var_timing=_variable_timing_subquery(),
-        ).aggregate(
-            total=Sum(_primary_time_secs_expr()),
-        )["total"]
+        ).aggregate(total=Sum(_primary_time_secs_expr()),)["total"]
         or 0.0
     )
 
@@ -457,7 +510,7 @@ def query_overall_leaderboard() -> list[dict[str, Any]]:
         .order_by("-total_points")
     )
 
-    return _build_leaderboard_rows(rows)
+    return _build_leaderboard_rows(rows)  # type: ignore
 
 
 def query_game_leaderboard(
@@ -498,7 +551,7 @@ def query_game_leaderboard(
         .order_by("-total_points")
     )
 
-    return _build_leaderboard_rows(rows)
+    return _build_leaderboard_rows(rows)  # type: ignore
 
 
 def _build_player_payload(
@@ -760,9 +813,7 @@ def query_lbs_stats(
         base.annotate(
             _val_timing=_value_timing_subquery(),
             _var_timing=_variable_timing_subquery(),
-        ).aggregate(
-            total=Sum(_primary_time_secs_expr()),
-        )["total"]
+        ).aggregate(total=Sum(_primary_time_secs_expr()),)["total"]
         or 0.0
     )
 
@@ -797,7 +848,7 @@ def query_lbs_recent(
 
     result = []
     for run in runs:
-        value_slugs = [rvv.value.slug for rvv in run.runvariablevalues_set.all()]
+        value_slugs = [rvv.value.slug for rvv in run.runvariablevalues_set.all()]  # type: ignore
 
         result.append(
             {
@@ -993,7 +1044,7 @@ def query_wr_history(
             delta = round(history_time_secs - prev_time, 3)
 
         players = []
-        for rp in sorted(run.run_players.all(), key=lambda rp: rp.order):
+        for rp in sorted(run.run_players.all(), key=lambda rp: rp.order):  # type: ignore
             players.append(
                 {
                     "name": rp.player.name,

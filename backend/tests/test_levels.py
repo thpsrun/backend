@@ -24,8 +24,8 @@ class LevelsReadTest(TestCase):
             twitch="Test Game",
             release="2000-01-01",
             boxart="https://speedrun.com/game1/cover",
-            defaulttime="realtime",
-            idefaulttime="realtime",
+            defaulttime="rta",
+            idefaulttime="rta",
             pointsmax=1000,
             ipointsmax=100,
         )

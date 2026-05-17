@@ -1,5 +1,6 @@
 from typing import Annotated
 
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Q
 from django.http import HttpRequest
@@ -370,6 +371,7 @@ def get_run(
         400: ErrorResponse,
         401: ErrorResponse,
         403: ErrorResponse,
+        422: ErrorResponse,
         500: ErrorResponse,
     },
     summary="Create Run",
@@ -574,6 +576,11 @@ def create_run(
                 if rvv_objs:
                     RunVariableValues.objects.bulk_create(rvv_objs)
 
+            try:
+                run.validate_allowed_method_data()
+            except ValidationError:
+                raise
+
         refetched_run = (
             Runs.objects.filter(id=run.id)
             .select_related("category", "level", "platform")
@@ -601,6 +608,14 @@ def create_run(
 
         return Status(201, response)
 
+    except ValidationError as e:
+        return Status(
+            422,
+            ErrorResponse(
+                error="Run timing validation failed",
+                details={"exception": str(e)},
+            ),
+        )
     except Exception as e:
         return Status(
             500,
@@ -619,6 +634,7 @@ def create_run(
         401: ErrorResponse,
         403: ErrorResponse,
         404: ErrorResponse,
+        422: ErrorResponse,
         500: ErrorResponse,
     },
     summary="Update Run",
@@ -820,6 +836,11 @@ def update_run(
             for field, value in update_data.items():
                 setattr(run, field, value)
 
+            try:
+                run.validate_allowed_method_data()
+            except ValidationError:
+                raise
+
             run.save()
 
         refetched_run = (
@@ -875,6 +896,14 @@ def update_run(
 
         return Status(200, response)
 
+    except ValidationError as e:
+        return Status(
+            422,
+            ErrorResponse(
+                error="Run timing validation failed",
+                details={"exception": str(e)},
+            ),
+        )
     except Exception as e:
         return Status(
             500,

@@ -32,8 +32,8 @@ class APIKeyModelTest(TestCase):
             twitch="API Key Game",
             release="2000-01-01",
             boxart="https://example.com/cover",
-            defaulttime="realtime",
-            idefaulttime="realtime",
+            defaulttime="rta",
+            idefaulttime="rta",
             pointsmax=1000,
             ipointsmax=100,
         )

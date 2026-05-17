@@ -74,8 +74,8 @@ class CapabilityEvaluationTest(TestCase):
             twitch="THPS2",
             release="2000-01-01",
             boxart="https://example.com/c1",
-            defaulttime="realtime",
-            idefaulttime="realtime",
+            defaulttime="rta",
+            idefaulttime="rta",
             pointsmax=1000,
             ipointsmax=100,
         )
@@ -86,8 +86,8 @@ class CapabilityEvaluationTest(TestCase):
             twitch="THPS1",
             release="1999-01-01",
             boxart="https://example.com/c2",
-            defaulttime="realtime",
-            idefaulttime="realtime",
+            defaulttime="rta",
+            idefaulttime="rta",
             pointsmax=1000,
             ipointsmax=100,
         )

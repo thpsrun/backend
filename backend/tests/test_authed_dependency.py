@@ -35,8 +35,8 @@ class AuthedDependencyTest(TestCase):
             twitch="Authed Game",
             release="2000-01-01",
             boxart="https://example.com/c",
-            defaulttime="realtime",
-            idefaulttime="realtime",
+            defaulttime="rta",
+            idefaulttime="rta",
             pointsmax=1000,
             ipointsmax=100,
         )
@@ -47,8 +47,8 @@ class AuthedDependencyTest(TestCase):
             twitch="Other Authed Game",
             release="2001-01-01",
             boxart="https://example.com/c2",
-            defaulttime="realtime",
-            idefaulttime="realtime",
+            defaulttime="rta",
+            idefaulttime="rta",
             pointsmax=1000,
             ipointsmax=100,
         )

@@ -152,6 +152,3 @@ typescript
 npm/*
 pyproject.toml
 .pylintrc
-
-# Superpowers brainstorming session artifacts
-.superpowers/
