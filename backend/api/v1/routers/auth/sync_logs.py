@@ -175,10 +175,13 @@ def retry_sync_task(
             "updated_at",
         ],
     )
+    actor_user_id = (
+        request.user.pk if getattr(request.user, "is_authenticated", False) else None
+    )
     if sync_task.action == SRCSyncTask.ActionType.EDIT_RUN:
-        sync_src_settings.delay(sync_task.id)
+        sync_src_settings.delay(sync_task.id, actor_user_id=actor_user_id)
     else:
-        sync_src_action.delay(sync_task.id)
+        sync_src_action.delay(sync_task.id, actor_user_id=actor_user_id)
 
     return Status(
         200,

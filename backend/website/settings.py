@@ -72,6 +72,7 @@ INSTALLED_APPS = [
     "accounts",
     "srl",
     "api",
+    "auditlog",
     "guides",
     "nav",
 ]
@@ -89,6 +90,7 @@ MIDDLEWARE = [
     "allauth.account.middleware.AccountMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "auditlog.middleware.AuditActorMiddleware",
     "api.middleware.APIActivityLogMiddleware",
 ]
 
@@ -236,6 +238,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "srl.sweep_stuck_reconciliation_jobs",
         "schedule": crontab(minute="*/15"),
     },
+    # "prune-api-activity-log-daily": {
+    #    "task": "srl.tasks.prune_api_activity_log",
+    #    "schedule": crontab(hour=3, minute=15),
+    # },
 }
 
 # POINTS CONSTANTS
@@ -264,7 +270,10 @@ MFA_SUPPORTED_TYPES = ["totp", "webauthn", "recovery_codes"]
 MFA_PASSKEY_LOGIN_ENABLED = True
 MFA_PASSKEY_SIGNUP_ENABLED = False
 MFA_WEBAUTHN_ALLOW_INSECURE_ORIGIN = DEBUG  # WebAuthn refuses HTTP except on localhost
-SESSION_COOKIE_AGE = 60 * 60 * 24 * 30
+
+# Session life when `Remember Me` is not chosen (7 days) or, if set, 30 days.
+SESSION_COOKIE_AGE = 60 * 60 * 24 * 7
+REMEMBER_AGE = 60 * 60 * 24 * 30
 
 # SOCIAL AUTH (Discord + Twitch - apps registered externally, credentials in .env)
 SOCIALACCOUNT_PROVIDERS = {

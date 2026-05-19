@@ -103,7 +103,7 @@ def apply_category_embeds(
                         "archive": val.archive,
                         "rules": val.rules,
                         "defaulttime": val.defaulttime,
-                        "allowed_methods": val.allowed_methods,
+                        "required_methods": val.required_methods,
                     }
                     for val in values
                 ]

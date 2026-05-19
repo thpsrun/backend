@@ -332,7 +332,12 @@ def update_run_status(
     run.save(update_fields=["vid_status", "approver"])
 
     if body.status == "verified":
-        recalculate_run(run)
+        actor_user_id_for_recalc = (
+            request.user.pk
+            if getattr(request.user, "is_authenticated", False)
+            else None
+        )
+        recalculate_run(run, actor_user_id=actor_user_id_for_recalc)
 
     src_payload: dict = {"status": {"status": body.status}}
     if body.status == "rejected" and body.reason:
@@ -349,7 +354,10 @@ def update_run_status(
         payload=src_payload,
         moderator=player,
     )
-    sync_src_action.delay(sync_task.id)
+    actor_user_id = (
+        request.user.pk if getattr(request.user, "is_authenticated", False) else None
+    )
+    sync_src_action.delay(sync_task.id, actor_user_id=actor_user_id)
 
     action_word = "verified" if body.status == "verified" else "rejected"
     return Status(
@@ -483,7 +491,10 @@ def update_run_players(
         payload={"players": src_players},
         moderator=player,
     )
-    sync_src_action.delay(sync_task.id)
+    actor_user_id = (
+        request.user.pk if getattr(request.user, "is_authenticated", False) else None
+    )
+    sync_src_action.delay(sync_task.id, actor_user_id=actor_user_id)
 
     updated_players = _build_run_players(run)
     return Status(

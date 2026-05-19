@@ -2,7 +2,18 @@ from datetime import date as date_type
 from typing import Any
 
 from django.core.cache import caches
-from django.db.models import Case, Count, F, OuterRef, Q, QuerySet, Subquery, Sum, When
+from django.db.models import (
+    Case,
+    Count,
+    F,
+    OuterRef,
+    Q,
+    QuerySet,
+    Subquery,
+    Sum,
+    Value,
+    When,
+)
 from django.db.models.expressions import Expression
 from django.db.models.functions import TruncDate
 from srl.models import Games, Players, RunHistory, RunPlayers, Runs, RunVariableValues
@@ -74,59 +85,7 @@ def _primary_time_secs_expr() -> Expression:
         When(runtype="il", game__idefaulttime="rta", then=F("time_secs")),
         When(game__defaulttime="lrt", then=F("timenl_secs")),
         When(game__defaulttime="igt", then=F("timeigt_secs")),
-        default=F("time_secs"),
-    )
-
-
-def _value_allowed_subquery() -> Subquery:
-    return Subquery(
-        RunVariableValues.objects.filter(
-            run=OuterRef("pk"),
-            value__allowed_methods__isnull=False,
-        )
-        .order_by("variable_id")
-        .values("value__allowed_methods")[:1],
-    )
-
-
-def _variable_allowed_subquery() -> Subquery:
-    return Subquery(
-        RunVariableValues.objects.filter(
-            run=OuterRef("pk"),
-            variable__allowed_methods__isnull=False,
-        )
-        .order_by("variable_id")
-        .values("variable__allowed_methods")[:1],
-    )
-
-
-def _resolved_allowed_methods_expr() -> Expression:
-    return Case(
-        When(
-            _val_allowed__isnull=False,
-            then=F("_val_allowed"),
-        ),
-        When(
-            _var_allowed__isnull=False,
-            then=F("_var_allowed"),
-        ),
-        When(
-            category__allowed_methods__isnull=False,
-            then=F("category__allowed_methods"),
-        ),
-        When(
-            runtype="il",
-            then=F("game__allowed_methods_il"),
-        ),
-        default=F("game__allowed_methods_fg"),
-    )
-
-
-def annotate_resolved_allowed(qs: QuerySet) -> QuerySet:
-    return qs.annotate(
-        _val_allowed=_value_allowed_subquery(),
-        _var_allowed=_variable_allowed_subquery(),
-        resolved_allowed=_resolved_allowed_methods_expr(),
+        default=Value(None),
     )
 
 

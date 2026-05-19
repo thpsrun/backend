@@ -11,7 +11,7 @@ class Series(models.Model):
         verbose_name="Series ID",
     )
     name = models.CharField(
-        max_length=20,
+        max_length=80,
         verbose_name="Name",
     )
     url = models.URLField(

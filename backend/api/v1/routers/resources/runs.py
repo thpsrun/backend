@@ -604,7 +604,12 @@ def create_run(
         response.variables = get_run_variables(refetched_run)
 
         if refetched_run.vid_status == "verified":
-            recalculate_run(refetched_run)
+            actor_user_id = (
+                request.user.pk
+                if getattr(request.user, "is_authenticated", False)
+                else None
+            )
+            recalculate_run(refetched_run, actor_user_id=actor_user_id)
 
         return Status(201, response)
 
@@ -875,7 +880,12 @@ def update_run(
             or refetched_run.timeigt_secs != old_timeigt_secs
         )
         if became_verified or time_changed_while_verified:
-            recalculate_run(refetched_run)
+            recalc_actor_user_id = (
+                request.user.pk
+                if getattr(request.user, "is_authenticated", False)
+                else None
+            )
+            recalculate_run(refetched_run, actor_user_id=recalc_actor_user_id)
 
         if is_v2_enabled():
             post_edit_snapshot = snapshot_run(refetched_run)
@@ -892,7 +902,10 @@ def update_run(
                     moderator=moderator,
                     payload=payload,
                 )
-                sync_src_settings.delay(edit_task.id)
+                actor_user_id = (
+                    user.pk if user is not None and user.is_authenticated else None
+                )
+                sync_src_settings.delay(edit_task.id, actor_user_id=actor_user_id)
 
         return Status(200, response)
 

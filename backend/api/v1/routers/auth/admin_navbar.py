@@ -171,7 +171,9 @@ def delete_nav_item_endpoint(
     description=(
         "Superuser Only: assigns indexed `order` values to the items provided, in the order "
         "given. The `parent_id` selects the sibling group; pass null for root items. "
-        "`ordered_ids` must contain exactly the IDs of all siblings under that parent."
+        "`ordered_ids` MUST contain every sibling ID under that parent exactly once. "
+        "Partial submissions are rejected with 400. The frontend must always send the full "
+        "sibling set, even if only one item was moved or changed."
     ),
     auth=authed("navbar.admin"),
 )
@@ -273,7 +275,8 @@ def delete_social(
     summary="Reorder Social Links",
     description=(
         "Superuser Only: assigns indexed `order` values across all social links. `ordered_ids` "
-        "must contain exactly every social link ID."
+        "MUST contain every SocialLink ID exactly once. Partial submissions are rejected with "
+        "400. The frontend must always send the full set, even if only one link moved."
     ),
     auth=authed("navbar.admin"),
 )

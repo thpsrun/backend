@@ -1,7 +1,12 @@
+import hashlib
 import logging
 
+from allauth.account.reauthentication import did_recently_authenticate
 from allauth.mfa.models import Authenticator
+from allauth.socialaccount.adapter import get_adapter as get_socialaccount_adapter
 from allauth.socialaccount.models import SocialAccount
+from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.contrib.sessions.models import Session
 from django.core.exceptions import ValidationError
 from django.db import transaction
@@ -9,12 +14,11 @@ from django.http import HttpRequest
 from django.utils import timezone
 from ninja import Router, Status
 
-from accounts.adapters import SocialAccountAdapter
 from api.permissions import authed
+from api.rate_limiting import auth_rate_limit
 from api.v1.schemas.auth import (
     AuthenticatorListItem,
     AuthMethodsResponse,
-    DeletePasswordRequest,
     SocialAccountListItem,
     SocialAccountListResponse,
 )
@@ -23,6 +27,36 @@ from api.v1.schemas.base import ErrorResponse
 logger = logging.getLogger(__name__)
 
 router = Router()
+
+User = get_user_model()
+
+
+def _authenticator_public_id(
+    auth_pk: int,
+) -> str:
+    """Derive a deterministic, non-enumerable id for an Authenticator row.
+
+    The real DB primary key is never returned to clients. The hash is keyed
+    with SECRET_KEY so callers cannot precompute the mapping.
+    """
+    payload = f"{settings.SECRET_KEY}:{auth_pk}".encode()
+    return hashlib.sha256(payload).hexdigest()[:16]
+
+
+def _log_security_event(
+    event: str,
+    request: HttpRequest,
+    user,
+    **fields,
+) -> None:
+    extra = {
+        "event": event,
+        "user_id": getattr(user, "pk", None),
+        "ip": request.META.get("REMOTE_ADDR"),
+        "ua": request.META.get("HTTP_USER_AGENT", "")[:200],
+        **fields,
+    }
+    logger.info("auth.event", extra=extra)
 
 
 def _social_accounts_for(
@@ -52,7 +86,7 @@ def _authenticators_for(
         items.append(
             AuthenticatorListItem(
                 type=a.type,
-                id=a.pk,
+                id=_authenticator_public_id(a.pk),
                 name=data.get("name"),
                 added_at=a.created_at,
             ),
@@ -76,7 +110,7 @@ def _authenticators_for(
 def get_auth_methods(
     request: HttpRequest,
 ) -> Status:
-    user = request.auth  # type: ignore[union-attr]
+    user = request.auth  # type: ignore
     return Status(
         200,
         AuthMethodsResponse(
@@ -100,7 +134,7 @@ def get_auth_methods(
 def list_social_accounts(
     request: HttpRequest,
 ) -> Status:
-    user = request.auth  # type: ignore[union-attr]
+    user = request.auth  # type: ignore
     return Status(
         200,
         SocialAccountListResponse(
@@ -124,55 +158,68 @@ def list_social_accounts(
     ),
     auth=authed("profile.edit_own"),
 )
+@auth_rate_limit
 def delete_social_account(
     request: HttpRequest,
     provider: str,
 ) -> Status:
-    user = request.auth  # type: ignore[union-attr]
-    account = SocialAccount.objects.filter(user=user, provider=provider).first()
-    if account is None:
+    user = request.auth  # type: ignore
+    if not did_recently_authenticate(request):
         return Status(
-            404,
-            ErrorResponse(error="no_social_account", details=None),
+            401,
+            ErrorResponse(error="reauth_required", details=None),
         )
-    adapter = SocialAccountAdapter()
-    accounts = list(SocialAccount.objects.filter(user=user))
+    adapter = get_socialaccount_adapter(request)
     try:
-        adapter.validate_disconnect(account, accounts)
-    except ValidationError as exc:
-        code = exc.message if hasattr(exc, "message") else str(exc.messages[0])
+        with transaction.atomic():
+            locked_user = User.objects.select_for_update().get(pk=user.pk)
+            account = (
+                SocialAccount.objects.select_for_update()
+                .filter(user=locked_user, provider=provider)
+                .first()
+            )
+            if account is None:
+                return Status(
+                    404,
+                    ErrorResponse(error="no_social_account", details=None),
+                )
+            accounts = list(SocialAccount.objects.filter(user=locked_user))
+            try:
+                adapter.validate_disconnect(account, accounts)
+            except ValidationError as exc:
+                code = exc.message if hasattr(exc, "message") else str(exc.messages[0])
+                return Status(
+                    409,
+                    ErrorResponse(error=code, details=None),
+                )
+            account.delete()
+    except User.DoesNotExist:
         return Status(
-            409,
-            ErrorResponse(error=code, details=None),
+            401,
+            ErrorResponse(error="user_not_found", details=None),
         )
-    account.delete()
+    session_key = getattr(request.session, "session_key", None)
+    _revoke_other_sessions(user, session_key)
+    try:
+        request.session.cycle_key()
+    except Exception:
+        logger.exception("session_cycle_failed", extra={"user_id": user.pk})
+    _log_security_event(
+        "social_account_disconnected",
+        request,
+        user,
+        provider=provider,
+    )
     return Status(204, None)
 
 
 def _user_has_alternative_auth(user) -> bool:
     if SocialAccount.objects.filter(user=user).exists():
         return True
-    if Authenticator.objects.filter(user=user, type=Authenticator.Type.WEBAUTHN).exists():
+    if Authenticator.objects.filter(
+        user=user, type=Authenticator.Type.WEBAUTHN
+    ).exists():
         return True
-    return False
-
-
-def _validate_mfa_code(
-    user,
-    code: str,
-) -> bool:
-    from allauth.mfa.recovery_codes.internal.auth import RecoveryCodes
-    from allauth.mfa.totp.internal.auth import TOTP
-
-    for authn in Authenticator.objects.filter(user=user, type=Authenticator.Type.TOTP):
-        if TOTP(authn).validate_code(code):
-            return True
-    for authn in Authenticator.objects.filter(
-        user=user,
-        type=Authenticator.Type.RECOVERY_CODES,
-    ):
-        if RecoveryCodes(authn).validate_code(code):
-            return True
     return False
 
 
@@ -207,11 +254,12 @@ def _send_password_deletion_email(
             user.email,
             ctx,
         )
-    except Exception as exc:
-        logger.warning(
-            "Failed to send password-deletion email for user_id=%s: %s",
-            user.pk,
-            exc,
+    except Exception:
+        # Swallow so the caller still returns 204, but surface the failure
+        # via the logger (with full traceback) so it can be alerted on.
+        logger.exception(
+            "password_deletion_email_failed",
+            extra={"user_id": user.pk},
         )
 
 
@@ -221,7 +269,6 @@ def _send_password_deletion_email(
         204: None,
         401: ErrorResponse,
         409: ErrorResponse,
-        501: ErrorResponse,
     },
     summary="Delete My Password",
     description=(
@@ -230,38 +277,39 @@ def _send_password_deletion_email(
     ),
     auth=authed("profile.edit_own"),
 )
+@auth_rate_limit
 def delete_password(
     request: HttpRequest,
-    body: DeletePasswordRequest,
 ) -> Status:
-    user = request.auth  # type: ignore[union-attr]
-    if not _user_has_alternative_auth(user):
-        return Status(
-            409,
-            ErrorResponse(error="no_alternative_auth", details=None),
-        )
-    if body.webauthn_assertion is not None:
-        return Status(
-            501,
-            ErrorResponse(
-                error="webauthn_reauth_not_implemented",
-                details=None,
-            ),
-        )
-    reauth_ok = False
-    if body.password and user.check_password(body.password):
-        reauth_ok = True
-    elif body.mfa_code and _validate_mfa_code(user, body.mfa_code):
-        reauth_ok = True
-    if not reauth_ok:
+    user = request.auth  # type: ignore
+    # Gate the endpoint with a fresh login or allauth reauthentication record.
+    # Timeout is controlled by `ACCOUNT_REAUTHENTICATION_TIMEOUT` (default 300s).
+    if not did_recently_authenticate(request):
         return Status(
             401,
             ErrorResponse(error="reauth_required", details=None),
         )
-    with transaction.atomic():
-        user.set_unusable_password()
-        user.save(update_fields=["password"])
+    try:
+        with transaction.atomic():
+            locked_user = User.objects.select_for_update().get(pk=user.pk)
+            if not _user_has_alternative_auth(locked_user):
+                return Status(
+                    409,
+                    ErrorResponse(error="no_alternative_auth", details=None),
+                )
+            locked_user.set_unusable_password()
+            locked_user.save(update_fields=["password"])
+    except User.DoesNotExist:
+        return Status(
+            401,
+            ErrorResponse(error="user_not_found", details=None),
+        )
     session_key = getattr(request.session, "session_key", None)
     _revoke_other_sessions(user, session_key)
+    try:
+        request.session.cycle_key()
+    except Exception:
+        logger.exception("session_cycle_failed", extra={"user_id": user.pk})
     _send_password_deletion_email(user)
+    _log_security_event("password_removed", request, user)
     return Status(204, None)

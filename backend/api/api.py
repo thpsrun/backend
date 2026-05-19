@@ -37,6 +37,7 @@ from api.v1.routers.pages.navbar import router as navbar_router
 from api.v1.routers.resources.awards import router as awards_router
 from api.v1.routers.resources.categories import router as categories_router
 from api.v1.routers.resources.countries import router as countries_router
+from api.v1.routers.resources.game_audit import router as game_audit_router
 from api.v1.routers.resources.games import router as games_router
 from api.v1.routers.resources.levels import router as levels_router
 from api.v1.routers.resources.platforms import router as platforms_router
@@ -399,6 +400,7 @@ def health_check(
 
 
 ninja_api.add_router("/games", games_router, tags=["Games"])
+ninja_api.add_router("/games", game_audit_router, tags=["Games"])
 ninja_api.add_router("/categories", categories_router, tags=["Categories"])
 ninja_api.add_router("/levels", levels_router, tags=["Levels"])
 ninja_api.add_router("/platforms", platforms_router, tags=["Platforms"])

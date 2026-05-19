@@ -83,14 +83,24 @@ class ReconcileRequest(Schema):
             and not self.target_id
         ):
             raise ValueError("target_id is required for RUN and GAME scope")
+        if self.scope == ReconcileScope.SERIES and not self.target_id:
+            raise ValueError("target_id is required for SERIES scope")
         return self
 
     model_config = ConfigDict(
         json_schema_extra={
-            "example": {
-                "scope": "SERIES",
-                "source_of_truth": "SRC",
-            },
+            "examples": [
+                {
+                    "scope": "GAME",
+                    "source_of_truth": "SRC",
+                    "target_id": "thps3",
+                },
+                {
+                    "scope": "SERIES",
+                    "source_of_truth": "SRC",
+                    "target_id": "thps",
+                },
+            ],
         },
     )
 

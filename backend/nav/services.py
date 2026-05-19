@@ -86,16 +86,24 @@ def _depth_of(
     if item_id is None:
         return 0
     depth = 1
-    parent_id = NavItem.objects.filter(pk=item_id).values_list(
-        "parent_id",
-        flat=True,
-    ).first()
-    while parent_id is not None:
-        depth += 1
-        parent_id = NavItem.objects.filter(pk=parent_id).values_list(
+    parent_id = (
+        NavItem.objects.filter(pk=item_id)
+        .values_list(
             "parent_id",
             flat=True,
-        ).first()
+        )
+        .first()
+    )
+    while parent_id is not None:
+        depth += 1
+        parent_id = (
+            NavItem.objects.filter(pk=parent_id)
+            .values_list(
+                "parent_id",
+                flat=True,
+            )
+            .first()
+        )
     return depth
 
 
@@ -105,16 +113,24 @@ def _ancestor_ids(
     if item_id is None:
         return []
     ancestors: list[int] = []
-    parent_id = NavItem.objects.filter(pk=item_id).values_list(
-        "parent_id",
-        flat=True,
-    ).first()
-    while parent_id is not None:
-        ancestors.append(parent_id)
-        parent_id = NavItem.objects.filter(pk=parent_id).values_list(
+    parent_id = (
+        NavItem.objects.filter(pk=item_id)
+        .values_list(
             "parent_id",
             flat=True,
-        ).first()
+        )
+        .first()
+    )
+    while parent_id is not None:
+        ancestors.append(parent_id)
+        parent_id = (
+            NavItem.objects.filter(pk=parent_id)
+            .values_list(
+                "parent_id",
+                flat=True,
+            )
+            .first()
+        )
     return ancestors
 
 
@@ -124,7 +140,9 @@ def _subtree_depth(
     """Max depth of subtree rooted at root_id, with root counting as 1."""
     if root_id is None:
         return 0
-    children = list(NavItem.objects.filter(parent_id=root_id).values_list("pk", flat=True))
+    children = list(
+        NavItem.objects.filter(parent_id=root_id).values_list("pk", flat=True)
+    )
     if not children:
         return 1
     return 1 + max(_subtree_depth(c) for c in children)
@@ -267,4 +285,5 @@ def reorder_social_links(
 def _invalidate_navbar_cache() -> None:
     """Force a cache flush since bulk updates bypass post_save signals."""
     from nav.signals import _invalidate_navbar_cache as _flush
+
     _flush()

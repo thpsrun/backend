@@ -8,6 +8,7 @@ from api.v1.schemas.base import (
     TimingMethodType,
     VariableScopeType,
 )
+from api.v1.schemas.sanitization import sanitize_optional_markdown
 
 
 class VariableValueSchema(BaseEmbedSchema):
@@ -19,7 +20,7 @@ class VariableValueSchema(BaseEmbedSchema):
         slug (str): URL-friendly version.
         defaulttime (str | None): Most-specific timing override. When set, takes
             precedence over the parent variable, the category, and the game.
-        allowed_methods (list[TimingMethodType] | None): When set, narrows allowed methods for
+        required_methods (list[TimingMethodType] | None): When set, narrows allowed methods for
             runs with this value. Must be a non-empty subset of the parent variable's effective
             allowed methods. Null inherits.
         archive (bool): Whether this value is archived/hidden.
@@ -34,7 +35,7 @@ class VariableValueSchema(BaseEmbedSchema):
                 "name": "PC",
                 "slug": "pc",
                 "defaulttime": None,
-                "allowed_methods": None,
+                "required_methods": None,
                 "archive": False,
                 "rules": None,
             },
@@ -54,7 +55,7 @@ class VariableValueSchema(BaseEmbedSchema):
         default=None,
         description="Most-specific timing override; takes precedence over variable/category/game",
     )
-    allowed_methods: list[TimingMethodType] | None = Field(
+    required_methods: list[TimingMethodType] | None = Field(
         default=None,
         description=(
             "When set, narrows allowed methods for runs with this value. "
@@ -90,7 +91,7 @@ class VariableBaseSchema(SlugMixin, BaseEmbedSchema):
         defaulttime (str | None): Variable-level timing override. When set, takes
             precedence over the category and game timing methods. When null, the
             variable inherits its category's (or game's) timing.
-        allowed_methods (list[TimingMethodType] | None): When set, narrows allowed methods for
+        required_methods (list[TimingMethodType] | None): When set, narrows allowed methods for
             runs that include this variable. Must be a non-empty subset of the parent
             (category/game). Null inherits.
         archive (bool): Whether variable is archived/hidden.
@@ -107,7 +108,7 @@ class VariableBaseSchema(SlugMixin, BaseEmbedSchema):
         default=None,
         description="Variable-level timing override; takes precedence over category and game",
     )
-    allowed_methods: list[TimingMethodType] | None = Field(
+    required_methods: list[TimingMethodType] | None = Field(
         default=None,
         description=(
             "When set, narrows allowed methods for runs that include this variable. "
@@ -135,7 +136,7 @@ class VariableSchema(VariableBaseSchema):
                 "slug": "platform",
                 "scope": "full-game",
                 "defaulttime": None,
-                "allowed_methods": None,
+                "required_methods": None,
                 "archive": False,
             },
         },
@@ -200,7 +201,7 @@ class VariableCreateSchema(BaseEmbedSchema):
         None, description="If not applying to all categories"
     )
     level_id: str | None = Field(None, description="If scope=single-level")
-    allowed_methods: list[TimingMethodType] | None = Field(
+    required_methods: list[TimingMethodType] | None = Field(
         default=None,
         description="Allowed timing methods; null inherits.",
     )
@@ -226,7 +227,7 @@ class VariableUpdateSchema(BaseEmbedSchema):
     archive: bool | None = None
     category_id: str | None = None
     level_id: str | None = None
-    allowed_methods: list[TimingMethodType] | None = None
+    required_methods: list[TimingMethodType] | None = None
 
 
 class VariableValueCreateSchema(BaseEmbedSchema):
@@ -264,10 +265,18 @@ class VariableValueCreateSchema(BaseEmbedSchema):
     )
     archive: bool = Field(default=False, description="Hidden from listings")
     rules: str | None = Field(default=None, max_length=5000)
-    allowed_methods: list[TimingMethodType] | None = Field(
+    required_methods: list[TimingMethodType] | None = Field(
         default=None,
         description="Allowed timing methods; null inherits.",
     )
+
+    @field_validator("rules", mode="after")
+    @classmethod
+    def _sanitize_rules(
+        cls,
+        value: str | None,
+    ) -> str | None:
+        return sanitize_optional_markdown(value)
 
 
 class VariableValueUpdateSchema(BaseEmbedSchema):
@@ -294,4 +303,12 @@ class VariableValueUpdateSchema(BaseEmbedSchema):
     defaulttime: TimingMethodType | None = None
     archive: bool | None = None
     rules: str | None = Field(default=None, max_length=5000)
-    allowed_methods: list[TimingMethodType] | None = None
+    required_methods: list[TimingMethodType] | None = None
+
+    @field_validator("rules", mode="after")
+    @classmethod
+    def _sanitize_rules(
+        cls,
+        value: str | None,
+    ) -> str | None:
+        return sanitize_optional_markdown(value)

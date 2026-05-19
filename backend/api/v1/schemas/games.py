@@ -5,6 +5,51 @@ from django.conf import settings
 from pydantic import ConfigDict, Field, field_validator
 
 from api.v1.schemas.base import BaseEmbedSchema, SlugMixin, TimingMethodType
+from api.v1.schemas.players import GradientsEmbed
+from api.v1.schemas.sanitization import sanitize_optional_markdown
+
+
+class GameModeratorEmbedSchema(BaseEmbedSchema):
+    """Player summary used in a game's moderator list.
+
+    Attributes:
+        id (str): Player ID.
+        name (str): Player name.
+        nickname (str | None): Player nickname override, if any.
+        url (str): Player profile URL.
+        country_id (str | None): Country code ID.
+        pfp (str | None): Profile picture URL.
+        gradients (GradientsEmbed | None): Player's name gradient colors; None if unclaimed or
+            no colors set.
+    """
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        arbitrary_types_allowed=True,
+        json_schema_extra={
+            "example": {
+                "id": "v8lponvj",
+                "name": "ThePackle",
+                "nickname": None,
+                "url": "https://speedrun.com/user/ThePackle",
+                "country_id": "us",
+                "pfp": None,
+                "gradients": {
+                    "gradient_1": "#ff0000",
+                    "gradient_2": "#00ff00",
+                    "gradient_3": "#0000ff",
+                },
+            },
+        },
+    )
+
+    id: str = Field(..., max_length=10)
+    name: str
+    nickname: str | None = None
+    url: str
+    country_id: str | None = None
+    pfp: str | None = None
+    gradients: GradientsEmbed | None = None
 
 
 class GameBaseSchema(SlugMixin, BaseEmbedSchema):
@@ -21,8 +66,8 @@ class GameBaseSchema(SlugMixin, BaseEmbedSchema):
         idefaulttime (str): Default timing method for individual level runs.
         pointsmax (int): Maximum points for world record full-game runs.
         ipointsmax (int): Maximum points for world record IL runs.
-        allowed_methods_fg (list[TimingMethodType]): Timing methods allowed for full-game runs.
-        allowed_methods_il (list[TimingMethodType]): Timing methods allowed for IL runs.
+        required_methods_fg (list[TimingMethodType]): Timing methods allowed for full-game runs.
+        required_methods_il (list[TimingMethodType]): Timing methods allowed for IL runs.
         rules (str | None): Game-level rules text.
     """
 
@@ -51,11 +96,11 @@ class GameBaseSchema(SlugMixin, BaseEmbedSchema):
     ipointsmax: int = Field(
         settings.POINTS_MAX_IL, ge=1, description="WR points for IL runs"
     )
-    allowed_methods_fg: list[TimingMethodType] = Field(
+    required_methods_fg: list[TimingMethodType] = Field(
         default_factory=list,
         description="Timing methods allowed for full-game runs",
     )
-    allowed_methods_il: list[TimingMethodType] = Field(
+    required_methods_il: list[TimingMethodType] = Field(
         default_factory=list,
         description="Timing methods allowed for individual-level runs",
     )
@@ -68,6 +113,8 @@ class GameSchema(GameBaseSchema):
         categories (List[dict] | None): Game categories - included with ?embed=categories.
         levels (List[dict] | None): Individual levels - included with ?embed=levels.
         platforms (List[dict] | None): Supported platforms - included with ?embed=platforms.
+        moderators (List[GameModeratorEmbedSchema] | None): Game moderators - included with
+            ?embed=moderators.
     """
 
     model_config = ConfigDict(
@@ -84,8 +131,23 @@ class GameSchema(GameBaseSchema):
                 "idefaulttime": "rta",
                 "pointsmax": 1000,
                 "ipointsmax": 100,
-                "allowed_methods_fg": ["rta", "igt"],
-                "allowed_methods_il": ["rta"],
+                "required_methods_fg": ["rta", "igt"],
+                "required_methods_il": ["rta"],
+                "moderators": [
+                    {
+                        "id": "v8lponvj",
+                        "name": "ThePackle",
+                        "nickname": None,
+                        "url": "https://speedrun.com/user/ThePackle",
+                        "country_id": "us",
+                        "pfp": None,
+                        "gradients": {
+                            "gradient_1": "#ff0000",
+                            "gradient_2": "#00ff00",
+                            "gradient_3": "#0000ff",
+                        },
+                    },
+                ],
             },
         },
     )
@@ -97,8 +159,11 @@ class GameSchema(GameBaseSchema):
     platforms: list[dict] | None = Field(
         None, description="Included with ?embed=platforms"
     )
+    moderators: list[GameModeratorEmbedSchema] | None = Field(
+        None, description="Included with ?embed=moderators"
+    )
 
-    @field_validator("platforms", "categories", "levels", mode="before")
+    @field_validator("platforms", "categories", "levels", "moderators", mode="before")
     @classmethod
     def convert_manager_to_list(
         cls,
@@ -163,14 +228,22 @@ class GameCreateSchema(SlugMixin, BaseEmbedSchema):
     ipointsmax: int = Field(
         settings.POINTS_MAX_IL, ge=1, description="WR points for IL runs"
     )
-    allowed_methods_fg: list[TimingMethodType] | None = Field(
+    required_methods_fg: list[TimingMethodType] | None = Field(
         default=None,
         description="Allowed FG timing methods. If null, defaults to all three.",
     )
-    allowed_methods_il: list[TimingMethodType] | None = Field(
+    required_methods_il: list[TimingMethodType] | None = Field(
         default=None,
         description="Allowed IL timing methods. If null, defaults to all three.",
     )
+
+    @field_validator("rules", mode="after")
+    @classmethod
+    def _sanitize_rules(
+        cls,
+        value: str | None,
+    ) -> str | None:
+        return sanitize_optional_markdown(value)
 
 
 class GameUpdateSchema(BaseEmbedSchema):
@@ -203,8 +276,16 @@ class GameUpdateSchema(BaseEmbedSchema):
     idefaulttime: TimingMethodType | None = None
     pointsmax: int | None = Field(default=None, ge=1)
     ipointsmax: int | None = Field(default=None, ge=1)
-    allowed_methods_fg: list[TimingMethodType] | None = None
-    allowed_methods_il: list[TimingMethodType] | None = None
+    required_methods_fg: list[TimingMethodType] | None = None
+    required_methods_il: list[TimingMethodType] | None = None
+
+    @field_validator("rules", mode="after")
+    @classmethod
+    def _sanitize_rules(
+        cls,
+        value: str | None,
+    ) -> str | None:
+        return sanitize_optional_markdown(value)
 
 
 GameSchema.model_rebuild()

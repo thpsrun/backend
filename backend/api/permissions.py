@@ -32,6 +32,7 @@ CAPABILITY_SCOPED: dict[str, bool] = {
     "guides.delete_own": True,
     "guides.delete_any": True,
     "games.manage": True,
+    "games.audit.view": True,
     "api_keys.create_own": False,
     "api_keys.list_own": False,
     "api_keys.revoke_own": False,
@@ -64,6 +65,7 @@ MOD_SCOPES: frozenset[str] = frozenset(
         "guides.edit_any",
         "guides.delete_any",
         "games.manage",
+        "games.audit.view",
     },
 )
 SU_ONLY_SCOPES: frozenset[str] = frozenset({"runs.delete"})
@@ -83,6 +85,9 @@ assert _CATEGORIZED_SCOPED_CAPS == _SCOPED_CAPS, (
 
 
 def _register_capabilities() -> None:
+    # Ignore the type: ignores, please. pylance likes to raise errors since it doesn't completely
+    # understand these in this context lol.
+
     # Runs capabilities
     add_perm("runs.submit", is_authenticated & has_claimed_player)  # type: ignore
     add_perm("runs.edit_own", is_authenticated & is_run_participant)  # type: ignore
@@ -99,6 +104,7 @@ def _register_capabilities() -> None:
 
     # Games capabilities
     add_perm("games.manage", is_superuser | is_game_moderator)  # type: ignore
+    add_perm("games.audit.view", is_superuser | is_game_moderator)  # type: ignore
 
     # API keys capabilities
     add_perm("api_keys.create_own", is_authenticated)
@@ -134,9 +140,9 @@ def _resolve_caller(
 
     user = getattr(request, "user", None)
     if user is None or not getattr(user, "is_authenticated", False):
-        raise HttpError(401, "Authentication required")
+        raise HttpError(401, "Authentication Required!")
     if not user.is_active:
-        raise HttpError(403, "Account disabled")
+        raise HttpError(403, "Account Disabled")
 
     if request.method not in ("GET", "HEAD", "OPTIONS"):
         enforce_csrf(request)
@@ -206,6 +212,14 @@ def authed(
                 continue
             request.user = user
             request.api_key = key  # type: ignore
+            from auditlog.context import set_actor
+
+            actor_label = (
+                (getattr(key, "label", "") if key else "")
+                or getattr(user, "username", "")
+                or ""
+            )
+            set_actor(user=user, api_key=key, label=actor_label[:128])
             return user
 
         if user_perm_failed:

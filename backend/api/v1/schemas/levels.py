@@ -3,6 +3,7 @@ from typing import Any
 from pydantic import ConfigDict, Field, field_validator
 
 from api.v1.schemas.base import BaseEmbedSchema, SlugMixin
+from api.v1.schemas.sanitization import sanitize_optional_markdown
 from api.v1.schemas.variables import VariableWithValuesSchema
 
 
@@ -102,6 +103,14 @@ class LevelCreateSchema(SlugMixin, BaseEmbedSchema):
         default=0, exclude=True, description="Sort order; managed via admin panel"
     )
 
+    @field_validator("rules", mode="after")
+    @classmethod
+    def _sanitize_rules(
+        cls,
+        value: str | None,
+    ) -> str | None:
+        return sanitize_optional_markdown(value)
+
 
 class LevelUpdateSchema(BaseEmbedSchema):
     """Schema for updating levels.
@@ -120,6 +129,14 @@ class LevelUpdateSchema(BaseEmbedSchema):
     order: int = Field(
         default=0, exclude=True, description="Sort order; managed via admin panel"
     )
+
+    @field_validator("rules", mode="after")
+    @classmethod
+    def _sanitize_rules(
+        cls,
+        value: str | None,
+    ) -> str | None:
+        return sanitize_optional_markdown(value)
 
 
 class GameLevelResponseSchema(LevelBaseSchema):

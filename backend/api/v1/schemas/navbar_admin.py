@@ -162,6 +162,10 @@ class NavItemReorderRequest(Schema):
                 "parent_id": None,
                 "ordered_ids": [7, 12, 3],
             },
+            "description": (
+                "ordered_ids must contain every sibling ID under parent_id exactly once. "
+                "Partial reorders are rejected with 400."
+            ),
         }
 
 
@@ -173,4 +177,8 @@ class SocialReorderRequest(Schema):
             "example": {
                 "ordered_ids": [3, 1, 2],
             },
+            "description": (
+                "ordered_ids must contain every SocialLink ID exactly once. "
+                "Partial reorders are rejected with 400."
+            ),
         }

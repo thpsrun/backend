@@ -1,8 +1,7 @@
 from django.contrib.postgres.fields import ArrayField
-from django.core.exceptions import ValidationError
 from django.db import models
 
-from srl.models.base import LeaderboardChoices
+from srl.models.base import LeaderboardChoices, validate_allowed_subset
 from srl.models.games import Games
 
 
@@ -58,7 +57,7 @@ class Categories(models.Model):
             "determine what timing method is used for the category."
         ),
     )
-    allowed_methods = ArrayField(
+    required_methods = ArrayField(
         base_field=models.CharField(
             max_length=20,
             choices=LeaderboardChoices.choices,
@@ -116,62 +115,13 @@ class Categories(models.Model):
 
     def clean(self) -> None:
         super().clean()
-        errors: dict = {}
-
-        parent_allowed = self._parent_allowed()
-
-        if self.allowed_methods is not None:
-            if len(self.allowed_methods) == 0:
-                errors["allowed_methods"] = (
-                    "Cannot be an empty list; use null to inherit."
-                )
-            elif parent_allowed is not None and not set(self.allowed_methods) <= set(
-                parent_allowed
-            ):
-                errors["allowed_methods"] = (
-                    f"Must be a subset of the game's allowed methods "
-                    f"({list(parent_allowed)})."
-                )
-            else:
-                inherited_primary = self._inherited_primary()
-                if (
-                    self.defaulttime is None
-                    and inherited_primary is not None
-                    and inherited_primary not in self.allowed_methods
-                ):
-                    errors["defaulttime"] = (
-                        f"Inherited primary ({inherited_primary}) is not in the narrowed "
-                        f"allowed_methods ({list(self.allowed_methods)}); set defaulttime "
-                        f"explicitly."
-                    )
-
-        if self.defaulttime is not None:
-            effective_allowed = self.allowed_methods or parent_allowed
-            if (
-                effective_allowed is not None
-                and self.defaulttime not in effective_allowed
-            ):
-                errors["defaulttime"] = (
-                    f"defaulttime ({self.defaulttime}) must be one of allowed_methods "
-                    f"({list(effective_allowed)})."
-                )
-
-        if self.pk and self.allowed_methods is not None:
-            allowed_set = set(self.allowed_methods)
-            bad_vars = self.variables_set.filter(allowed_methods__isnull=False)  # type: ignore
-            offenders = [
-                v.id
-                for v in bad_vars
-                if not set(v.allowed_methods).issubset(allowed_set)
-            ]
-            if offenders:
-                errors["allowed_methods"] = (
-                    f"Cannot narrow: variables rely on removed methods. "
-                    f"Offending variable ids: {offenders}"
-                )
-
-        if errors:
-            raise ValidationError(errors)
+        validate_allowed_subset(
+            self,
+            parent_allowed=self._parent_allowed(),
+            parent_primary=self._inherited_primary(),
+            child_relation_name="variables_set",
+            child_id_attr="id",
+        )
 
     def _parent_allowed(
         self,
@@ -179,9 +129,9 @@ class Categories(models.Model):
         if self.game is None:
             return None
         return (
-            self.game.allowed_methods_il
+            self.game.required_methods_il
             if self.type == self.CategoryType.PER_LEVEL
-            else self.game.allowed_methods_fg
+            else self.game.required_methods_fg
         )
 
     def _inherited_primary(

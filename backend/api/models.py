@@ -34,9 +34,6 @@ class APIKeyManager(BaseAPIKeyManager):
     def get_usable_keys(
         self,
     ) -> models.QuerySet:
-        # BaseAPIKeyManager only filters revoked=False. For this project's
-        # "usable" semantics we also require the owning user active and the
-        # key not past its expiry_date.
         return (
             super()
             .get_usable_keys()
@@ -110,9 +107,7 @@ class APIKey(AbstractAPIKey):
         self,
         reason: "APIKeyRevokedReason | str",
     ) -> bool:
-        """Mark this key as revoked with a reason and timestamp. Idempotent:
-        returns False if the key was already revoked, True if this call did it.
-        """
+        """Mark this key as revoked with a reason and timestamp."""
         if self.revoked:
             return False
         self.revoked = True
@@ -174,10 +169,18 @@ class APIActivityLog(models.Model):
             ),
             models.Index(fields=["status_code"], name="api_actl_status_idx"),
             models.Index(fields=["method"], name="api_actl_method_idx"),
+            models.Index(
+                fields=["-created_at"],
+                name="apiactivitylog_created_idx",
+            ),
+            models.Index(
+                fields=["target_app", "target_model", "-created_at"],
+                name="apiactivitylog_target_idx",
+            ),
         ]
 
     def __str__(
         self,
     ) -> str:
-        who = self.user_id or self.api_key_id or "anon"
+        who = self.user.id if self.user else self.api_key.id if self.api_key else "anon"
         return f"{self.created_at:%Y-%m-%d %H:%M:%S} {self.method} {self.path} ({who})"

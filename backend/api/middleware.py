@@ -28,10 +28,13 @@ MAX_TARGET_REPR_LENGTH = 255
 MUTATING_METHODS = frozenset(["POST", "PUT", "PATCH", "DELETE"])
 
 SENSITIVE_FIELD_PATTERN = re.compile(
-    r"(password|secret|token|key|credential|auth|private|api_key|apikey|access_token"
-    r"|refresh_token|bearer|authorization)",
+    r"(password|token|key|secret|auth|credential|otp|webauthn|api_?key)",
     re.IGNORECASE,
 )
+
+MAX_SANITIZE_DEPTH = 6
+MAX_SANITIZE_LIST_ITEMS = 50
+MAX_SANITIZE_STRING = 500
 
 _METHOD_TO_ACTION: dict[str, str] = {
     "POST": APIActivityAction.CREATE,
@@ -41,6 +44,31 @@ _METHOD_TO_ACTION: dict[str, str] = {
     "GET": APIActivityAction.READ,
     "HEAD": APIActivityAction.READ,
 }
+
+
+def _sanitize_payload(
+    value: Any,
+    depth: int = 0,
+) -> Any:
+    if depth > MAX_SANITIZE_DEPTH:
+        return "<truncated>"
+    if isinstance(value, dict):
+        return {
+            key: (
+                "<redacted>"
+                if SENSITIVE_FIELD_PATTERN.search(str(key))
+                else _sanitize_payload(val, depth + 1)
+            )
+            for key, val in value.items()
+        }
+    if isinstance(value, list):
+        return [
+            _sanitize_payload(item, depth + 1)
+            for item in value[:MAX_SANITIZE_LIST_ITEMS]
+        ]
+    if isinstance(value, str):
+        return value[:MAX_SANITIZE_STRING]
+    return value
 
 
 class APIActivityLogMiddleware:
@@ -110,7 +138,7 @@ class APIActivityLogMiddleware:
 
             if api_key_obj is not None:
                 auth_method = APIActivityAuthMethod.API_KEY
-                user_id = api_key_obj.user_id
+                user_id = api_key_obj.user.id
                 key_label = api_key_obj.label or ""
             elif user_is_authed:
                 auth_method = APIActivityAuthMethod.SESSION
@@ -128,6 +156,8 @@ class APIActivityLogMiddleware:
 
             ua = request.META.get("HTTP_USER_AGENT", "") or ""
 
+            body_summary = self._get_sanitized_body_summary(request)
+
             APIActivityLog.objects.create(
                 user_id=user_id,
                 api_key=api_key_obj,
@@ -143,7 +173,7 @@ class APIActivityLogMiddleware:
                 target_model=target_model,
                 target_id=target_id,
                 target_repr=target_repr,
-                change_summary=self._get_sanitized_body_summary(request),
+                change_summary=body_summary,
             )
 
         except Exception as e:
@@ -200,12 +230,9 @@ class APIActivityLogMiddleware:
             if not isinstance(data, dict):
                 return None
 
-            safe_data = {
-                key: value
-                for key, value in data.items()
-                if not SENSITIVE_FIELD_PATTERN.search(key)
-            }
-
+            safe_data = _sanitize_payload(data)
+            if not isinstance(safe_data, dict):
+                return None
             return safe_data or None
 
         except (json.JSONDecodeError, UnicodeDecodeError) as e:

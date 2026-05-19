@@ -1,5 +1,4 @@
 import logging
-import re
 
 from allauth.account.signals import user_logged_in
 from allauth.socialaccount.signals import (
@@ -7,13 +6,14 @@ from allauth.socialaccount.signals import (
     social_account_removed,
     social_account_updated,
 )
+from django.conf import settings
 from django.dispatch import receiver
+
+from accounts.adapters import TWITCH_LOGIN_RE
 
 logger = logging.getLogger(__name__)
 
-TWITCH_LOGIN_RE: re.Pattern[str] = re.compile(r"^[A-Za-z0-9_]{1,25}$")
-REMEMBER_ME_AGE = 60 * 60 * 24 * 30  # 30 days
-DEFAULT_AGE = 60 * 60 * 24 * 7
+REMEMBER_AGE = getattr(settings, "REMEMBER_AGE", 60 * 60 * 24 * 30)
 
 
 def _sync_social_to_player(
@@ -119,7 +119,6 @@ def apply_remember_me(
 ) -> None:
     if request is None:
         return
-    if request.headers.get("X-Remember-Me") == "1":
-        request.session.set_expiry(REMEMBER_ME_AGE)
-    else:
-        request.session.set_expiry(DEFAULT_AGE)
+    remember = request.headers.get("X-Remember-Me", "").strip().lower()
+    if remember in {"1", "true", "yes"}:
+        request.session.set_expiry(REMEMBER_AGE)

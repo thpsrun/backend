@@ -350,7 +350,7 @@ def create_value(
             archive=value_data.archive,
             rules=value_data.rules,
             defaulttime=value_data.defaulttime,
-            allowed_methods=value_data.allowed_methods,
+            required_methods=value_data.required_methods,
         )
         try:
             new_value.full_clean()

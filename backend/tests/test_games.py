@@ -247,11 +247,11 @@ class GameTimingClean(TestCase):
             "idefaulttime": LeaderboardChoices.REALTIME,
             "pointsmax": 1000,
             "ipointsmax": 250,
-            "allowed_methods_fg": [
+            "required_methods_fg": [
                 LeaderboardChoices.REALTIME,
                 LeaderboardChoices.INGAME,
             ],
-            "allowed_methods_il": [
+            "required_methods_il": [
                 LeaderboardChoices.REALTIME,
                 LeaderboardChoices.INGAME,
             ],
@@ -259,43 +259,43 @@ class GameTimingClean(TestCase):
         defaults.update(kwargs)
         return Games(**defaults)
 
-    def test_defaulttime_must_be_in_allowed_methods_fg(
+    def test_defaulttime_must_be_in_required_methods_fg(
         self,
     ) -> None:
         g = self._make(
             defaulttime=LeaderboardChoices.INGAME,
-            allowed_methods_fg=[LeaderboardChoices.REALTIME],
+            required_methods_fg=[LeaderboardChoices.REALTIME],
         )
         with self.assertRaises(ValidationError) as cm:
             g.full_clean()
         self.assertIn("defaulttime", cm.exception.message_dict)
 
-    def test_idefaulttime_must_be_in_allowed_methods_il(
+    def test_idefaulttime_must_be_in_required_methods_il(
         self,
     ) -> None:
         g = self._make(
             idefaulttime=LeaderboardChoices.INGAME,
-            allowed_methods_il=[LeaderboardChoices.REALTIME],
+            required_methods_il=[LeaderboardChoices.REALTIME],
         )
         with self.assertRaises(ValidationError) as cm:
             g.full_clean()
         self.assertIn("idefaulttime", cm.exception.message_dict)
 
-    def test_empty_allowed_methods_fg_rejected(
+    def test_empty_required_methods_fg_rejected(
         self,
     ) -> None:
-        g = self._make(allowed_methods_fg=[])
+        g = self._make(required_methods_fg=[])
         with self.assertRaises(ValidationError) as cm:
             g.full_clean()
-        self.assertIn("allowed_methods_fg", cm.exception.message_dict)
+        self.assertIn("required_methods_fg", cm.exception.message_dict)
 
-    def test_empty_allowed_methods_il_rejected(
+    def test_empty_required_methods_il_rejected(
         self,
     ) -> None:
-        g = self._make(allowed_methods_il=[])
+        g = self._make(required_methods_il=[])
         with self.assertRaises(ValidationError) as cm:
             g.full_clean()
-        self.assertIn("allowed_methods_il", cm.exception.message_dict)
+        self.assertIn("required_methods_il", cm.exception.message_dict)
 
     def test_valid_game_clean(
         self,
@@ -320,11 +320,11 @@ class GameNarrowingCascade(TestCase):
             idefaulttime=LeaderboardChoices.REALTIME,
             pointsmax=1000,
             ipointsmax=250,
-            allowed_methods_fg=[
+            required_methods_fg=[
                 LeaderboardChoices.REALTIME,
                 LeaderboardChoices.INGAME,
             ],
-            allowed_methods_il=[
+            required_methods_il=[
                 LeaderboardChoices.REALTIME,
                 LeaderboardChoices.INGAME,
             ],
@@ -336,23 +336,23 @@ class GameNarrowingCascade(TestCase):
             type="per-game",
             url="https://example.com/any",
             game=cls.game,
-            allowed_methods=[LeaderboardChoices.INGAME],
+            required_methods=[LeaderboardChoices.INGAME],
             defaulttime=LeaderboardChoices.INGAME,
         )
 
     def test_game_narrowing_rejected_if_category_uses_removed_method(
         self,
     ) -> None:
-        self.game.allowed_methods_fg = [LeaderboardChoices.REALTIME]
+        self.game.required_methods_fg = [LeaderboardChoices.REALTIME]
         with self.assertRaises(ValidationError) as cm:
             self.game.full_clean()
-        self.assertIn("allowed_methods_fg", cm.exception.message_dict)
+        self.assertIn("required_methods_fg", cm.exception.message_dict)
         self.assertIn(self.cat.id, str(cm.exception))
 
     def test_game_widening_always_safe(
         self,
     ) -> None:
-        self.game.allowed_methods_fg = [
+        self.game.required_methods_fg = [
             LeaderboardChoices.REALTIME,
             LeaderboardChoices.REALTIME_NOLOADS,
             LeaderboardChoices.INGAME,
@@ -386,31 +386,31 @@ class GamesTimingWriteTest(AuthTestBase):
         self.tw_game.platforms.add(self.platform)
         self.client = TestClient(games_router)  # type: ignore
 
-    def test_put_game_accepts_allowed_methods(
+    def test_put_game_accepts_required_methods(
         self,
     ) -> None:
         response = self.client.put(
             "/twgame1",
             json={
                 "defaulttime": "rta",
-                "allowed_methods_fg": ["rta", "igt"],
+                "required_methods_fg": ["rta", "igt"],
             },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertIn("rta", data["allowed_methods_fg"])
-        self.assertIn("igt", data["allowed_methods_fg"])
+        self.assertIn("rta", data["required_methods_fg"])
+        self.assertIn("igt", data["required_methods_fg"])
 
     def test_put_game_rejects_invalid_primary(
         self,
     ) -> None:
-        # defaulttime not in allowed_methods_fg -> model validation should reject
+        # defaulttime not in required_methods_fg -> model validation should reject
         response = self.client.put(
             "/twgame1",
             json={
                 "defaulttime": "igt",
-                "allowed_methods_fg": ["rta"],
+                "required_methods_fg": ["rta"],
             },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
@@ -418,7 +418,7 @@ class GamesTimingWriteTest(AuthTestBase):
         data = response.json()
         self.assertIn("errors", data["details"])
 
-    def test_post_game_with_allowed_methods(
+    def test_post_game_with_required_methods(
         self,
     ) -> None:
         response = self.client.post(
@@ -430,15 +430,15 @@ class GamesTimingWriteTest(AuthTestBase):
                 "boxart": "https://example.com/boxart.png",
                 "defaulttime": "rta",
                 "idefaulttime": "rta",
-                "allowed_methods_fg": ["rta", "igt"],
-                "allowed_methods_il": ["rta"],
+                "required_methods_fg": ["rta", "igt"],
+                "required_methods_il": ["rta"],
             },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
         self.assertEqual(response.status_code, 201)
         data = response.json()
-        self.assertIn("rta", data["allowed_methods_fg"])
-        self.assertIn("igt", data["allowed_methods_fg"])
+        self.assertIn("rta", data["required_methods_fg"])
+        self.assertIn("igt", data["required_methods_fg"])
 
     def test_post_game_rejects_primary_not_in_allowed(
         self,
@@ -452,8 +452,8 @@ class GamesTimingWriteTest(AuthTestBase):
                 "boxart": "https://example.com/boxart.png",
                 "defaulttime": "igt",
                 "idefaulttime": "rta",
-                "allowed_methods_fg": ["rta"],
-                "allowed_methods_il": ["rta"],
+                "required_methods_fg": ["rta"],
+                "required_methods_il": ["rta"],
             },  # type: ignore
             headers={"X-API-Key": self.api_key},
         )
@@ -464,10 +464,11 @@ class GamesTimingWriteTest(AuthTestBase):
 
 class GameSchemaTimingFields(TestCase):
 
-    def test_game_base_schema_has_allowed_methods(
+    def test_game_base_schema_has_required_methods(
         self,
     ) -> None:
         from api.v1.schemas.games import GameBaseSchema
+
         fields = GameBaseSchema.model_fields
-        self.assertIn("allowed_methods_fg", fields)
-        self.assertIn("allowed_methods_il", fields)
+        self.assertIn("required_methods_fg", fields)
+        self.assertIn("required_methods_il", fields)

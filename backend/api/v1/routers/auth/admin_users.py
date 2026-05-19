@@ -65,10 +65,10 @@ def _resolve_user(
     ident: str,
 ) -> Any:
     player = _resolve_player(ident)
-    if player.user and player.user.id is None:
+    if player.user is None:
         raise HttpError(
             404,
-            f"Player {player.id} has no claimed user account",
+            f"Player {player.id} has no linked user account",
         )
     return player.user
 
@@ -371,9 +371,20 @@ def admin_delete_pfp(
 ) -> Status:
     player = _resolve_player(ident)
     safe_id = "".join(c for c in player.id if c.isalnum() or c in "-_")
+    if not safe_id or len(safe_id) < 3:
+        raise HttpError(400, "Invalid Player ID")
+
     file_path = os.path.join(PFP_DIR, f"{safe_id}.jpg")
+    resolved_target = os.path.realpath(file_path)
+    resolved_root = os.path.realpath(PFP_DIR)
     try:
-        os.remove(file_path)
+        if os.path.commonpath((resolved_root, resolved_target)) != resolved_root:
+            raise HttpError(400, "Invalid Player ID")
+    except ValueError:
+        raise HttpError(400, "Invalid Player ID")
+
+    try:
+        os.remove(resolved_target)
     except FileNotFoundError:
         pass
     player.pfp = None
@@ -564,11 +575,6 @@ def admin_password_reset(
     user = _resolve_user(ident)
     _refuse_self_target(request, user)
 
-    with transaction.atomic():
-        user.set_unusable_password()
-        user.save(update_fields=["password"])
-        sessions_revoked = _revoke_user_sessions(user)
-
     if not user.email:
         logger.warning(
             "admin password reset (no email on record): actor=%s target=%s",
@@ -584,7 +590,25 @@ def admin_password_reset(
         )
 
     form = ResetPasswordForm({"email": user.email})
-    if form.is_valid():
+    if not form.is_valid():
+        logger.warning(
+            "admin password reset (invalid email form): actor=%s target=%s errors=%s",
+            request.user.pk,
+            user.pk,
+            form.errors.as_json(),
+        )
+        return Status(
+            400,
+            ErrorResponse(
+                error="Unable to send password reset email",
+                details=None,
+            ),
+        )
+
+    with transaction.atomic():
+        user.set_unusable_password()
+        user.save(update_fields=["password"])
+        sessions_revoked = _revoke_user_sessions(user)
         form.save(request=request)
 
     logger.info(

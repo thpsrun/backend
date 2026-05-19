@@ -1,9 +1,8 @@
 from django.contrib.postgres.fields import ArrayField
-from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.text import slugify
 
-from srl.models.base import LeaderboardChoices
+from srl.models.base import LeaderboardChoices, validate_allowed_subset
 from srl.models.variables import Variables
 
 
@@ -62,7 +61,7 @@ class VariableValues(models.Model):
             "Precedence: VariableValue > Variable > Category > Game."
         ),
     )
-    allowed_methods = ArrayField(
+    required_methods = ArrayField(
         base_field=models.CharField(
             max_length=20,
             choices=LeaderboardChoices.choices,
@@ -103,54 +102,21 @@ class VariableValues(models.Model):
         self,
     ) -> None:
         super().clean()
-        errors: dict = {}
-
-        parent_allowed = self._resolved_parent_allowed()
-        parent_primary = self._resolved_parent_primary()
-
-        if self.allowed_methods is not None:
-            if len(self.allowed_methods) == 0:
-                errors["allowed_methods"] = (
-                    "Cannot be an empty list; use null to inherit."
-                )
-            elif parent_allowed is not None and not set(self.allowed_methods) <= set(
-                parent_allowed
-            ):
-                errors["allowed_methods"] = (
-                    f"Must be a subset of the variable's resolved allowed methods "
-                    f"({list(parent_allowed)})."
-                )
-            elif (
-                self.defaulttime is None
-                and parent_primary is not None
-                and parent_primary not in self.allowed_methods
-            ):
-                errors["defaulttime"] = (
-                    f"Inherited primary ({parent_primary}) is not in the narrowed "
-                    f"allowed_methods; set defaulttime explicitly."
-                )
-
-        if self.defaulttime is not None:
-            effective_allowed = self.allowed_methods or parent_allowed
-            if (
-                effective_allowed is not None
-                and self.defaulttime not in effective_allowed
-            ):
-                errors["defaulttime"] = (
-                    f"defaulttime ({self.defaulttime}) must be one of allowed_methods "
-                    f"({list(effective_allowed)})."
-                )
-
-        if errors:
-            raise ValidationError(errors)
+        validate_allowed_subset(
+            self,
+            parent_allowed=self._resolved_parent_allowed(),
+            parent_primary=self._resolved_parent_primary(),
+            child_relation_name="",
+            child_id_attr="value",
+        )
 
     def _resolved_parent_allowed(
         self,
     ) -> list[str] | None:
         if self.var is None:
             return None
-        if self.var.allowed_methods is not None:
-            return list(self.var.allowed_methods)
+        if self.var.required_methods is not None:
+            return list(self.var.required_methods)
         return self.var._resolved_parent_allowed()
 
     def _resolved_parent_primary(

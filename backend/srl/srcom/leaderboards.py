@@ -1,3 +1,4 @@
+import logging
 from collections import defaultdict
 
 from celery import shared_task
@@ -44,6 +45,8 @@ from srl.srcom.utils import (
 )
 from srl.srcom.variables import sync_variables
 from srl.utils import points_formula, src_api, src_api_paginate
+
+logger = logging.getLogger(__name__)
 
 
 @shared_task
@@ -436,6 +439,10 @@ def sync_obsolete_runs(
             try:
                 _persist_obsolete_run(src_run, game_info)
             except Exception:
+                logger.exception(
+                    "sync_obsolete_runs failed",
+                    extra={"run_id": src_run.id, "player_id": player},
+                )
                 counters["db_err"] += 1
                 continue
 

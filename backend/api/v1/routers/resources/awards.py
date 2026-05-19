@@ -1,12 +1,16 @@
+import logging
 from typing import Annotated
 
 from django.http import HttpRequest
 from ninja import Query, Router, Status
+from ninja.errors import HttpError
 from srl.models import Awards
 
 from api.permissions import public_read
 from api.v1.schemas.awards import AwardListSchema
 from api.v1.schemas.base import ErrorResponse
+
+logger = logging.getLogger(__name__)
 
 router = Router()
 
@@ -55,11 +59,6 @@ def get_all_awards(
                 for award in awards
             ],
         )
-    except Exception as e:
-        return Status(
-            500,
-            ErrorResponse(
-                error="Failed to retrieve awards",
-                details={"exception": str(e)},
-            ),
-        )
+    except Exception:
+        logger.exception("awards_list_failed")
+        raise HttpError(500, "Internal Server Error")

@@ -1,3 +1,5 @@
+from auditlog.models import GameAuditEvent
+from auditlog.recorders import record_event
 from celery import chain
 from django.db.models import Min
 
@@ -7,6 +9,7 @@ from srl.leaderboard.recalculation import (
 )
 from srl.leaderboard.resolution import resolve_leaderboard
 from srl.models.runs import Runs
+from srl.tasks import recalculate_leaderboard_task, recalculate_streaks_task
 
 
 def _wr_check(
@@ -39,18 +42,47 @@ def _wr_check(
 
 def recalculate_run(
     run: Runs,
+    cause: str | None = None,
+    actor_user_id: int | None = None,
 ) -> None:
     """Dispatch async leaderboard recalculation for a verified run.
 
     Arguments:
-        run: A Run instance that was just verified or had its time updated.
+        run (Runs): A Run instance that was just verified or had its time updated.
+        cause (str | None): Caller-supplied label describing why the recalc fires
+            (e.g. "vid_status=verified", "time edited"). Recorded in the
+            game's audit log; safe to omit.
+        actor_user_id (int | None): Optional user id to attribute the recalc to in the audit
+            log. Forwarded to the Celery tasks so the actor context survives
+            the broker hop.
     """
-    from srl.tasks import recalculate_leaderboard_task, recalculate_streaks_task
 
     leaderboard = resolve_leaderboard(run)
-    recalc = recalculate_leaderboard_task.si(leaderboard)
+    with_streaks = _wr_check(run, leaderboard)
 
-    if _wr_check(run, leaderboard):
-        chain(recalc, recalculate_streaks_task.si(leaderboard)).delay()
+    record_event(
+        game=run.game.id,
+        event_type=GameAuditEvent.EventType.RUN_RECALC,
+        summary=f"Run recalc: {run.pk}",
+        target=run,
+        payload={
+            "run_id": run.pk,
+            "cause": cause,
+            "with_streaks": with_streaks,
+        },
+    )
+
+    recalc = recalculate_leaderboard_task.si(
+        leaderboard,
+        actor_user_id=actor_user_id,
+    )
+    if with_streaks:
+        chain(
+            recalc,
+            recalculate_streaks_task.si(
+                leaderboard,
+                actor_user_id=actor_user_id,
+            ),
+        ).delay()
     else:
         recalc.delay()

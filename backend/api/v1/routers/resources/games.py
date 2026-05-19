@@ -4,13 +4,14 @@ from django.core.exceptions import ValidationError
 from django.db.models import Case, F, IntegerField, Prefetch, Q, Value, When
 from django.http import HttpRequest
 from ninja import Query, Router, Status
-from srl.models import Categories, Games, Levels, Variables, VariableValues
+from srl.models import Categories, Games, Levels, Players, Variables, VariableValues
 
 from api.permissions import authed, public_read
 from api.v1.routers.utils.embeds import parse_embeds
 from api.v1.routers.utils.resolvers import game_from_path
 from api.v1.schemas.base import ErrorResponse
 from api.v1.schemas.games import GameCreateSchema, GameSchema, GameUpdateSchema
+from api.v1.schemas.players import extract_gradients
 from api.v1.utils import get_or_generate_id
 
 router = Router()
@@ -86,6 +87,14 @@ def game_embeds(
     if "platforms" in embed_list:
         queryset = queryset.prefetch_related("platforms")
 
+    if "moderators" in embed_list:
+        queryset = queryset.prefetch_related(
+            Prefetch(
+                "moderators",
+                queryset=Players.objects.select_related("user", "countrycode"),
+            ),
+        )
+
     return queryset
 
 
@@ -132,7 +141,7 @@ def _build_cat_embed(
                 "archive": val.archive,
                 "rules": val.rules,
                 "defaulttime": val.defaulttime,
-                "allowed_methods": val.allowed_methods,
+                "required_methods": val.required_methods,
             }
             for val in var.variablevalues_set.all()  # type: ignore
         ]
@@ -207,6 +216,23 @@ def _build_platforms_embed(
     ]
 
 
+def _build_moderators_embed(
+    game: Games,
+) -> list[dict]:
+    return [
+        {
+            "id": player.id,
+            "name": player.name,
+            "nickname": player.nickname,
+            "url": player.url,
+            "country_id": player.countrycode_id,
+            "pfp": player.pfp,
+            "gradients": extract_gradients(player),
+        }
+        for player in game.moderators.all()  # type: ignore
+    ]
+
+
 @router.get(
     "/all",
     response={
@@ -228,6 +254,7 @@ Supported Embeds:
 - `categories`: Include metadata related to the game's categories.
 - `levels`: Include metadata related to the game's levels.
 - `platforms`: Include metadata related to the game's available platforms.
+- `moderators`: Include the list of players who moderate the game on thps.run.
 
 Examples:
 - `/games/all` - Get all games.
@@ -267,6 +294,8 @@ def get_all_games(
                 game_data.levels = _build_levels_embed(game)
             if "platforms" in embed_fields:
                 game_data.platforms = _build_platforms_embed(game)
+            if "moderators" in embed_fields:
+                game_data.moderators = _build_moderators_embed(game)
             game_schemas.append(game_data)
 
         return Status(200, game_schemas)
@@ -296,11 +325,13 @@ Supported Embeds:
 - `categories`: Include metadata related to the game's categories
 - `levels`: Include metadata related to the game's levels
 - `platforms`: Include metadata related to the game's available platforms
+- `moderators`: Include the list of players who moderate the game on thps.run
 
 Examples:
 - `/games/thps4` - Get game by slug
 - `/games/n2680o1p` - Get game by ID
 - `/games/thps4?embed=categories,levels` - Get game with categories and levels
+- `/games/thps4?embed=moderators` - Get game with the moderators list
 """,
     auth=public_read(),
 )
@@ -341,6 +372,8 @@ def get_game(
             game_data.levels = _build_levels_embed(game)
         if "platforms" in embed_fields:
             game_data.platforms = _build_platforms_embed(game)
+        if "moderators" in embed_fields:
+            game_data.moderators = _build_moderators_embed(game)
         return Status(200, game_data)
     except Exception as e:
         return Status(

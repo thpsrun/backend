@@ -19,6 +19,7 @@ from srl.models.reconciliation import (
     ReconSourceOfTruth,
     ReconStatus,
 )
+from srl.srcom.recon_dispatch import get_phase_dispatcher
 
 LOCK_TTL_SECONDS = 3600
 ERROR_SUMMARY_MAX_LEN = 4000
@@ -430,12 +431,8 @@ def finalize_after_drain(
         job.save(update_fields=["phase"])
         dispatch_target = next_phase
 
-    from srl.tasks import dispatch_phase_2, dispatch_phase_3
-
     job_id_str = str(job_id)
-    dispatcher = (
-        dispatch_phase_2 if dispatch_target == ReconPhase.P2.value else dispatch_phase_3
-    )
+    dispatcher = get_phase_dispatcher(dispatch_target)
     increment_pending(job_id_str, 1)
     try:
         dispatcher.delay(recon_job_id=job_id_str)

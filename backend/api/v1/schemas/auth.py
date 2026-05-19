@@ -204,7 +204,7 @@ class SocialAccountListItem(Schema):
 
 class AuthenticatorListItem(Schema):
     type: str
-    id: int
+    id: str
     name: str | None = None
     added_at: datetime | None = None
 
@@ -212,7 +212,7 @@ class AuthenticatorListItem(Schema):
         json_schema_extra={
             "example": {
                 "type": "webauthn",
-                "id": 7,
+                "id": "a3f1c9b2d4e57f80",
                 "name": "YubiKey 5C",
                 "added_at": "2026-05-15T10:00:00Z",
             },
@@ -240,7 +240,7 @@ class AuthMethodsResponse(Schema):
                 "authenticators": [
                     {
                         "type": "webauthn",
-                        "id": 7,
+                        "id": "a3f1c9b2d4e57f80",
                         "name": "YubiKey 5C",
                         "added_at": "2026-05-15T10:00:00Z",
                     },
@@ -264,20 +264,6 @@ class SocialAccountListResponse(Schema):
                         "last_login": "2026-05-15T10:00:00Z",
                     },
                 ],
-            },
-        },
-    )
-
-
-class DeletePasswordRequest(Schema):
-    password: str | None = None
-    mfa_code: str | None = None
-    webauthn_assertion: dict | None = None
-
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "password": "currentPassword123",
             },
         },
     )

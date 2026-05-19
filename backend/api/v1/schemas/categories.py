@@ -8,6 +8,7 @@ from api.v1.schemas.base import (
     SlugMixin,
     TimingMethodType,
 )
+from api.v1.schemas.sanitization import sanitize_optional_markdown
 from api.v1.schemas.variables import VariableWithValuesSchema
 
 
@@ -25,7 +26,7 @@ class CategoryBaseSchema(SlugMixin, BaseEmbedSchema):
         archive (bool): Whether category is hidden from listings.
         defaulttime (TimingMethodType | None): Category-level timing override. Null inherits from
             game.
-        allowed_methods (list[TimingMethodType] | None): Narrows allowed methods for this category.
+        required_methods (list[TimingMethodType] | None): Narrows allowed methods for this category.
             Must be a non-empty subset of the game's allowed methods. Null inherits.
     """
 
@@ -44,7 +45,7 @@ class CategoryBaseSchema(SlugMixin, BaseEmbedSchema):
         default=None,
         description="Category-level timing override. Null inherits from game.",
     )
-    allowed_methods: list[TimingMethodType] | None = Field(
+    required_methods: list[TimingMethodType] | None = Field(
         default=None,
         description=(
             "When set, narrows allowed methods for this category. Must be a non-empty "
@@ -77,7 +78,7 @@ class CategorySchema(CategoryBaseSchema):
                 "players": 1,
                 "archive": False,
                 "defaulttime": None,
-                "allowed_methods": None,
+                "required_methods": None,
             },
         },
     )
@@ -151,10 +152,18 @@ class CategoryCreateSchema(SlugMixin, BaseEmbedSchema):
         default=None,
         description="Category-level timing override; null inherits from game.",
     )
-    allowed_methods: list[TimingMethodType] | None = Field(
+    required_methods: list[TimingMethodType] | None = Field(
         default=None,
         description="Allowed timing methods; null inherits, set to a subset of game's.",
     )
+
+    @field_validator("rules", mode="after")
+    @classmethod
+    def _sanitize_rules(
+        cls,
+        value: str | None,
+    ) -> str | None:
+        return sanitize_optional_markdown(value)
 
 
 class CategoryUpdateSchema(BaseEmbedSchema):
@@ -186,7 +195,15 @@ class CategoryUpdateSchema(BaseEmbedSchema):
     )
     archive: bool | None = Field(default=None, description="Hidden from listings")
     defaulttime: TimingMethodType | None = None
-    allowed_methods: list[TimingMethodType] | None = None
+    required_methods: list[TimingMethodType] | None = None
+
+    @field_validator("rules", mode="after")
+    @classmethod
+    def _sanitize_rules(
+        cls,
+        value: str | None,
+    ) -> str | None:
+        return sanitize_optional_markdown(value)
 
 
 class GameCategoryResponseSchema(CategoryBaseSchema):

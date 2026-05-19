@@ -1,6 +1,7 @@
 from django.core.exceptions import ValidationError
 from django.db import models
 
+from srl.models.base import METHOD_TO_TIME_FIELD
 from srl.models.categories import Categories
 from srl.models.games import Games
 from srl.models.levels import Levels
@@ -242,11 +243,9 @@ class Runs(models.Model):
         auto_now=True,
     )
 
-    # Maps timing method -> (display string field, seconds field)
     _TIMING_FIELD_MAP: dict[str, tuple[str, str]] = {
-        "rta": ("time", "time_secs"),
-        "lrt": ("timenl", "timenl_secs"),
-        "igt": ("timeigt", "timeigt_secs"),
+        method: (secs_field.removesuffix("_secs"), secs_field)
+        for method, secs_field in METHOD_TO_TIME_FIELD.items()
     }
 
     def _primary_timing_method(
@@ -268,26 +267,32 @@ class Runs(models.Model):
             return self.game.idefaulttime
         return self.game.defaulttime
 
-    def _resolved_allowed_methods(
+    def _resolved_required_methods(
         self,
     ) -> list[str]:
         rvvs = list(self.runvariablevalues_set.all())  # type: ignore
         for rvv in rvvs:
-            if rvv.value.allowed_methods is not None:
-                return list(rvv.value.allowed_methods)
+            if rvv.value.required_methods is not None:
+                return list(rvv.value.required_methods)
         for rvv in rvvs:
-            if rvv.variable.allowed_methods is not None:
-                return list(rvv.variable.allowed_methods)
-        if self.category and self.category.allowed_methods is not None:
-            return list(self.category.allowed_methods)
+            if rvv.variable.required_methods is not None:
+                return list(rvv.variable.required_methods)
+        if self.category and self.category.required_methods is not None:
+            return list(self.category.required_methods)
         if self.runtype == "il":
-            return list(self.game.allowed_methods_il)
-        return list(self.game.allowed_methods_fg)
+            return list(self.game.required_methods_il)
+        return list(self.game.required_methods_fg)
 
     def validate_allowed_method_data(
         self,
     ) -> None:
-        allowed = self._resolved_allowed_methods()
+        """Enforce that the run has data for every resolved "allowed" timing method.
+
+        Resolves the `Game` -> `Category` -> `Variable` -> `VariableValue` chain to resolve if
+        the run has the `required_methods`. Missing or zero values on any resolved method
+        will raise a ValidationError.
+        """
+        allowed = self._resolved_required_methods()
         missing: list[str] = []
         for method in allowed:
             _, secs_field = self._TIMING_FIELD_MAP[method]
@@ -309,7 +314,7 @@ class Runs(models.Model):
         secs_value = getattr(self, secs_field)
         if secs_value and secs_value > 0:
             return getattr(self, field)
-        for candidate in self._resolved_allowed_methods():
+        for candidate in self._resolved_required_methods():
             cand_field, cand_secs = self._TIMING_FIELD_MAP[candidate]
             cand_value = getattr(self, cand_secs)
             if cand_value and cand_value > 0:
@@ -325,7 +330,7 @@ class Runs(models.Model):
         value = getattr(self, secs_field)
         if value and value > 0:
             return value
-        for candidate in self._resolved_allowed_methods():
+        for candidate in self._resolved_required_methods():
             _, cand_secs = self._TIMING_FIELD_MAP[candidate]
             cand_value = getattr(self, cand_secs)
             if cand_value and cand_value > 0:

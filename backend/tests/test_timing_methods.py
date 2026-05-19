@@ -1,14 +1,13 @@
 from datetime import datetime, timezone
 from unittest.mock import patch
 
-from django.core.cache import caches
-from django.test import TestCase
-
 from api.v1.routers.utils.cache_utils import (
     game_leaderboard_cache_key,
     lbs_runs_cache_key,
 )
 from api.v1.routers.utils.query_utils import _build_lbs_run_dict
+from django.core.cache import caches
+from django.test import TestCase
 from srl.leaderboard.recalculation import process_leaderboard
 from srl.models import (
     Categories,
@@ -16,8 +15,9 @@ from srl.models import (
     Players,
     RunPlayers,
     Runs,
+    Variables,
+    VariableValues,
 )
-from srl.models import Variables, VariableValues
 from srl.models.base import LeaderboardChoices
 
 
@@ -38,11 +38,11 @@ class RecalcPerRunPrimaryTest(TestCase):
             idefaulttime=LeaderboardChoices.INGAME,
             pointsmax=1000,
             ipointsmax=250,
-            allowed_methods_fg=[
+            required_methods_fg=[
                 LeaderboardChoices.REALTIME,
                 LeaderboardChoices.INGAME,
             ],
-            allowed_methods_il=[LeaderboardChoices.INGAME],
+            required_methods_il=[LeaderboardChoices.INGAME],
         )
         cls.category = Categories.objects.create(
             id="reccat1",
@@ -106,7 +106,9 @@ class RecalcPerRunPrimaryTest(TestCase):
             leaderboard,
             dry_run=False,
             game_is_ce={self.game.id: False},
-            game_time_columns={self.game.id: {"main": "timeigt_secs", "il": "timeigt_secs"}},
+            game_time_columns={
+                self.game.id: {"main": "timeigt_secs", "il": "timeigt_secs"}
+            },
         )
         run_c = Runs.objects.get(id="recrc")
         run_d = Runs.objects.get(id="recrd")
@@ -131,11 +133,11 @@ class LbsRunDictMethodsTest(TestCase):
             idefaulttime=LeaderboardChoices.INGAME,
             pointsmax=1000,
             ipointsmax=250,
-            allowed_methods_fg=[
+            required_methods_fg=[
                 LeaderboardChoices.REALTIME,
                 LeaderboardChoices.INGAME,
             ],
-            allowed_methods_il=[
+            required_methods_il=[
                 LeaderboardChoices.REALTIME,
                 LeaderboardChoices.INGAME,
             ],
@@ -155,7 +157,7 @@ class LbsRunDictMethodsTest(TestCase):
             type="per-game",
             url="https://example.com/100",
             game=cls.game,
-            allowed_methods=[LeaderboardChoices.INGAME],
+            required_methods=[LeaderboardChoices.INGAME],
         )
         cls.player = Players.objects.create(
             id="lbspl1",
@@ -233,11 +235,11 @@ class CacheKeyTimingConfigTest(TestCase):
             idefaulttime=LeaderboardChoices.REALTIME,
             pointsmax=1000,
             ipointsmax=250,
-            allowed_methods_fg=[
+            required_methods_fg=[
                 LeaderboardChoices.REALTIME,
                 LeaderboardChoices.INGAME,
             ],
-            allowed_methods_il=[LeaderboardChoices.REALTIME],
+            required_methods_il=[LeaderboardChoices.REALTIME],
         )
         cls.category = Categories.objects.create(
             id="ckcat1",
@@ -253,23 +255,23 @@ class CacheKeyTimingConfigTest(TestCase):
     ) -> None:
         caches["default"].clear()
 
-    def test_game_leaderboard_cache_key_changes_on_allowed_methods_save(
+    def test_game_leaderboard_cache_key_changes_on_required_methods_save(
         self,
     ) -> None:
         before = game_leaderboard_cache_key(self.game.id)
-        # Modify allowed_methods (no Run touched). Without the spec change,
+        # Modify required_methods (no Run touched). Without the spec change,
         # the key is unchanged.
-        self.game.allowed_methods_fg = [LeaderboardChoices.REALTIME]
+        self.game.required_methods_fg = [LeaderboardChoices.REALTIME]
         self.game.save()
         caches["default"].clear()  # flush per-ts cache
         after = game_leaderboard_cache_key(self.game.id)
         self.assertNotEqual(before, after)
 
-    def test_lbs_runs_cache_key_changes_on_category_allowed_methods_save(
+    def test_lbs_runs_cache_key_changes_on_category_required_methods_save(
         self,
     ) -> None:
         before = lbs_runs_cache_key(self.game.id, self.category.id)
-        self.category.allowed_methods = [LeaderboardChoices.REALTIME]
+        self.category.required_methods = [LeaderboardChoices.REALTIME]
         self.category.save()
         caches["default"].clear()
         after = lbs_runs_cache_key(self.game.id, self.category.id)
@@ -293,11 +295,11 @@ class GameTimingRecalcSignalTest(TestCase):
             idefaulttime=LeaderboardChoices.REALTIME,
             pointsmax=1000,
             ipointsmax=250,
-            allowed_methods_fg=[
+            required_methods_fg=[
                 LeaderboardChoices.REALTIME,
                 LeaderboardChoices.INGAME,
             ],
-            allowed_methods_il=[LeaderboardChoices.REALTIME],
+            required_methods_il=[LeaderboardChoices.REALTIME],
         )
 
     @patch("api.signals.rebackfill_game_runs.delay")
@@ -310,13 +312,13 @@ class GameTimingRecalcSignalTest(TestCase):
         mock_rebackfill.assert_called_once_with(self.game.slug)
 
     @patch("api.signals.rebackfill_game_runs.delay")
-    def test_allowed_methods_change_fires_rebackfill(
+    def test_required_methods_change_fires_rebackfill(
         self,
         mock_rebackfill,
     ) -> None:
-        # allowed_methods can flip which fallback timing column a run reads,
+        # required_methods can flip which fallback timing column a run reads,
         # so it goes through the same rebackfill+recalc chain.
-        self.game.allowed_methods_fg = [LeaderboardChoices.REALTIME]
+        self.game.required_methods_fg = [LeaderboardChoices.REALTIME]
         self.game.save()
         mock_rebackfill.assert_called_once_with(self.game.slug)
 
@@ -347,11 +349,11 @@ class ChildTimingRecalcSignalTest(TestCase):
             idefaulttime=LeaderboardChoices.REALTIME,
             pointsmax=1000,
             ipointsmax=250,
-            allowed_methods_fg=[
+            required_methods_fg=[
                 LeaderboardChoices.REALTIME,
                 LeaderboardChoices.INGAME,
             ],
-            allowed_methods_il=[LeaderboardChoices.REALTIME],
+            required_methods_il=[LeaderboardChoices.REALTIME],
         )
 
     @patch("api.signals.rebackfill_game_runs.delay")
@@ -373,7 +375,7 @@ class ChildTimingRecalcSignalTest(TestCase):
         mock_rebackfill.assert_called_once_with(self.game.slug)
 
     @patch("api.signals.rebackfill_game_runs.delay")
-    def test_category_allowed_methods_change_fires_rebackfill(
+    def test_category_required_methods_change_fires_rebackfill(
         self,
         mock_rebackfill,
     ) -> None:
@@ -386,7 +388,7 @@ class ChildTimingRecalcSignalTest(TestCase):
             game=self.game,
         )
         mock_rebackfill.reset_mock()
-        cat.allowed_methods = [LeaderboardChoices.INGAME]
+        cat.required_methods = [LeaderboardChoices.INGAME]
         cat.save()
         mock_rebackfill.assert_called_once_with(self.game.slug)
 
@@ -432,5 +434,3 @@ class ChildTimingRecalcSignalTest(TestCase):
         val.defaulttime = LeaderboardChoices.INGAME
         val.save()
         mock_rebackfill.assert_called_once_with(self.game.slug)
-
-

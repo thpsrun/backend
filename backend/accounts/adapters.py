@@ -10,6 +10,7 @@ from allauth.socialaccount.models import SocialAccount, SocialLogin
 from django.conf import settings
 from django.contrib.auth.base_user import AbstractBaseUser
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.http import HttpRequest, HttpResponseRedirect
 from srl.models import Players
 
@@ -48,7 +49,11 @@ class SocialAccountAdapter(DefaultSocialAccountAdapter):
     ) -> bool:
         return True
 
-    def pre_social_login(self, request: HttpRequest, sociallogin: SocialLogin) -> None:
+    def pre_social_login(
+        self,
+        request: HttpRequest,
+        sociallogin: SocialLogin,
+    ) -> None:
         existing_user = sociallogin.user if sociallogin.is_existing else None
         _check_oauth_unique(sociallogin, exclude_user=existing_user)
         if sociallogin.state.get("process") == "connect":
@@ -70,24 +75,33 @@ class SocialAccountAdapter(DefaultSocialAccountAdapter):
         account: SocialAccount,
         accounts: list[SocialAccount],
     ) -> None:
-        user = account.user
-        if user.has_usable_password():
+        # This is additional logic to lock the user from removing their password AND their
+        # social media - otherwise a user would be completely locked out.
+        with transaction.atomic():
+            user = (
+                type(account.user).objects.select_for_update().get(pk=account.user.pk)
+            )
+            if user.has_usable_password():
+                return super().validate_disconnect(account, accounts)
+
+            remaining_social = [a for a in accounts if a.pk != account.pk]
+            has_passkey = Authenticator.objects.filter(
+                user=user,
+                type="webauthn",
+            ).exists()
+
+            if not remaining_social and not has_passkey:
+                raise ValidationError("last_auth_method")
+
             return super().validate_disconnect(account, accounts)
-
-        remaining_social = [a for a in accounts if a.pk != account.pk]
-        has_passkey = Authenticator.objects.filter(
-            user=user,
-            type="webauthn",
-        ).exists()
-
-        if not remaining_social and not has_passkey:
-            raise ValidationError("last_auth_method")
-
-        return super().validate_disconnect(account, accounts)
 
 
 class MFAAdapter(DefaultMFAAdapter):
-    def is_mfa_enabled(self, user, types=None) -> bool:
+    def is_mfa_enabled(
+        self,
+        user,
+        types=None,
+    ) -> bool:
         if user.is_anonymous:
             return False
 

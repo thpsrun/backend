@@ -123,7 +123,7 @@ class RunBaseSchema(BaseEmbedSchema):
         url (str): Speedrun.com URL.
         resolved_primary_method (TimingMethodType): Effective primary timing method per the
             VariableValue > Variable > Category > Game inheritance chain.
-        resolved_allowed_methods (list[TimingMethodType]): Effective allowed timing methods for
+        resolved_required_methods (list[TimingMethodType]): Effective allowed timing methods for
             this run after inheritance.
     """
 
@@ -172,7 +172,7 @@ class RunBaseSchema(BaseEmbedSchema):
             "VariableValue > Variable > Category > Game chain."
         ),
     )
-    resolved_allowed_methods: list[TimingMethodType] = Field(
+    resolved_required_methods: list[TimingMethodType] = Field(
         default_factory=list,
         description="Effective allowed timing methods for this run after inheritance.",
     )
@@ -213,11 +213,11 @@ class RunBaseSchema(BaseEmbedSchema):
                 data.resolved_primary_method = data._primary_timing_method()
             except Exception:
                 data.resolved_primary_method = "rta"
-        if hasattr(data, "_resolved_allowed_methods"):
+        if hasattr(data, "_resolved_required_methods"):
             try:
-                data.resolved_allowed_methods = data._resolved_allowed_methods()
+                data.resolved_required_methods = data._resolved_required_methods()
             except Exception:
-                data.resolved_allowed_methods = []
+                data.resolved_required_methods = []
         return data
 
 
@@ -263,7 +263,7 @@ class RunSchema(RunBaseSchema):
                 "v_date": "2025-08-15T10:30:00Z",
                 "url": "https://speedrun.com/thps4/run/y8dwozoj",
                 "resolved_primary_method": "rta",
-                "resolved_allowed_methods": ["rta"],
+                "resolved_required_methods": ["rta"],
                 "game": "n2680o1p",
                 "category": "rklge08d",
                 "level": None,

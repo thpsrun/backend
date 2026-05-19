@@ -95,7 +95,7 @@ class SlugMixin(BaseModel):
 
 
 VALID_EMBEDS: dict[str, set[str]] = {
-    "games": {"categories", "levels", "platforms"},
+    "games": {"categories", "levels", "platforms", "moderators"},
     "categories": {"game", "variables", "values"},
     "levels": {"game", "variables", "values"},
     "variables": {"game", "category", "level", "values"},

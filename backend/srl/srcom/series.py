@@ -38,7 +38,7 @@ def sync_series(
 
     instance = reconciliation_upsert_check(
         Series,
-        defaults={"name": name[:20], "url": url},
+        defaults={"name": name, "url": url},
         record_type="series",
         id=canonical_id,
     )

@@ -6,9 +6,13 @@ from datetime import datetime
 from datetime import timezone as dt_tz
 from typing import Any
 
+from auditlog.context import get_actor
+from auditlog.models import GameAuditEvent
+from auditlog.recorders import record_event
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import caches
+from django.db import transaction
 from django.db.models.signals import (
     m2m_changed,
     post_delete,
@@ -33,10 +37,45 @@ _GAME_TIMING_FIELDS = frozenset(
     {
         "defaulttime",
         "idefaulttime",
-        "allowed_methods_fg",
-        "allowed_methods_il",
-    }
+        "required_methods_fg",
+        "required_methods_il",
+    },
 )
+_CHILD_TIMING_FIELDS = frozenset({"defaulttime", "required_methods"})
+
+
+def _actor_user_id() -> int | None:
+    """Read the current actor's user primary key for Celery dispatch attribution."""
+
+    actor = get_actor() or {}
+    actor_user = actor.get("user")
+    return getattr(actor_user, "pk", None)
+
+
+def _record_on_commit(**kwargs: Any) -> None:
+    """Wrap record_event in transaction.on_commit so audit rows aren't written
+    inside a transaction that might still roll back. Safe even outside a
+    transaction (executes immediately)."""
+
+    transaction.on_commit(lambda: record_event(**kwargs))
+
+
+def _dispatch_rebackfill_on_commit(
+    slug: str,
+    *,
+    triggered_by: str,
+    actor_user_id: int | None,
+) -> None:
+    """Defer Celery dispatch until the originating transaction commits so the
+    worker doesn't read stale rows."""
+
+    transaction.on_commit(
+        lambda: rebackfill_game_runs.delay(
+            slug,
+            triggered_by=triggered_by,
+            actor_user_id=actor_user_id,
+        ),
+    )
 
 
 def _revoke_unbackable_keys(
@@ -47,18 +86,35 @@ def _revoke_unbackable_keys(
     Touches APIKey rows only - never auth_user or Games.moderators - so the
     handlers that call this can't recurse into themselves.
     """
+
     if not users:
         return
-    keys = APIKey.objects.filter(user__in=users, revoked=False)
+    keys = APIKey.objects.filter(user__in=users, revoked=False).prefetch_related(
+        "scope_games",
+    )
     for key in keys:
         if is_key_backable(key):
             continue
+        scoped_games = list(key.scope_games.all())
         if key.revoke(APIKeyRevokedReason.PERMISSION_REVOKED):
             logger.info(
                 "auto-revoked key id=%s user=%s reason=permission_revoked",
                 key.pk,
                 key.user_id,
             )
+            for game in scoped_games:
+                _record_on_commit(
+                    game=game,
+                    event_type=GameAuditEvent.EventType.APIKEY_REVOKED,
+                    summary=f"API key revoked: {key.label or key.pk}",
+                    target=key,
+                    payload={
+                        "key_id": key.pk,
+                        "key_label": key.label,
+                        "user_id": key.user_id,
+                        "reason": APIKeyRevokedReason.PERMISSION_REVOKED.value,
+                    },
+                )
 
 
 def _users_from_player_pks(
@@ -75,7 +131,11 @@ def _users_from_player_pks(
     return list(User.objects.filter(pk__in=user_ids))
 
 
-@receiver(m2m_changed, sender=Games.moderators.through)
+@receiver(
+    m2m_changed,
+    sender=Games.moderators.through,
+    dispatch_uid="api.signals.on_moderators_changed",
+)
 def on_moderators_changed(
     sender: Any,
     instance: Any,
@@ -84,40 +144,138 @@ def on_moderators_changed(
     pk_set: set[Any] | None,
     **kwargs: Any,
 ) -> None:
+    if kwargs.get("raw"):
+        return
+
+    if action == "pre_clear":
+        if reverse:
+            player = instance
+            game_ids = list(player.moderated_games.values_list("pk", flat=True))
+            for game_id in game_ids:
+                _record_on_commit(
+                    game=game_id,
+                    event_type=GameAuditEvent.EventType.MODERATOR_REMOVED,
+                    summary=(
+                        f"Moderator remove (clear): "
+                        f"{getattr(player, 'name', '') or player.pk}"
+                    ),
+                    target=player,
+                    payload={
+                        "player_id": player.pk,
+                        "player_name": getattr(player, "name", None),
+                        "user_id": getattr(player, "user_id", None),
+                        "cause": "pre_clear",
+                    },
+                )
+            user_id = getattr(player, "user_id", None)
+            if user_id is None:
+                return
+            User = get_user_model()
+            users = list(User.objects.filter(pk=user_id))
+        else:
+            game = instance
+            players = list(game.moderators.all())
+            for player in players:
+                _record_on_commit(
+                    game=game,
+                    event_type=GameAuditEvent.EventType.MODERATOR_REMOVED,
+                    summary=(
+                        f"Moderator remove (clear): "
+                        f"{getattr(player, 'name', '') or player.pk}"
+                    ),
+                    target=player,
+                    payload={
+                        "player_id": player.pk,
+                        "player_name": getattr(player, "name", None),
+                        "user_id": getattr(player, "user_id", None),
+                        "cause": "pre_clear",
+                    },
+                )
+            users = _users_from_player_pks({p.pk for p in players})
+        _revoke_unbackable_keys(users)
+        return
+
     if action not in ("post_add", "post_remove"):
         return
     if not pk_set:
         return
 
+    event_type = (
+        GameAuditEvent.EventType.MODERATOR_ADDED
+        if action == "post_add"
+        else GameAuditEvent.EventType.MODERATOR_REMOVED
+    )
+
     if reverse:
-        # Reverse-side: `player.games_moderated.add(game)` or similar. instance is the
-        # Player, pk_set is Game PKs. Only the player's owning user needs checking.
-        user_id = getattr(instance, "user_id", None)
+        # Reverse-side: instance is the Player, pk_set is Game PKs.
+        player = instance
+        for game_id in pk_set:
+            _record_on_commit(
+                game=game_id,
+                event_type=event_type,
+                summary=(
+                    f"Moderator {action[5:]}: "
+                    f"{getattr(player, 'name', '') or player.pk}"
+                ),
+                target=player,
+                payload={
+                    "player_id": player.pk,
+                    "player_name": getattr(player, "name", None),
+                    "user_id": getattr(player, "user_id", None),
+                },
+            )
+        user_id = getattr(player, "user_id", None)
         if user_id is None:
             return
         User = get_user_model()
         users = list(User.objects.filter(pk=user_id))
     else:
-        # Forward-side: `game.moderators.add(player)`. instance is the Game, pk_set is
-        # Player PKs. Fan out to each affected player's owning user.
+        # Forward-side: instance is the Game, pk_set is Player PKs.
+        game = instance
+        players = list(Players.objects.filter(pk__in=pk_set))
+        for player in players:
+            _record_on_commit(
+                game=game,
+                event_type=event_type,
+                summary=(
+                    f"Moderator {action[5:]}: "
+                    f"{getattr(player, 'name', '') or player.pk}"
+                ),
+                target=player,
+                payload={
+                    "player_id": player.pk,
+                    "player_name": getattr(player, "name", None),
+                    "user_id": getattr(player, "user_id", None),
+                },
+            )
         users = _users_from_player_pks(pk_set)
 
     _revoke_unbackable_keys(users)
 
 
-@receiver(post_save, sender=settings.AUTH_USER_MODEL)
+@receiver(
+    post_save,
+    sender=settings.AUTH_USER_MODEL,
+    dispatch_uid="api.signals.on_user_saved",
+)
 def on_user_saved(
     sender: Any,
     instance: Any,
     created: bool,
     **kwargs: Any,
 ) -> None:
+    if kwargs.get("raw"):
+        return
     if created:
         return
     _revoke_unbackable_keys([instance])
 
 
-@receiver(pre_delete, sender=Games)
+@receiver(
+    pre_delete,
+    sender=Games,
+    dispatch_uid="api.signals.on_game_deleted",
+)
 def on_game_deleted(
     sender: Any,
     instance: Any,
@@ -126,11 +284,41 @@ def on_game_deleted(
     """Revoke keys that scope to *only* this game. Without this, the M2M cascade
     silently empties their scope_games and the key's game restriction vanishes
     (effectively broadening the key beyond what the owner asked for).
+
+    pre_delete fires before the FK SET_NULL cascade reaches GameAuditEvent rows,
+    so we record directly (not via on_commit). The snapshot field preserves the
+    slug after the game row goes away.
     """
+
     try:
         for key in APIKey.objects.filter(scope_games=instance, revoked=False):
             if key.scope_games.count() != 1:
                 continue
+            try:
+                record_event(
+                    game=instance,
+                    event_type=GameAuditEvent.EventType.APIKEY_REVOKED,
+                    summary=(
+                        f"API key revoked (last scoped game deleted): "
+                        f"{key.label or key.pk}"
+                    ),
+                    target=key,
+                    payload={
+                        "key_id": key.pk,
+                        "key_label": key.label,
+                        "user_id": key.user_id,
+                        "reason": APIKeyRevokedReason.PERMISSION_REVOKED.value,
+                        "cause": "last_scope_game_deleted",
+                    },
+                )
+            except Exception:
+                logger.exception(
+                    "on_game_deleted audit write failed",
+                    extra={
+                        "game_id": getattr(instance, "pk", None),
+                        "key_id": getattr(key, "pk", None),
+                    },
+                )
             if key.revoke(APIKeyRevokedReason.PERMISSION_REVOKED):
                 logger.info(
                     "auto-revoked key id=%s user=%s reason=permission_revoked "
@@ -140,9 +328,8 @@ def on_game_deleted(
                     instance.pk,
                 )
     except Exception:
-        logger.warning(
+        logger.exception(
             "Failed to revoke keys on game deletion",
-            exc_info=True,
             extra={"game_id": getattr(instance, "pk", None)},
         )
 
@@ -233,8 +420,14 @@ def _invalidate_yearly(
         cache.delete_many(keys)
 
 
-@receiver(post_delete, sender=RunHistory)
+@receiver(
+    post_delete,
+    sender=RunHistory,
+    dispatch_uid="api.signals.on_runhistory_deleted",
+)
 def on_runhistory_deleted(sender, instance: RunHistory, **kwargs) -> None:
+    if kwargs.get("raw"):
+        return
     scopes = ["all", instance.run.game.id]
 
     end = instance.end_date or timezone.now().astimezone(dt_tz.utc)
@@ -253,12 +446,18 @@ def on_runhistory_deleted(sender, instance: RunHistory, **kwargs) -> None:
     _invalidate_earliest(scopes)
 
 
-@receiver(post_save, sender=RunHistory)
+@receiver(
+    post_save,
+    sender=RunHistory,
+    dispatch_uid="api.signals.on_runhistory_saved",
+)
 def on_runhistory_saved(
     sender,
     instance: RunHistory,
     **kwargs,
 ) -> None:
+    if kwargs.get("raw"):
+        return
     scopes = ["all", instance.run.game.id]
 
     end = instance.end_date or timezone.now().astimezone(dt_tz.utc)
@@ -287,127 +486,269 @@ def disable_history_signals():
         post_delete.connect(on_runhistory_deleted, sender=RunHistory)
 
 
-# Any timing-shape change on Game/Category/Variable/VariableValue fires
-# rebackfill_game_runs, which internally chains recalculate_game_boards.
-# One signal, one task, one source of truth.
-_CHILD_TIMING_FIELDS = frozenset({"defaulttime", "allowed_methods"})
-
-
 def _check_dirty(
     instance: Any,
     sender: type,
     fields: frozenset[str],
-) -> bool:
+) -> tuple[bool, dict[str, dict[str, Any]]]:
+    """Returns (any_changed, {field: {"previous": old, "new": new}, ...})."""
     if not instance.pk:
-        return False
+        return False, {}
     try:
         prev = sender.objects.get(pk=instance.pk)
     except sender.DoesNotExist:
-        return False
-    return any(getattr(prev, f, None) != getattr(instance, f, None) for f in fields)
+        return False, {}
+    diff: dict[str, dict[str, Any]] = {}
+    for f in fields:
+        old = getattr(prev, f, None)
+        new = getattr(instance, f, None)
+        if old != new:
+            diff[f] = {"previous": old, "new": new}
+    return bool(diff), diff
 
 
-@receiver(pre_save, sender=Games)
+@receiver(
+    pre_save,
+    sender=Games,
+    dispatch_uid="api.signals._capture_game_timing_change",
+)
 def _capture_game_timing_change(
     sender: Any,
     instance: Games,
     **kwargs: Any,
 ) -> None:
-    instance._timing_dirty = _check_dirty(instance, Games, _GAME_TIMING_FIELDS)  # type: ignore
+    if kwargs.get("raw"):
+        return
+    dirty, diff = _check_dirty(instance, Games, _GAME_TIMING_FIELDS)
+    instance._timing_dirty = dirty  # type: ignore
+    instance._timing_diff = diff  # type: ignore
 
 
-@receiver(post_save, sender=Games)
-def _fire_rebackfill_on_game_timing_change(
+@receiver(
+    post_save,
+    sender=Games,
+    dispatch_uid="api.signals._fire_rebackfill_game_change",
+)
+def _fire_rebackfill_game_change(
     sender: Any,
     instance: Games,
     created: bool,
     **kwargs: Any,
 ) -> None:
+    if kwargs.get("raw"):
+        return
     if created:
         return
     if getattr(instance, "_timing_dirty", False):
-        rebackfill_game_runs.delay(instance.slug)
+        diff = getattr(instance, "_timing_diff", {}) or {}
+        for field, change in diff.items():
+            _record_on_commit(
+                game=instance,
+                event_type=GameAuditEvent.EventType.TIMING_CONFIG_CHANGE,
+                summary=f"Games.{field} changed",
+                target=instance,
+                payload={
+                    "model": "Games",
+                    "field": field,
+                    "previous": change["previous"],
+                    "new": change["new"],
+                    "recalc_dispatched": field in {"defaulttime", "idefaulttime"},
+                    "rebackfill_dispatched": True,
+                },
+            )
+        triggered_by = next(
+            (f"Games.{field}" for field in diff),
+            "Games",
+        )
+        _dispatch_rebackfill_on_commit(
+            instance.slug,
+            triggered_by=triggered_by,
+            actor_user_id=_actor_user_id(),
+        )
 
 
-@receiver(pre_save, sender=Categories)
+@receiver(
+    pre_save,
+    sender=Categories,
+    dispatch_uid="api.signals._capture_category_timing_change",
+)
 def _capture_category_timing_change(
     sender: Any,
     instance: Categories,
     **kwargs: Any,
 ) -> None:
-    instance._timing_dirty = _check_dirty(  # type: ignore
-        instance,
-        Categories,
-        _CHILD_TIMING_FIELDS,
-    )
+    if kwargs.get("raw"):
+        return
+    dirty, diff = _check_dirty(instance, Categories, _CHILD_TIMING_FIELDS)
+    instance._timing_dirty = dirty  # type: ignore
+    instance._timing_diff = diff  # type: ignore
 
 
-@receiver(post_save, sender=Categories)
-def _fire_rebackfill_on_category_timing_change(
+@receiver(
+    post_save,
+    sender=Categories,
+    dispatch_uid="api.signals._fire_rebackfill_category_change",
+)
+def _fire_rebackfill_category_change(
     sender: Any,
     instance: Categories,
     created: bool,
     **kwargs: Any,
 ) -> None:
+    if kwargs.get("raw"):
+        return
     if created:
         return
     if not instance.game:
         return
     if getattr(instance, "_timing_dirty", False):
-        rebackfill_game_runs.delay(instance.game.slug)
+        diff = getattr(instance, "_timing_diff", {}) or {}
+        for field, change in diff.items():
+            _record_on_commit(
+                game=instance.game,
+                event_type=GameAuditEvent.EventType.TIMING_CONFIG_CHANGE,
+                summary=f"Categories[{instance.pk}].{field} changed",
+                target=instance,
+                payload={
+                    "model": "Categories",
+                    "field": field,
+                    "previous": change["previous"],
+                    "new": change["new"],
+                    "recalc_dispatched": field == "defaulttime",
+                    "rebackfill_dispatched": True,
+                },
+            )
+        triggered_by = next(
+            (f"Categories.{field}" for field in diff),
+            "Categories",
+        )
+        _dispatch_rebackfill_on_commit(
+            instance.game.slug,
+            triggered_by=triggered_by,
+            actor_user_id=_actor_user_id(),
+        )
 
 
-@receiver(pre_save, sender=Variables)
+@receiver(
+    pre_save,
+    sender=Variables,
+    dispatch_uid="api.signals._capture_variable_timing_change",
+)
 def _capture_variable_timing_change(
     sender: Any,
     instance: Variables,
     **kwargs: Any,
 ) -> None:
-    instance._timing_dirty = _check_dirty(  # type: ignore
-        instance,
-        Variables,
-        _CHILD_TIMING_FIELDS,
-    )
+    if kwargs.get("raw"):
+        return
+    dirty, diff = _check_dirty(instance, Variables, _CHILD_TIMING_FIELDS)
+    instance._timing_dirty = dirty  # type: ignore
+    instance._timing_diff = diff  # type: ignore
 
 
-@receiver(post_save, sender=Variables)
-def _fire_rebackfill_on_variable_timing_change(
+@receiver(
+    post_save,
+    sender=Variables,
+    dispatch_uid="api.signals._fire_rebackfill_variable_change",
+)
+def _fire_rebackfill_variable_change(
     sender: Any,
     instance: Variables,
     created: bool,
     **kwargs: Any,
 ) -> None:
+    if kwargs.get("raw"):
+        return
     if created:
         return
     if not instance.game:
         return
     if getattr(instance, "_timing_dirty", False):
-        rebackfill_game_runs.delay(instance.game.slug)
+        diff = getattr(instance, "_timing_diff", {}) or {}
+        for field, change in diff.items():
+            _record_on_commit(
+                game=instance.game,
+                event_type=GameAuditEvent.EventType.TIMING_CONFIG_CHANGE,
+                summary=f"Variables[{instance.pk}].{field} changed",
+                target=instance,
+                payload={
+                    "model": "Variables",
+                    "field": field,
+                    "previous": change["previous"],
+                    "new": change["new"],
+                    "recalc_dispatched": field == "defaulttime",
+                    "rebackfill_dispatched": True,
+                },
+            )
+        triggered_by = next(
+            (f"Variables.{field}" for field in diff),
+            "Variables",
+        )
+        _dispatch_rebackfill_on_commit(
+            instance.game.slug,
+            triggered_by=triggered_by,
+            actor_user_id=_actor_user_id(),
+        )
 
 
-@receiver(pre_save, sender=VariableValues)
+@receiver(
+    pre_save,
+    sender=VariableValues,
+    dispatch_uid="api.signals._capture_value_timing_change",
+)
 def _capture_value_timing_change(
     sender: Any,
     instance: VariableValues,
     **kwargs: Any,
 ) -> None:
-    instance._timing_dirty = _check_dirty(  # type: ignore
-        instance,
-        VariableValues,
-        _CHILD_TIMING_FIELDS,
-    )
+    if kwargs.get("raw"):
+        return
+    dirty, diff = _check_dirty(instance, VariableValues, _CHILD_TIMING_FIELDS)
+    instance._timing_dirty = dirty  # type: ignore
+    instance._timing_diff = diff  # type: ignore
 
 
-@receiver(post_save, sender=VariableValues)
-def _fire_rebackfill_on_value_timing_change(
+@receiver(
+    post_save,
+    sender=VariableValues,
+    dispatch_uid="api.signals._fire_rebackfill_value_change",
+)
+def _fire_rebackfill_value_change(
     sender: Any,
     instance: VariableValues,
     created: bool,
     **kwargs: Any,
 ) -> None:
+    if kwargs.get("raw"):
+        return
     if created:
         return
     if not instance.var or not instance.var.game:
         return
     if getattr(instance, "_timing_dirty", False):
-        rebackfill_game_runs.delay(instance.var.game.slug)
+        diff = getattr(instance, "_timing_diff", {}) or {}
+        game = instance.var.game
+        for field, change in diff.items():
+            _record_on_commit(
+                game=game,
+                event_type=GameAuditEvent.EventType.TIMING_CONFIG_CHANGE,
+                summary=f"VariableValues[{instance.pk}].{field} changed",
+                target=instance,
+                payload={
+                    "model": "VariableValues",
+                    "field": field,
+                    "previous": change["previous"],
+                    "new": change["new"],
+                    "recalc_dispatched": field == "defaulttime",
+                    "rebackfill_dispatched": True,
+                },
+            )
+        triggered_by = next(
+            (f"VariableValues.{field}" for field in diff),
+            "VariableValues",
+        )
+        _dispatch_rebackfill_on_commit(
+            game.slug,
+            triggered_by=triggered_by,
+            actor_user_id=_actor_user_id(),
+        )

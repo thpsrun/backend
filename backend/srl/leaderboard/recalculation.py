@@ -2,6 +2,8 @@ import bisect
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from auditlog.models import GameAuditEvent
+from auditlog.recorders import record_event
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.db.models import F, Prefetch, QuerySet
@@ -687,6 +689,35 @@ def process_leaderboard(
         RunHistory.objects.bulk_create(state.new_entries, batch_size=500)
 
     runs_to_fix = _sync_runs_points(state, runs, dry_run=dry_run)
+
+    if not dry_run:
+        try:
+
+            verbose = (
+                Games.objects.filter(pk=game_id)
+                .values_list("verbose_recalc_log", flat=True)
+                .first()
+            )
+            if verbose:
+                record_event(
+                    game=game_id,
+                    event_type=GameAuditEvent.EventType.RECALC_BOARD,
+                    summary=(
+                        f"Recalculating Board: {len(runs)} runs, "
+                        f"{state.entries_created_count} history entries"
+                    ),
+                    payload={
+                        "category_id": leaderboard.get("category_id"),
+                        "level_id": leaderboard.get("level_id"),
+                        "runtype": runtype,
+                        "variable_value_map": leaderboard.get("variable_value_map"),
+                        "entries_created": state.entries_created_count,
+                        "runs_processed": len(runs),
+                        "runs_updated": runs_to_fix,
+                    },
+                )
+        except Exception:
+            pass
 
     return state.entries_created_count, len(runs), runs_to_fix
 
