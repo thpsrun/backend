@@ -158,7 +158,9 @@ def game_from_stream_path(
     return stream.game if stream else None
 
 
-def resolve_game_or_none(game_id: str) -> Games | None:
+def resolve_game_or_none(
+    game_id: str,
+) -> Games | None:
     return Games.objects.filter(
         Q(id__iexact=game_id) | Q(slug__iexact=game_id),
     ).first()

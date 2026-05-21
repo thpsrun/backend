@@ -65,6 +65,7 @@ class Runs(models.Model):
         VERIFIED = "verified", "Verified"
         NEW = "new", "Unverified"
         REJECTED = "rejected", "Rejected"
+        REVIEW = "review", "Under Review"
 
     class RunType(models.TextChoices):
         MAIN = "main", "Full Game"
@@ -220,6 +221,11 @@ class Runs(models.Model):
         null=True,
         blank=True,
         help_text=("Should only be occupied if `obsolte` is true."),
+    )
+    review_notes = models.TextField(
+        blank=True,
+        default="",
+        verbose_name="Moderator Review Notes",
     )
     arch_video = models.URLField(
         verbose_name="Archived Video URL",

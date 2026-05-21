@@ -137,7 +137,9 @@ def _ensure_pending_counts() -> dict[str, int]:
     return pending
 
 
-def _bump_count(bucket: str) -> None:
+def _bump_count(
+    bucket: str,
+) -> None:
     pending = _ensure_pending_counts()
     pending[bucket] = pending.get(bucket, 0) + 1
 

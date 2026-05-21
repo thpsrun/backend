@@ -40,6 +40,7 @@ from api.v1.routers.resources.countries import router as countries_router
 from api.v1.routers.resources.game_audit import router as game_audit_router
 from api.v1.routers.resources.games import router as games_router
 from api.v1.routers.resources.levels import router as levels_router
+from api.v1.routers.resources.notifications import router as notifications_router
 from api.v1.routers.resources.platforms import router as platforms_router
 from api.v1.routers.resources.players import router as players_router
 from api.v1.routers.resources.runs import router as runs_router
@@ -189,6 +190,12 @@ ninja_api: NinjaAPI = NinjaAPI(
                 "passkeys.",
             },
             {
+                "name": "Notifications",
+                "description": "Self-service endpoints for listing, reading, "
+                "and deleting the authenticated user's notifications, plus "
+                "per-kind preference toggles.",
+            },
+            {
                 "name": "Sync Logs",
                 "description": "Administrative sync log endpoints.",
             },
@@ -254,6 +261,7 @@ ninja_api: NinjaAPI = NinjaAPI(
                     "Submissions",
                     "API Keys",
                     "Auth Self-Service",
+                    "Notifications",
                 ],
             },
             {
@@ -287,7 +295,7 @@ def validation_exception_handler(
         exc: The validation exception from Pydantic.
 
     Returns:
-        HttpResponse: Standardized validation error response.
+        HttpResponse: Standardized validation error response
     """
     return ninja_api.create_response(
         request,
@@ -304,7 +312,7 @@ def invalid_embeds_exception_handler(
     request: HttpRequest,
     exc: InvalidEmbedsError,
 ) -> HttpResponse:
-    """Handle invalid `?embed=...` values raised from `parse_embeds`."""
+    """Handle invalid `?embed=...` values raised from `parse_embeds`"""
     return ninja_api.create_response(
         request,
         ErrorResponse(
@@ -331,6 +339,7 @@ def global_exception_handler(
     Returns:
         HttpResponse: Object with a 500 status code denoting a server error has occurred.
     """
+
     with sentry_sdk.push_scope() as scope:
         scope.set_context(
             "request",
@@ -403,6 +412,7 @@ ninja_api.add_router("/games", games_router, tags=["Games"])
 ninja_api.add_router("/games", game_audit_router, tags=["Games"])
 ninja_api.add_router("/categories", categories_router, tags=["Categories"])
 ninja_api.add_router("/levels", levels_router, tags=["Levels"])
+ninja_api.add_router("/notifications", notifications_router, tags=["Notifications"])
 ninja_api.add_router("/platforms", platforms_router, tags=["Platforms"])
 ninja_api.add_router("/players", players_router, tags=["Players"])
 ninja_api.add_router("/variables", variables_router, tags=["Variables"])

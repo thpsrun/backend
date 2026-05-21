@@ -27,6 +27,10 @@ from api.v1.schemas.submissions import (
     ChangePlayersRequest,
     ChangePlayersResponse,
     ModerationGameGroup,
+    ReviewGameGroup,
+    RunResubmitResponse,
+    RunReviewIn,
+    RunReviewResponse,
     RunSubmitResponse,
     RunSubmitSchema,
     SubmissionHubResponse,
@@ -47,8 +51,7 @@ def _get_sync_statuses(
     """Fetch active SRC sync tasks for a batch of runs.
 
     Returns a dict keyed by run_id with lists of SyncStatusSchema.
-    Only returns pending/failed tasks (synced tasks are not shown).
-    """
+    Only returns pending/failed tasks (synced tasks are not shown)."""
     sync_tasks = SRCSyncTask.objects.filter(
         run_id__in=run_ids,
         status__in=[
@@ -165,10 +168,11 @@ def _build_src_run_payload(
     },
     summary="Submission Hub",
     description=(
-        "Returns the authenticated player's pending run submissions. "
-        "If the player moderates any games, also includes a moderation "
-        "queue with pending runs for those games. Each run includes "
-        "SRC sync status for any in-flight moderator actions."
+        "Returns the authenticated player's pending and under-review run "
+        "submissions. If the player moderates any games, also includes a "
+        "moderation queue ('new' runs) and a review-groups section ('review' "
+        "runs awaiting user response). Each run includes SRC sync status "
+        "for any in-flight moderator actions."
     ),
 )
 @auth_rate_limit
@@ -180,7 +184,7 @@ def get_submissions(
     pending_qs = (
         Runs.objects.filter(
             run_players__player=player,
-            vid_status="new",
+            vid_status__in=("new", "review"),
         )
         .select_related("game", "category", "level", "platform")
         .prefetch_related(
@@ -194,8 +198,10 @@ def get_submissions(
     all_run_ids = [r.id for r in pending_qs]
 
     moderation_queue = None
+    review_groups = None
     moderated_games = list(player.moderated_games.all())
     mod_runs_list: list[Runs] = []
+    review_runs_list: list[Runs] = []
 
     if moderated_games:
         mod_qs = (
@@ -214,6 +220,22 @@ def get_submissions(
         mod_runs_list = list(mod_qs)
         all_run_ids.extend(r.id for r in mod_runs_list)
 
+        review_qs = (
+            Runs.objects.filter(
+                game__in=moderated_games,
+                vid_status="review",
+            )
+            .select_related("game", "category", "level", "platform")
+            .prefetch_related(
+                "run_players__player__countrycode",
+                "run_players__player__user",
+                "runvariablevalues_set__value",
+            )
+            .order_by("game__name", "-date")
+        )
+        review_runs_list = list(review_qs)
+        all_run_ids.extend(r.id for r in review_runs_list)
+
     sync_map = _get_sync_statuses(all_run_ids) if all_run_ids else {}
 
     pending_runs = []
@@ -224,11 +246,11 @@ def get_submissions(
         pending_runs.append(schema)
 
     if moderated_games:
-        game_groups: dict[str, ModerationGameGroup] = {}
+        mod_game_groups: dict[str, ModerationGameGroup] = {}
         for run in mod_runs_list:
-            gid = run.game_id
-            if gid not in game_groups:
-                game_groups[gid] = ModerationGameGroup(
+            gid = run.game.id
+            if gid not in mod_game_groups:
+                mod_game_groups[gid] = ModerationGameGroup(
                     game_id=gid,
                     game_name=run.game.name,
                     game_slug=run.game.slug,
@@ -238,14 +260,32 @@ def get_submissions(
             schema = SubmissionRunSchema.from_orm(run)
             schema.players = _build_run_players(run)
             schema.src_sync = sync_map.get(run.id, [])
-            game_groups[gid].pending_runs.append(schema)
-            game_groups[gid].pending_count += 1
+            mod_game_groups[gid].pending_runs.append(schema)
+            mod_game_groups[gid].pending_count += 1
+        moderation_queue = list(mod_game_groups.values())
 
-        moderation_queue = list(game_groups.values())
+        rev_game_groups: dict[str, ReviewGameGroup] = {}
+        for run in review_runs_list:
+            gid = run.game.id
+            if gid not in rev_game_groups:
+                rev_game_groups[gid] = ReviewGameGroup(
+                    game_id=gid,
+                    game_name=run.game.name,
+                    game_slug=run.game.slug,
+                    pending_count=0,
+                    pending_runs=[],
+                )
+            schema = SubmissionRunSchema.from_orm(run)
+            schema.players = _build_run_players(run)
+            schema.src_sync = sync_map.get(run.id, [])
+            rev_game_groups[gid].pending_runs.append(schema)
+            rev_game_groups[gid].pending_count += 1
+        review_groups = list(rev_game_groups.values())
 
     return SubmissionHubResponse(
         pending_runs=pending_runs,
         moderation_queue=moderation_queue,
+        review_groups=review_groups,
     )
 
 
@@ -261,9 +301,8 @@ def get_submissions(
     },
     summary="Verify or Reject a Run",
     description=(
-        "Verifies or rejects a pending run. Updates the local database "
-        "immediately, then queues an async task to sync the action to "
-        "speedrun.com. Requires a stored SRC API key and moderator "
+        "Verifies or rejects a pending run. Updates the local database immediately, then queues an "
+        "async task to sync the action to SRC. Requires a stored SRC API key and moderator "
         "status for the run's game."
     ),
 )
@@ -386,9 +425,8 @@ def update_run_status(
     },
     summary="Change Run Players",
     description=(
-        "Changes the players credited on a run. Updates local database "
-        "immediately, then queues an async task to sync to speedrun.com. "
-        "Guest players are synced to SRC but not stored locally."
+        "Changes the players credited on a run. Updates local database immediately, then queues an "
+        "async task to sync to SRCom."
     ),
 )
 @auth_rate_limit
@@ -830,5 +868,159 @@ def submit_run(
             message=(
                 "Run submitted to SRC and saved locally. " "Pending verification."
             ),
+        ),
+    )
+
+
+@router.post(
+    "/submissions/{run_id}/review",
+    auth=authed("runs.verify", target_resolver=run_from_path),
+    response={
+        200: RunReviewResponse,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        409: ErrorResponse,
+    },
+    summary="Send a Run Back for Review",
+    description=(
+        "Moves a pending run into the 'review' state with moderator-authored notes for the runner "
+        "to address. Internal to thps.run - not mirrored to speedrun.com. Allowed while the run is "
+        "'new' or already in 'review' (the latter updates the notes and re-notifies). "
+    ),
+)
+@auth_rate_limit
+def send_run_for_review(
+    request: HttpRequest,
+    run_id: str,
+    body: RunReviewIn,
+) -> Status:
+    try:
+        player: Players = request.auth.player  # type: ignore
+    except Players.DoesNotExist:
+        return Status(
+            403,
+            ErrorResponse(
+                error="This endpoint requires a claimed Player profile.",
+                details=None,
+            ),
+        )
+
+    run = Runs.objects.filter(id=run_id).select_related("game").first()
+    if not run:
+        return Status(
+            404,
+            ErrorResponse(error="Run not found.", details=None),
+        )
+
+    if not player.moderated_games.filter(id=run.game.id).exists():
+        return Status(
+            403,
+            ErrorResponse(
+                error="You are not a moderator for this game.",
+                details=None,
+            ),
+        )
+
+    if run.vid_status not in ("new", "review"):
+        return Status(
+            409,
+            ErrorResponse(
+                error=(
+                    f"Run is currently {run.vid_status}; only 'new' or "
+                    "'review' runs can be sent for review."
+                ),
+                details=None,
+            ),
+        )
+
+    with transaction.atomic():
+        run.vid_status = "review"
+        run.review_notes = body.notes
+        run.save(update_fields=["vid_status", "review_notes"])
+
+    return Status(
+        200,
+        RunReviewResponse(
+            run_id=run.id,
+            vid_status=run.vid_status,
+            review_notes=run.review_notes,
+            message=(f"Run {run.id} was sent back to the runner for review."),
+        ),
+    )
+
+
+@router.post(
+    "/submissions/{run_id}/resubmit",
+    auth=authed("submissions.list_own"),
+    response={
+        200: RunResubmitResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        409: ErrorResponse,
+    },
+    summary="Resubmit a Reviewed Run",
+    description=(
+        "Run owner action. Moves a run from 'review' back to 'new' so it re-enters the moderation "
+        "queue. review_notes is preserved as historical context for the next reviewer. Internal to "
+        "thps.run - not mirrored to speedrun.com."
+    ),
+)
+@auth_rate_limit
+def resubmit_run(
+    request: HttpRequest,
+    run_id: str,
+) -> Status:
+    try:
+        player: Players = request.auth.player  # type: ignore
+    except Players.DoesNotExist:
+        return Status(
+            403,
+            ErrorResponse(
+                error="This endpoint requires a claimed Player profile.",
+                details=None,
+            ),
+        )
+
+    run = Runs.objects.filter(id=run_id).select_related("game").first()
+    if not run:
+        return Status(
+            404,
+            ErrorResponse(error="Run not found.", details=None),
+        )
+
+    if not run.players.filter(pk=player.pk).exists():
+        return Status(
+            403,
+            ErrorResponse(
+                error="Only the run owner can resubmit a reviewed run.",
+                details=None,
+            ),
+        )
+
+    if run.vid_status != "review":
+        return Status(
+            409,
+            ErrorResponse(
+                error=(
+                    f"Run is currently {run.vid_status}; only 'review' "
+                    "runs can be resubmitted."
+                ),
+                details=None,
+            ),
+        )
+
+    with transaction.atomic():
+        run.vid_status = "new"
+        run.save(update_fields=["vid_status"])
+
+    return Status(
+        200,
+        RunResubmitResponse(
+            run_id=run.id,
+            vid_status=run.vid_status,
+            message=(f"Run {run.id} resubmitted to the moderation queue."),
         ),
     )

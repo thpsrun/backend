@@ -556,10 +556,9 @@ def query_oldest_il_runs(
 ) -> list[dict[str, Any]]:
     """Return the longest-held IL world records for a supported game.
 
-    THPS4 returns the 10 oldest IL WRs (excluding `zoo-feed-the-hippos`,
-    which is excluded from points calculations); THPS12 and THPS34 each
-    return the 5 oldest. Full-game runs are never included. Unsupported
-    slugs return an empty list.
+    THPS4 returns the 10 oldest IL WRs (excluding `zoo-feed-the-hippos`, which is excluded from
+    points calculations); THPS12 and THPS34 each return the 5 oldest. Full-game runs are never
+    included. Unsupported slugs return an empty list.
     """
     limit = OLDEST_RUNS_LIMITS.get(game_slug)
     if limit is None:
@@ -616,18 +615,7 @@ def query_wr_count(
     game_id: str,
     game_slug: str,
 ) -> list[dict[str, Any]]:
-    """Return the IL world record count per player for a supported game.
-
-    Eligible runs are first-place IL runs that are not obsolete and have
-    `vid_status="verified"`. THPS4 excludes the `zoo-feed-the-hippos` level
-    (matching points calculation behavior). Each qualifying run row counts
-    as one trophy; a player holding WR in two variant categories of the
-    same level scores 2. Co-op runs credit every attached `run_player`.
-
-    Sorted by count descending, then player name case-insensitive ascending.
-    Returns every player with at least one trophy. Unsupported game slugs
-    return an empty list.
-    """
+    """Return the IL world record count per player for a supported game."""
     if game_slug not in OLDEST_RUNS_LIMITS:
         return []
 
@@ -711,14 +699,7 @@ def query_lbs_runs(
     value_slugs: list[str] | None = None,
     level_id: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Query leaderboard runs for a specific game + category, optionally filtered by level.
-
-    Returns slim run dicts with only frontend-required fields, built from
-    prefetched relations (no N+1 queries).
-
-    When level_id is provided, acts as an IL leaderboard query.
-    Optional value_slugs filters runs to only those matching ALL given variable value slugs.
-    """
+    """Query leaderboard runs for a specific game + category, optionally filtered by level."""
     filters: dict[str, Any] = {
         "game_id": game_id,
         "category_id": category_id,

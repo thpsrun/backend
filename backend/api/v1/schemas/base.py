@@ -5,7 +5,7 @@ from django.conf import settings
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
 
 RunTypeType = Literal["main", "il"]
-RunStatusType = Literal["verified", "new", "rejected"]
+RunStatusType = Literal["verified", "new", "rejected", "review"]
 CategoryTypeType = Literal["per-level", "per-game"]
 VariableScopeType = Literal["global", "full-game", "all-levels", "single-level"]
 TimingMethodType = Literal["rta", "lrt", "igt"]

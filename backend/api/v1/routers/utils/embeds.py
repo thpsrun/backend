@@ -22,11 +22,7 @@ def parse_embeds(
     embed: str | None,
     resource: str,
 ) -> list[str]:
-    """Parse a `?embed=a,b` query string and validate against the resource registry.
-
-    Raises `InvalidEmbedsError` if any requested embed is not allowed on the resource.
-    The Ninja exception handler registered on the API turns this into a 400 response.
-    """
+    """Parse a `?embed=a,b` query string and validate against the resource registry.."""
     if not embed:
         return []
     embeds = [e.strip() for e in embed.split(",") if e.strip()]

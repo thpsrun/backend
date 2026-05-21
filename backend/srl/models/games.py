@@ -112,7 +112,7 @@ class Games(models.Model):
         verbose_name="IL WR Point Maximum",
         default=settings.POINTS_MAX_CE,
         help_text=(
-            'Default is 250; 25LO if this game contains the name "Category '
+            'Default is 250; 25O if this game contains the name "Category '
             'Extension". This is the maximum total of points an IL speedrun receives if '
             "it is the world record. All lower-ranked speedruns recieve less based upon an "
             "algorithmic formula.<br />NOTE: Changing this value will ONLY affect new "

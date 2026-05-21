@@ -53,9 +53,9 @@ def _actor_user_id() -> int | None:
 
 
 def _record_on_commit(**kwargs: Any) -> None:
-    """Wrap record_event in transaction.on_commit so audit rows aren't written
-    inside a transaction that might still roll back. Safe even outside a
-    transaction (executes immediately)."""
+    """Wrap record_event in transaction.on_commit so audit rows aren't written inside a transaction
+    that might still roll back. Safe even outside a transaction (executes immediately).
+    """
 
     transaction.on_commit(lambda: record_event(**kwargs))
 
@@ -81,11 +81,7 @@ def _dispatch_rebackfill_on_commit(
 def _revoke_unbackable_keys(
     users: list[Any],
 ) -> None:
-    """Drop any live APIKey whose owner can no longer back it.
-
-    Touches APIKey rows only - never auth_user or Games.moderators - so the
-    handlers that call this can't recurse into themselves.
-    """
+    """Drop any live APIKey whose owner can no longer back it."""
 
     if not users:
         return
@@ -281,14 +277,7 @@ def on_game_deleted(
     instance: Any,
     **kwargs: Any,
 ) -> None:
-    """Revoke keys that scope to *only* this game. Without this, the M2M cascade
-    silently empties their scope_games and the key's game restriction vanishes
-    (effectively broadening the key beyond what the owner asked for).
-
-    pre_delete fires before the FK SET_NULL cascade reaches GameAuditEvent rows,
-    so we record directly (not via on_commit). The snapshot field preserves the
-    slug after the game row goes away.
-    """
+    """Revoke keys that scope to *only* this game."""
 
     try:
         for key in APIKey.objects.filter(scope_games=instance, revoked=False):

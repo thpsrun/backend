@@ -3,7 +3,7 @@ import io
 from PIL import Image
 
 # These are magic byte prefixes for JPEG, PNG, and the GIFs. These are what are allowed by the
-# backend, since anything other than this could be malicious. This is jut one of the few guards the
+# backend, since anything other than this could be malicious. This is just one of the few guards the
 # site takes to prevent potential threats from occurring.
 _MAGIC_PREFIXES: tuple[tuple[bytes, str], ...] = (
     (b"\xff\xd8\xff", "JPEG"),

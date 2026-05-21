@@ -73,6 +73,7 @@ INSTALLED_APPS = [
     "srl",
     "api",
     "auditlog",
+    "notifications",
     "guides",
     "nav",
 ]
@@ -237,6 +238,14 @@ CELERY_BEAT_SCHEDULE = {
     "sweep-stuck-reconciliation-jobs-15min": {
         "task": "srl.sweep_stuck_reconciliation_jobs",
         "schedule": crontab(minute="*/15"),
+    },
+    "scan-expiring-api-keys-daily": {
+        "task": "notifications.scan_expiring_api_keys",
+        "schedule": crontab(hour=12, minute=0),
+    },
+    "purge-old-notifications-daily": {
+        "task": "notifications.purge_old_notifications",
+        "schedule": crontab(hour=4, minute=0),
     },
     # "prune-api-activity-log-daily": {
     #    "task": "srl.tasks.prune_api_activity_log",

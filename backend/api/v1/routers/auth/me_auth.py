@@ -1,7 +1,7 @@
 import hashlib
 import logging
 
-from allauth.account.reauthentication import did_recently_authenticate
+from allauth.account.internal.flows.reauthentication import did_recently_authenticate
 from allauth.mfa.models import Authenticator
 from allauth.socialaccount.adapter import get_adapter as get_socialaccount_adapter
 from allauth.socialaccount.models import SocialAccount
@@ -170,6 +170,7 @@ def delete_social_account(
             ErrorResponse(error="reauth_required", details=None),
         )
     adapter = get_socialaccount_adapter(request)
+    session_key = getattr(request.session, "session_key", None)
     try:
         with transaction.atomic():
             locked_user = User.objects.select_for_update().get(pk=user.pk)
@@ -193,13 +194,12 @@ def delete_social_account(
                     ErrorResponse(error=code, details=None),
                 )
             account.delete()
+            _revoke_other_sessions(locked_user, session_key)
     except User.DoesNotExist:
         return Status(
             401,
             ErrorResponse(error="user_not_found", details=None),
         )
-    session_key = getattr(request.session, "session_key", None)
-    _revoke_other_sessions(user, session_key)
     try:
         request.session.cycle_key()
     except Exception:
@@ -214,11 +214,18 @@ def delete_social_account(
 
 
 def _user_has_alternative_auth(user) -> bool:
-    if SocialAccount.objects.filter(user=user).exists():
+    """Check if the user has any alternative auth method (social or passkey).
+
+    Ensures that users cannot perform a race condition check to prevent users from being
+    completely locked out of their accounts.
+    """
+    if SocialAccount.objects.select_for_update().filter(user=user).exists():
         return True
-    if Authenticator.objects.filter(
-        user=user, type=Authenticator.Type.WEBAUTHN
-    ).exists():
+    if (
+        Authenticator.objects.select_for_update()
+        .filter(user=user, type=Authenticator.Type.WEBAUTHN)
+        .exists()
+    ):
         return True
     return False
 
@@ -255,8 +262,6 @@ def _send_password_deletion_email(
             ctx,
         )
     except Exception:
-        # Swallow so the caller still returns 204, but surface the failure
-        # via the logger (with full traceback) so it can be alerted on.
         logger.exception(
             "password_deletion_email_failed",
             extra={"user_id": user.pk},
@@ -282,13 +287,12 @@ def delete_password(
     request: HttpRequest,
 ) -> Status:
     user = request.auth  # type: ignore
-    # Gate the endpoint with a fresh login or allauth reauthentication record.
-    # Timeout is controlled by `ACCOUNT_REAUTHENTICATION_TIMEOUT` (default 300s).
     if not did_recently_authenticate(request):
         return Status(
             401,
             ErrorResponse(error="reauth_required", details=None),
         )
+    session_key = getattr(request.session, "session_key", None)
     try:
         with transaction.atomic():
             locked_user = User.objects.select_for_update().get(pk=user.pk)
@@ -299,13 +303,12 @@ def delete_password(
                 )
             locked_user.set_unusable_password()
             locked_user.save(update_fields=["password"])
+            _revoke_other_sessions(locked_user, session_key)
     except User.DoesNotExist:
         return Status(
             401,
             ErrorResponse(error="user_not_found", details=None),
         )
-    session_key = getattr(request.session, "session_key", None)
-    _revoke_other_sessions(user, session_key)
     try:
         request.session.cycle_key()
     except Exception:

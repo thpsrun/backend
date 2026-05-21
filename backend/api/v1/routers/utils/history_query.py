@@ -26,7 +26,10 @@ def _obsolete_as_of(
     return Q(run__obsolete=False) | Q(run__obsoleted_at__gt=end_dt)
 
 
-def _end_of_month_utc(year: int, month: int) -> datetime:
+def _end_of_month_utc(
+    year: int,
+    month: int,
+) -> datetime:
     last_day = calendar.monthrange(year, month)[1]
     return datetime(
         year,
@@ -40,7 +43,9 @@ def _end_of_month_utc(year: int, month: int) -> datetime:
     )
 
 
-def _attach_player_fields(rows: list[dict]) -> list[dict]:
+def _attach_player_fields(
+    rows: list[dict],
+) -> list[dict]:
     player_ids = [r["player_id"] for r in rows]
     players = {
         p.id: p
@@ -76,13 +81,18 @@ def _attach_player_fields(rows: list[dict]) -> list[dict]:
     return rows
 
 
-def _assign_ranks(rows: list[dict]) -> list[dict]:
+def _assign_ranks(
+    rows: list[dict],
+) -> list[dict]:
     for idx, row in enumerate(rows, start=1):
         row["rank"] = idx
     return rows
 
 
-def _max_points_for(runtype: str, is_ce: bool) -> int:
+def _max_points_for(
+    runtype: str,
+    is_ce: bool,
+) -> int:
     if is_ce:
         return settings.POINTS_MAX_CE
     if runtype == "main":

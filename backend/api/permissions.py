@@ -111,6 +111,10 @@ def _register_capabilities() -> None:
     add_perm("api_keys.list_own", is_authenticated)
     add_perm("api_keys.revoke_own", is_authenticated)
 
+    # Notifications capabilities (user-scoped, no per-game targeting)
+    add_perm("notifications.read_own", is_authenticated)
+    add_perm("notifications.manage_own", is_authenticated)
+
     # Admin capabilities
     add_perm("api_keys.admin", is_superuser)
     add_perm("users.admin", is_superuser)
@@ -199,7 +203,9 @@ def authed(
     if not capabilities:
         raise ValueError("authed() requires at least one capability!")
 
-    def dependency(request: HttpRequest) -> Any:
+    def dependency(
+        request: HttpRequest,
+    ) -> Any:
         user, key = _resolve_caller(request)
         target = target_resolver(request) if target_resolver else None
 

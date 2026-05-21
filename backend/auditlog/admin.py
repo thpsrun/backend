@@ -24,11 +24,22 @@ class GameAuditEventAdmin(admin.ModelAdmin):
     readonly_fields = tuple(f.name for f in GameAuditEvent._meta.get_fields())
     ordering = ("-created_at",)
 
-    def has_add_permission(self, request) -> bool:
+    def has_add_permission(
+        self,
+        request,
+    ) -> bool:
         return False
 
-    def has_change_permission(self, request, obj=None) -> bool:
+    def has_change_permission(
+        self,
+        request,
+        obj=None,
+    ) -> bool:
         return False
 
-    def has_delete_permission(self, request, obj=None) -> bool:
+    def has_delete_permission(
+        self,
+        request,
+        obj=None,
+    ) -> bool:
         return request.user.is_superuser

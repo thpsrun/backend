@@ -43,11 +43,25 @@ class SubmissionRunSchema(PlayerRunEmbedSchema):
         default_factory=list,
         description="SRC sync status for any pending moderator actions.",
     )
+    review_notes: str = Field(
+        default="",
+        description=(
+            "Moderator notes attached when the run was sent back for review. Empty unless "
+            "vid_status == 'review' (and may remain set after resubmit as historical context for "
+            "the next reviewer)."
+        ),
+    )
 
 
 class ModerationGameGroup(Schema):
-    """Pending runs grouped by game for the moderation queue."""
+    game_id: str
+    game_name: str
+    game_slug: str
+    pending_count: int
+    pending_runs: list[SubmissionRunSchema]
 
+
+class ReviewGameGroup(Schema):
     game_id: str
     game_name: str
     game_slug: str
@@ -56,15 +70,12 @@ class ModerationGameGroup(Schema):
 
 
 class SubmissionHubResponse(Schema):
-    """Response for GET /auth/submissions."""
-
     pending_runs: list[SubmissionRunSchema]
     moderation_queue: list[ModerationGameGroup] | None = None
+    review_groups: list[ReviewGameGroup] | None = None
 
 
 class VerifyRejectRequest(Schema):
-    """Request body for PUT /auth/submissions/{run_id}/status."""
-
     status: Literal["verified", "rejected"]
     reason: str | None = Field(
         default=None,
@@ -74,12 +85,75 @@ class VerifyRejectRequest(Schema):
 
 
 class VerifyRejectResponse(Schema):
-    """Response after verify/reject action is queued."""
-
     run_id: str
     status: str
     src_sync_status: str
     message: str
+
+
+class RunReviewIn(Schema):
+    notes: str = Field(
+        ...,
+        min_length=5,
+        max_length=2000,
+        description="Moderator-authored notes describing what needs to be addressed.",
+    )
+
+    @field_validator("notes")
+    @classmethod
+    def notes_not_blank(
+        cls,
+        v: str,
+    ) -> str:
+        if not v.strip():
+            raise ValueError("notes must not be blank or whitespace-only")
+        return v
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "notes": "Video shows a cut at 00:42 - please reupload uncut.",
+            },
+        },
+    }
+
+
+class RunReviewResponse(Schema):
+    """Response after sending a run back for review."""
+
+    run_id: str
+    vid_status: str
+    review_notes: str
+    message: str
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "run_id": "z01abc02",
+                "vid_status": "review",
+                "review_notes": "Video shows a cut at 00:42 - please reupload uncut.",
+                "message": ("Run z01abc02 was sent back to the runner for review."),
+            },
+        },
+    }
+
+
+class RunResubmitResponse(Schema):
+    """Response after the runner resubmits a reviewed run."""
+
+    run_id: str
+    vid_status: str
+    message: str
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "run_id": "z01abc02",
+                "vid_status": "new",
+                "message": "Run z01abc02 resubmitted to the moderation queue.",
+            },
+        },
+    }
 
 
 class PlayerEntry(Schema):
@@ -87,8 +161,7 @@ class PlayerEntry(Schema):
 
     For rel=user, provide the player's name as it appears in the
     database. The player is looked up by name and must exist locally.
-    For rel=guest, provide a display name (no DB lookup).
-    """
+    For rel=guest, provide a display name (no DB lookup)."""
 
     rel: Literal["user", "guest"]
     name: str = Field(
@@ -102,8 +175,6 @@ class PlayerEntry(Schema):
 
 
 class ChangePlayersRequest(Schema):
-    """Request body for PUT /auth/submissions/{run_id}/players."""
-
     players: list[PlayerEntry] = Field(
         ...,
         min_length=1,
@@ -112,8 +183,6 @@ class ChangePlayersRequest(Schema):
 
 
 class ChangePlayersResponse(Schema):
-    """Response after change-players action is queued."""
-
     run_id: str
     players: list[dict]
     src_sync_status: str
@@ -123,8 +192,7 @@ class ChangePlayersResponse(Schema):
 class SubmitPlayerEntry(Schema):
     """A player entry for run submission to SRC.
 
-    For rel=user, provide the SRC user/player ID.
-    For rel=guest, provide a display name.
+    For rel=user, provide the SRC user/player ID.For rel=guest, provide a display name.\
     """
 
     rel: Literal["user", "guest"]
@@ -149,8 +217,6 @@ class SubmitPlayerEntry(Schema):
 
 
 class RunSubmitSchema(Schema):
-    """Request body for POST /auth/submissions/submit."""
-
     game_id: str = Field(
         ...,
         description="Game ID (must exist locally).",
@@ -249,8 +315,6 @@ class RunSubmitSchema(Schema):
 
 
 class RunSubmitResponse(Schema):
-    """Response after successful run submission to SRC."""
-
     run_id: str
     src_url: str
     vid_status: RunStatusType
@@ -258,8 +322,6 @@ class RunSubmitResponse(Schema):
 
 
 class SyncLogRunSchema(Schema):
-    """Minimal run info embedded in a sync log entry."""
-
     id: str
     game_name: str
     game_slug: str
@@ -269,8 +331,6 @@ class SyncLogRunSchema(Schema):
 
 
 class SyncLogEntry(Schema):
-    """Full sync task detail for the admin sync log viewer."""
-
     id: int
     run: SyncLogRunSchema
     action: str
@@ -286,8 +346,6 @@ class SyncLogEntry(Schema):
 
 
 class SyncLogResponse(Schema):
-    """Paginated response for GET /auth/admin/sync-logs."""
-
     count: int
     results: list[SyncLogEntry]
 

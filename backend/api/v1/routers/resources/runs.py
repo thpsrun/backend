@@ -26,6 +26,8 @@ from srl.srcom.v2.runs import (
     snapshot_run,
 )
 from srl.tasks import sync_src_settings
+from srl.time_parser import parse_time
+from srl.utils import convert_time
 
 from api.permissions import authed, public_read
 from api.v1.routers.utils.embeds import (
@@ -48,8 +50,7 @@ def get_run_players(
 ) -> list[dict]:
     """Get all players for a run as a list of dicts, ordered by their participation order.
 
-    This is always included in run responses (not an embed).
-    """
+    This is always included in run responses (not an embed)."""
     run_players = sorted(run.run_players.all(), key=lambda rp: rp.order)
 
     players_list = []
@@ -79,8 +80,7 @@ def get_run_variables(
     """Get variable_id:value_id mapping for a run.
 
     This is always included in run responses (not an embed).
-    Returns the through table data as {variable_id: value_id} pairs.
-    """
+    Returns the through table data as {variable_id: value_id} pairs."""
     variable_mapping: dict[str, str] = {}
 
     run_variable_values = run.runvariablevalues_set.all()
@@ -99,8 +99,7 @@ def apply_run_embeds(
     """Apply requested embeds to a run instance.
 
     This is the most complex embed function of all of the endpoints due to the
-    complex relations it will have with other models.
-    """
+    complex relations it will have with other models."""
     embeds = {}
 
     if "game" in embed_fields and run.game:
@@ -158,7 +157,7 @@ Supported Parameters:
 - `player_id` (str | None): Filter by specific player ID
 - `runtype` (str | None): Filter by run type (`main` or `il`)
 - `place` (int | None): Filter by leaderboard position
-- `status` (str | None): Filter by verification status (`verified`, `new`, or `rejected`)
+- `status` (str | None): Filter by verification status (`verified`, `new`, `rejected`, or `review`)
 - `search`: Search in category name, level name, or variable value names
 - `embed`: Comma-separated list of resources to embed
 - `limit`: Results per page (default 50, max 100)
@@ -700,6 +699,45 @@ def update_run(
         pre_edit_snapshot = snapshot_run(run)
 
         update_data = run_data.model_dump(exclude_unset=True)
+
+        time_pairs = (
+            ("time", "time_secs"),
+            ("timenl", "timenl_secs"),
+            ("timeigt", "timeigt_secs"),
+        )
+        for str_field, secs_field in time_pairs:
+            has_str = str_field in update_data
+            has_secs = secs_field in update_data
+            if not has_str and not has_secs:
+                continue
+
+            if has_secs:
+                secs = update_data[secs_field]
+            else:
+                raw = update_data[str_field]
+                if raw in (None, "", "0"):
+                    secs = None if raw is None else 0.0
+                else:
+                    try:
+                        secs = parse_time(raw)
+                    except ValueError:
+                        return Status(
+                            422,
+                            ErrorResponse(
+                                error=f"Invalid time format for {str_field}: {raw!r}",
+                                details=None,
+                            ),
+                        )
+
+            if secs is None:
+                update_data[str_field] = None
+                update_data[secs_field] = None
+            elif secs == 0:
+                update_data[str_field] = "0"
+                update_data[secs_field] = 0.0
+            else:
+                update_data[str_field] = convert_time(secs)
+                update_data[secs_field] = secs
 
         if "game_id" in update_data:
             game = Games.objects.filter(id=update_data["game_id"]).first()

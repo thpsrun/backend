@@ -154,8 +154,7 @@ def _validate_parent_assignment(
 ) -> None:
     """Validate that setting `item_id`'s parent to `new_parent_id` is allowed.
 
-    Checks: not self-parent, no cycle, total resulting subtree depth <= MAX_DEPTH.
-    """
+    Checks: not self-parent, no cycle, total resulting subtree depth <= MAX_DEPTH."""
     new_parent_depth = _depth_of(new_parent_id)
 
     if item_id is None:
