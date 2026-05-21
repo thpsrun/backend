@@ -49,6 +49,7 @@ class Categories(models.Model):
         verbose_name="Default Time",
         choices=LeaderboardChoices.choices,
         null=True,
+        blank=True,
         default=None,
         help_text=(
             "When not set, the category's associated game's timing method(s) are used. "

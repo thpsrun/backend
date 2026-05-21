@@ -66,7 +66,9 @@ class GameAuditEvent(models.Model):
 
     target_app = models.CharField(max_length=64, blank=True, default="")
     target_model = models.CharField(max_length=64, blank=True, default="")
-    target_id = models.CharField(max_length=64, blank=True, default="")
+    # APIKey rows use a `prefix.hashed_key` PK that fits in 150 charactersso the column must be wide
+    # enough to record their pk when they appear as audit targets.
+    target_id = models.CharField(max_length=150, blank=True, default="")
     target_repr = models.CharField(max_length=255, blank=True, default="")
 
     summary = models.CharField(max_length=255)

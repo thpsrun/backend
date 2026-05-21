@@ -46,7 +46,7 @@ def record_event(
             if meta is not None:
                 target_app = meta.app_label
                 target_model = meta.model_name
-            target_id = str(getattr(target, "pk", ""))
+            target_id = str(getattr(target, "pk", ""))[:150]
             target_repr = str(target)[:255]
 
         GameAuditEvent.objects.create(

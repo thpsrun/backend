@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 from api.v1.routers.utils.cache_utils import (
     game_leaderboard_cache_key,
@@ -106,9 +106,6 @@ class RecalcPerRunPrimaryTest(TestCase):
             leaderboard,
             dry_run=False,
             game_is_ce={self.game.id: False},
-            game_time_columns={
-                self.game.id: {"main": "timeigt_secs", "il": "timeigt_secs"}
-            },
         )
         run_c = Runs.objects.get(id="recrc")
         run_d = Runs.objects.get(id="recrd")
@@ -307,9 +304,14 @@ class GameTimingRecalcSignalTest(TestCase):
         self,
         mock_rebackfill,
     ) -> None:
-        self.game.defaulttime = LeaderboardChoices.INGAME
-        self.game.save()
-        mock_rebackfill.assert_called_once_with(self.game.slug)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.game.defaulttime = LeaderboardChoices.INGAME
+            self.game.save()
+        mock_rebackfill.assert_called_once_with(
+            self.game.slug,
+            triggered_by=ANY,
+            actor_user_id=ANY,
+        )
 
     @patch("api.signals.rebackfill_game_runs.delay")
     def test_required_methods_change_fires_rebackfill(
@@ -318,17 +320,23 @@ class GameTimingRecalcSignalTest(TestCase):
     ) -> None:
         # required_methods can flip which fallback timing column a run reads,
         # so it goes through the same rebackfill+recalc chain.
-        self.game.required_methods_fg = [LeaderboardChoices.REALTIME]
-        self.game.save()
-        mock_rebackfill.assert_called_once_with(self.game.slug)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.game.required_methods_fg = [LeaderboardChoices.REALTIME]
+            self.game.save()
+        mock_rebackfill.assert_called_once_with(
+            self.game.slug,
+            triggered_by=ANY,
+            actor_user_id=ANY,
+        )
 
     @patch("api.signals.rebackfill_game_runs.delay")
     def test_non_timing_change_does_not_fire(
         self,
         mock_rebackfill,
     ) -> None:
-        self.game.name = "Renamed"
-        self.game.save()
+        with self.captureOnCommitCallbacks(execute=True):
+            self.game.name = "Renamed"
+            self.game.save()
         mock_rebackfill.assert_not_called()
 
 
@@ -370,9 +378,14 @@ class ChildTimingRecalcSignalTest(TestCase):
             game=self.game,
         )
         mock_rebackfill.reset_mock()
-        cat.defaulttime = LeaderboardChoices.INGAME
-        cat.save()
-        mock_rebackfill.assert_called_once_with(self.game.slug)
+        with self.captureOnCommitCallbacks(execute=True):
+            cat.defaulttime = LeaderboardChoices.INGAME
+            cat.save()
+        mock_rebackfill.assert_called_once_with(
+            self.game.slug,
+            triggered_by=ANY,
+            actor_user_id=ANY,
+        )
 
     @patch("api.signals.rebackfill_game_runs.delay")
     def test_category_required_methods_change_fires_rebackfill(
@@ -388,9 +401,14 @@ class ChildTimingRecalcSignalTest(TestCase):
             game=self.game,
         )
         mock_rebackfill.reset_mock()
-        cat.required_methods = [LeaderboardChoices.INGAME]
-        cat.save()
-        mock_rebackfill.assert_called_once_with(self.game.slug)
+        with self.captureOnCommitCallbacks(execute=True):
+            cat.required_methods = [LeaderboardChoices.INGAME]
+            cat.save()
+        mock_rebackfill.assert_called_once_with(
+            self.game.slug,
+            triggered_by=ANY,
+            actor_user_id=ANY,
+        )
 
     @patch("api.signals.rebackfill_game_runs.delay")
     def test_variable_defaulttime_change_fires_rebackfill(
@@ -406,9 +424,14 @@ class ChildTimingRecalcSignalTest(TestCase):
             archive=False,
         )
         mock_rebackfill.reset_mock()
-        var.defaulttime = LeaderboardChoices.INGAME
-        var.save()
-        mock_rebackfill.assert_called_once_with(self.game.slug)
+        with self.captureOnCommitCallbacks(execute=True):
+            var.defaulttime = LeaderboardChoices.INGAME
+            var.save()
+        mock_rebackfill.assert_called_once_with(
+            self.game.slug,
+            triggered_by=ANY,
+            actor_user_id=ANY,
+        )
 
     @patch("api.signals.rebackfill_game_runs.delay")
     def test_value_defaulttime_change_fires_rebackfill(
@@ -431,6 +454,11 @@ class ChildTimingRecalcSignalTest(TestCase):
             archive=False,
         )
         mock_rebackfill.reset_mock()
-        val.defaulttime = LeaderboardChoices.INGAME
-        val.save()
-        mock_rebackfill.assert_called_once_with(self.game.slug)
+        with self.captureOnCommitCallbacks(execute=True):
+            val.defaulttime = LeaderboardChoices.INGAME
+            val.save()
+        mock_rebackfill.assert_called_once_with(
+            self.game.slug,
+            triggered_by=ANY,
+            actor_user_id=ANY,
+        )

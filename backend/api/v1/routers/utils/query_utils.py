@@ -89,6 +89,72 @@ def _primary_time_secs_expr() -> Expression:
     )
 
 
+def _value_allowed_subquery() -> Subquery:
+    """Subquery returning the first value-level `required_methods` for a run."""
+    return Subquery(
+        RunVariableValues.objects.filter(
+            run=OuterRef("pk"),
+            value__required_methods__isnull=False,
+        )
+        .order_by("variable_id")
+        .values("value__required_methods")[:1],
+    )
+
+
+def _variable_allowed_subquery() -> Subquery:
+    """Subquery returning the first variable-level `required_methods` for a run."""
+    return Subquery(
+        RunVariableValues.objects.filter(
+            run=OuterRef("pk"),
+            variable__required_methods__isnull=False,
+        )
+        .order_by("variable_id")
+        .values("variable__required_methods")[:1],
+    )
+
+
+def _resolved_allowed_methods_expr() -> Expression:
+    """Build a Case expression that resolves a run's allowed timing methods.
+
+    Honors VariableValue > Variable > Category > Game precedence. Requires the
+    queryset to be annotated with `_val_allowed` and `_var_allowed`.
+    """
+    return Case(
+        When(
+            _val_allowed__isnull=False,
+            then=F("_val_allowed"),
+        ),
+        When(
+            _var_allowed__isnull=False,
+            then=F("_var_allowed"),
+        ),
+        When(
+            category__required_methods__isnull=False,
+            then=F("category__required_methods"),
+        ),
+        When(
+            runtype="il",
+            then=F("game__required_methods_il"),
+        ),
+        default=F("game__required_methods_fg"),
+    )
+
+
+def annotate_resolved_allowed(
+    qs: QuerySet,
+) -> QuerySet:
+    """Annotate a Runs queryset with `resolved_allowed` (list of timing methods).
+
+    Resolves the VariableValue > Variable > Category > Game precedence chain
+    at the SQL layer, mirroring `Runs._resolved_required_methods()`.
+    """
+    return qs.annotate(
+        _val_allowed=_value_allowed_subquery(),
+        _var_allowed=_variable_allowed_subquery(),
+        resolved_allowed=_resolved_allowed_methods_expr(),
+    )
+
+
 def _export_players(
     run_players: "QuerySet[RunPlayers]",
     country_detail: bool = True,

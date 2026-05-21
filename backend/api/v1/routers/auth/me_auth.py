@@ -1,6 +1,8 @@
 import hashlib
 import logging
 
+from accounts.oauth_reauth import write_intent
+from allauth.account.adapter import get_adapter
 from allauth.account.internal.flows.reauthentication import did_recently_authenticate
 from allauth.mfa.models import Authenticator
 from allauth.socialaccount.adapter import get_adapter as get_socialaccount_adapter
@@ -11,6 +13,7 @@ from django.contrib.sessions.models import Session
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.http import HttpRequest
+from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 from ninja import Router, Status
 
@@ -19,6 +22,7 @@ from api.rate_limiting import auth_rate_limit
 from api.v1.schemas.auth import (
     AuthenticatorListItem,
     AuthMethodsResponse,
+    OAuthReauthInitiateResponse,
     SocialAccountListItem,
     SocialAccountListResponse,
 )
@@ -167,7 +171,10 @@ def delete_social_account(
     if not did_recently_authenticate(request):
         return Status(
             401,
-            ErrorResponse(error="reauth_required", details=None),
+            ErrorResponse(
+                error="reauth_required",
+                details=None,
+            ),
         )
     adapter = get_socialaccount_adapter(request)
     session_key = getattr(request.session, "session_key", None)
@@ -182,7 +189,10 @@ def delete_social_account(
             if account is None:
                 return Status(
                     404,
-                    ErrorResponse(error="no_social_account", details=None),
+                    ErrorResponse(
+                        error="no_social_account",
+                        details=None,
+                    ),
                 )
             accounts = list(SocialAccount.objects.filter(user=locked_user))
             try:
@@ -191,14 +201,20 @@ def delete_social_account(
                 code = exc.message if hasattr(exc, "message") else str(exc.messages[0])
                 return Status(
                     409,
-                    ErrorResponse(error=code, details=None),
+                    ErrorResponse(
+                        error=code,
+                        details=None,
+                    ),
                 )
             account.delete()
             _revoke_other_sessions(locked_user, session_key)
     except User.DoesNotExist:
         return Status(
             401,
-            ErrorResponse(error="user_not_found", details=None),
+            ErrorResponse(
+                error="user_not_found",
+                details=None,
+            ),
         )
     try:
         request.session.cycle_key()
@@ -210,7 +226,10 @@ def delete_social_account(
         user,
         provider=provider,
     )
-    return Status(204, None)
+    return Status(
+        204,
+        None,
+    )
 
 
 def _user_has_alternative_auth(user) -> bool:
@@ -251,7 +270,6 @@ def _revoke_other_sessions(
 def _send_password_deletion_email(
     user,
 ) -> None:
-    from allauth.account.adapter import get_adapter
 
     adapter = get_adapter()
     ctx = {"user": user}
@@ -290,7 +308,10 @@ def delete_password(
     if not did_recently_authenticate(request):
         return Status(
             401,
-            ErrorResponse(error="reauth_required", details=None),
+            ErrorResponse(
+                error="reauth_required",
+                details=None,
+            ),
         )
     session_key = getattr(request.session, "session_key", None)
     try:
@@ -299,7 +320,10 @@ def delete_password(
             if not _user_has_alternative_auth(locked_user):
                 return Status(
                     409,
-                    ErrorResponse(error="no_alternative_auth", details=None),
+                    ErrorResponse(
+                        error="no_alternative_auth",
+                        details=None,
+                    ),
                 )
             locked_user.set_unusable_password()
             locked_user.save(update_fields=["password"])
@@ -307,7 +331,10 @@ def delete_password(
     except User.DoesNotExist:
         return Status(
             401,
-            ErrorResponse(error="user_not_found", details=None),
+            ErrorResponse(
+                error="user_not_found",
+                details=None,
+            ),
         )
     try:
         request.session.cycle_key()
@@ -315,4 +342,75 @@ def delete_password(
         logger.exception("session_cycle_failed", extra={"user_id": user.pk})
     _send_password_deletion_email(user)
     _log_security_event("password_removed", request, user)
-    return Status(204, None)
+    return Status(
+        204,
+        None,
+    )
+
+
+@router.post(
+    "/me/auth/reauthenticate/oauth/{provider}",
+    response={
+        200: OAuthReauthInitiateResponse,
+        400: ErrorResponse,
+        404: ErrorResponse,
+    },
+    summary="Initiate OAuth Reauthentication",
+    description=(
+        "Returns a provider authorize URL for re-verifying ownership of an already-linked OAuth "
+        "account. Completing the flow stamps the recent-authentication timestamp for sensitive "
+        "actions."
+    ),
+    auth=authed("profile.edit_own"),
+)
+@auth_rate_limit
+def initiate_oauth_reauth(
+    request: HttpRequest,
+    provider: str,
+) -> Status:
+    user = request.auth  # type: ignore
+    if provider not in settings.SOCIALACCOUNT_PROVIDERS:
+        return Status(
+            400,
+            ErrorResponse(
+                error="unsupported_provider",
+                details=None,
+            ),
+        )
+    account = SocialAccount.objects.filter(user=user, provider=provider).first()
+    if account is None:
+        return Status(
+            404,
+            ErrorResponse(
+                error="no_social_account",
+                details=None,
+            ),
+        )
+    try:
+        authorize_url = reverse(f"{provider}_login")
+    except NoReverseMatch:
+        return Status(
+            400,
+            ErrorResponse(
+                error="unsupported_provider",
+                details=None,
+            ),
+        )
+    write_intent(
+        request,
+        provider=provider,
+        user_id=user.pk,
+        social_account_id=account.pk,
+    )
+    _log_security_event(
+        "oauth_reauth_initiated",
+        request,
+        user,
+        provider=provider,
+    )
+    return Status(
+        200,
+        OAuthReauthInitiateResponse(
+            authorize_url=authorize_url,
+        ),
+    )

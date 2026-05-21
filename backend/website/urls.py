@@ -1,5 +1,10 @@
 import environ
 from accounts.headless_views import SRCProviderSignupView
+from accounts.views import (
+    oauth_reauth_cancelled,
+    oauth_reauth_complete,
+    oauth_reauth_error,
+)
 from api.api import ninja_api
 from django.conf import settings
 from django.conf.urls.static import static
@@ -16,6 +21,21 @@ admin.site.index_title = "Admin Panel"
 urlpatterns = [
     path("illiad/", admin.site.urls),
     path("api/v1/", ninja_api.urls),
+    path(
+        "accounts/oauth-reauth-complete/",
+        oauth_reauth_complete,
+        name="oauth_reauth_complete",
+    ),
+    path(
+        "accounts/social/login/cancelled/",
+        oauth_reauth_cancelled,
+        name="socialaccount_login_cancelled",
+    ),
+    path(
+        "accounts/social/login/error/",
+        oauth_reauth_error,
+        name="socialaccount_login_error",
+    ),
     path("accounts/", include("allauth.urls")),
     path(
         "_allauth/browser/v1/auth/provider/signup",

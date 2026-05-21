@@ -38,6 +38,7 @@ CAPABILITY_SCOPED: dict[str, bool] = {
     "api_keys.revoke_own": False,
     "api_keys.admin": False,
     "users.admin": False,
+    "users.view_private": False,
     "profile.edit_own": False,
     "submissions.list_own": False,
     "sync_logs.admin": False,
@@ -118,6 +119,7 @@ def _register_capabilities() -> None:
     # Admin capabilities
     add_perm("api_keys.admin", is_superuser)
     add_perm("users.admin", is_superuser)
+    add_perm("users.view_private", is_superuser)
 
     # Misc
     add_perm("profile.edit_own", is_authenticated & has_claimed_player)  # type: ignore

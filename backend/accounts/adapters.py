@@ -14,6 +14,8 @@ from django.db import transaction
 from django.http import HttpRequest, HttpResponseRedirect
 from srl.models import Players
 
+from accounts.oauth_reauth import handle_reauth, peek_intent
+
 TWITCH_LOGIN_RE: re.Pattern[str] = re.compile(r"^[A-Za-z0-9_]{1,25}$")
 
 
@@ -56,6 +58,12 @@ class SocialAccountAdapter(DefaultSocialAccountAdapter):
     ) -> None:
         existing_user = sociallogin.user if sociallogin.is_existing else None
         _check_oauth_unique(sociallogin, exclude_user=existing_user)
+
+        intent = peek_intent(request)
+        if intent is not None:
+            handle_reauth(request, sociallogin, intent)
+            return
+
         if sociallogin.state.get("process") == "connect":
             return
 

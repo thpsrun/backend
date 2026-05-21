@@ -1,6 +1,7 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
+from ninja import Schema
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from api.v1.schemas.base import BaseEmbedSchema, RunTypeType, TimingMethodType
@@ -443,6 +444,36 @@ class RunCreateSchema(BaseEmbedSchema):
     variable_values: dict[str, str] | None = Field(None)
 
 
+class ModeratorActionIn(Schema):
+    """Optional moderator verdict applied atomically with a run-data edit."""
+
+    action: Literal["verify", "reject", "review"]
+    reason: str | None = Field(
+        default=None,
+        max_length=500,
+        description=(
+            "Required when action='reject'. Sent verbatim to speedrun.com "
+            "as the rejection reason; not persisted on the Run row."
+        ),
+    )
+    notes: str | None = Field(
+        default=None,
+        max_length=2000,
+        description=(
+            "Required when action='review'. Stored as Runs.review_notes "
+            "and surfaced to the runner."
+        ),
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "action": "verify",
+            },
+        },
+    }
+
+
 class RunUpdateSchema(BaseEmbedSchema):
     """Schema for updating runs.
 
@@ -487,3 +518,38 @@ class RunUpdateSchema(BaseEmbedSchema):
     v_date: datetime | None = Field(default=None, description="Verification date")
     url: str | None = None
     variable_values: dict[str, str] | None = None
+    moderator_action: ModeratorActionIn | None = Field(
+        default=None,
+        description=(
+            "Optional moderator verdict applied atomically with this run "
+            "update. Requires moderator privileges on the run's game and "
+            "(for verify/reject) a stored SRC API key. Omit for runner-style "
+            "edits."
+        ),
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "place": 1,
+                    "time": "5m 00s",
+                    "time_secs": 300.0,
+                },
+                {
+                    "place": 1,
+                    "time": "5m 00s",
+                    "time_secs": 300.0,
+                    "moderator_action": {"action": "verify"},
+                },
+                {
+                    "moderator_action": {
+                        "action": "review",
+                        "notes": (
+                            "Video shows a cut at 00:42 - please " "reupload uncut."
+                        ),
+                    },
+                },
+            ],
+        },
+    }

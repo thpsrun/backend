@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 from api.models import APIKey, APIKeyRevokedReason
 from django.contrib.auth import get_user_model
@@ -316,17 +316,23 @@ class RebackfillSignalTest(TestCase):
         self,
         mock_delay,
     ) -> None:
-        self.game.defaulttime = LeaderboardChoices.INGAME
-        self.game.save()
-        mock_delay.assert_called_once_with(self.game.slug)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.game.defaulttime = LeaderboardChoices.INGAME
+            self.game.save()
+        mock_delay.assert_called_once_with(
+            self.game.slug,
+            triggered_by=ANY,
+            actor_user_id=ANY,
+        )
 
     @patch("api.signals.rebackfill_game_runs.delay")
     def test_non_timing_game_save_does_not_fire(
         self,
         mock_delay,
     ) -> None:
-        self.game.name = "Renamed"
-        self.game.save()
+        with self.captureOnCommitCallbacks(execute=True):
+            self.game.name = "Renamed"
+            self.game.save()
         mock_delay.assert_not_called()
 
     @patch("api.signals.rebackfill_game_runs.delay")
@@ -343,9 +349,14 @@ class RebackfillSignalTest(TestCase):
             game=self.game,
         )
         mock_delay.reset_mock()  # ignore create-time firing
-        cat.defaulttime = LeaderboardChoices.INGAME
-        cat.save()
-        mock_delay.assert_called_once_with(self.game.slug)
+        with self.captureOnCommitCallbacks(execute=True):
+            cat.defaulttime = LeaderboardChoices.INGAME
+            cat.save()
+        mock_delay.assert_called_once_with(
+            self.game.slug,
+            triggered_by=ANY,
+            actor_user_id=ANY,
+        )
 
     @patch("api.signals.rebackfill_game_runs.delay")
     def test_non_timing_category_save_does_not_fire(
@@ -361,6 +372,7 @@ class RebackfillSignalTest(TestCase):
             game=self.game,
         )
         mock_delay.reset_mock()
-        cat.name = "Renamed"
-        cat.save()
+        with self.captureOnCommitCallbacks(execute=True):
+            cat.name = "Renamed"
+            cat.save()
         mock_delay.assert_not_called()

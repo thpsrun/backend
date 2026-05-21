@@ -20,9 +20,15 @@ from srl.utils import convert_time
 
 from api.permissions import authed
 from api.rate_limiting import auth_rate_limit
+from api.v1.routers.auth.moderation import (
+    ModerationError,
+    _apply_moderation,
+    _has_src_key,
+)
 from api.v1.routers.utils.resolvers import game_from_body, run_from_path
 from api.v1.schemas.base import ErrorResponse
 from api.v1.schemas.players import extract_gradients
+from api.v1.schemas.runs import ModeratorActionIn
 from api.v1.schemas.submissions import (
     ChangePlayersRequest,
     ChangePlayersResponse,
@@ -93,15 +99,6 @@ def _build_run_players(
         }
         for rp in rps
     ]
-
-
-def _has_src_key(
-    player: Players,
-) -> bool:
-    """Check if the player has a stored SRC API key."""
-    if not player.user:
-        return False
-    return player.user.encrypted_api_key is not None
 
 
 SRC_API_BASE = "https://www.speedrun.com/api/v1"
@@ -323,15 +320,6 @@ def update_run_status(
             ),
         )
 
-    if not _has_src_key(player):
-        return Status(
-            403,
-            ErrorResponse(
-                error=("No SRC API key stored. " "Add one at /auth/me/src-key."),
-                details=None,
-            ),
-        )
-
     run = Runs.objects.filter(id=run_id).select_related("game").first()
     if not run:
         return Status(
@@ -348,27 +336,24 @@ def update_run_status(
             ),
         )
 
-    if run.vid_status != "new":
-        return Status(
-            400,
-            ErrorResponse(
-                error=f"Run is already {run.vid_status}.",
-                details=None,
-            ),
-        )
+    action_in = ModeratorActionIn(
+        action="verify" if body.status == "verified" else "reject",
+        reason=body.reason,
+    )
 
-    if body.status == "rejected" and not body.reason:
+    try:
+        with transaction.atomic():
+            sync_task = _apply_moderation(
+                run=run,
+                action_in=action_in,
+                actor_player=player,
+            )
+            run.save(update_fields=["vid_status", "approver"])
+    except ModerationError as e:
         return Status(
-            400,
-            ErrorResponse(
-                error="A reason is required when rejecting a run.",
-                details=None,
-            ),
+            e.code,
+            ErrorResponse(error=e.message, details=None),
         )
-
-    run.vid_status = body.status
-    run.approver = player
-    run.save(update_fields=["vid_status", "approver"])
 
     if body.status == "verified":
         actor_user_id_for_recalc = (
@@ -378,21 +363,6 @@ def update_run_status(
         )
         recalculate_run(run, actor_user_id=actor_user_id_for_recalc)
 
-    src_payload: dict = {"status": {"status": body.status}}
-    if body.status == "rejected" and body.reason:
-        src_payload["status"]["reason"] = body.reason
-
-    action = (
-        SRCSyncTask.ActionType.VERIFY
-        if body.status == "verified"
-        else SRCSyncTask.ActionType.REJECT
-    )
-    sync_task = SRCSyncTask.objects.create(
-        run=run,
-        action=action,
-        payload=src_payload,
-        moderator=player,
-    )
     actor_user_id = (
         request.user.pk if getattr(request.user, "is_authenticated", False) else None
     )
@@ -923,22 +893,27 @@ def send_run_for_review(
             ),
         )
 
-    if run.vid_status not in ("new", "review"):
+    action_in = ModeratorActionIn(
+        action="review",
+        notes=body.notes,
+    )
+
+    try:
+        with transaction.atomic():
+            _apply_moderation(
+                run=run,
+                action_in=action_in,
+                actor_player=player,
+            )
+            run.save(update_fields=["vid_status", "review_notes"])
+    except ModerationError as e:
         return Status(
-            409,
+            e.code,
             ErrorResponse(
-                error=(
-                    f"Run is currently {run.vid_status}; only 'new' or "
-                    "'review' runs can be sent for review."
-                ),
+                error=e.message,
                 details=None,
             ),
         )
-
-    with transaction.atomic():
-        run.vid_status = "review"
-        run.review_notes = body.notes
-        run.save(update_fields=["vid_status", "review_notes"])
 
     return Status(
         200,

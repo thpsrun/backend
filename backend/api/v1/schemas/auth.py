@@ -267,3 +267,15 @@ class SocialAccountListResponse(Schema):
             },
         },
     )
+
+
+class OAuthReauthInitiateResponse(Schema):
+    authorize_url: str
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "authorize_url": "/accounts/discord/login/",
+            },
+        },
+    )

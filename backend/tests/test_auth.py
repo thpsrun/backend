@@ -1,7 +1,7 @@
 from api.models import APIKey
 from django.contrib.auth import get_user_model
-from django.test import TestCase
-from srl.models import CountryCodes, Games, Platforms
+from django.test import Client, TestCase
+from srl.models import CountryCodes, Games, Platforms, Players
 
 
 class AuthTestBase(TestCase):
@@ -47,10 +47,6 @@ class AuthTestBase(TestCase):
             label="Test Admin Key",
             description="Temporary key for automated testing",
         )
-
-
-from django.test import Client
-from srl.models import Players
 
 
 class AuthMeTestBase(TestCase):
@@ -182,11 +178,13 @@ class AuthMeUpdateTest(AuthMeTestBase):
     def test_patch_socials_group_with_therun_gg(
         self,
     ) -> None:
+        # Twitch is no longer PATCH-able directly; verification must come from the linked
+        # OAuth connection. The PATCH payload still accepts and updates therun_gg, and the
+        # existing twitch value on the player remains untouched.
         response = self.client.patch(
             "/api/v1/auth/me",
             data={
                 "socials": {
-                    "twitch": "https://twitch.tv/newhandle",
                     "therun_gg": "newhandle",
                 },
             },
@@ -194,7 +192,7 @@ class AuthMeUpdateTest(AuthMeTestBase):
         )
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertEqual(data["socials"]["twitch"], "https://twitch.tv/newhandle")
+        self.assertEqual(data["socials"]["twitch"], "https://twitch.tv/testplayer")
         self.assertEqual(data["socials"]["therun_gg"], "newhandle")
 
     def test_patch_explicit_null_clears_field(

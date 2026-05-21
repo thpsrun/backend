@@ -367,9 +367,9 @@ class GamesTimingWriteTest(AuthTestBase):
     ) -> None:
         super().setUp()
         self.platform = Platforms.objects.create(
-            id="pc-timing-w",
+            id="pc-tw",
             name="PC TW",
-            slug="pc-timing-w",
+            slug="pc-tw",
         )
         self.tw_game = Games.objects.create(
             id="twgame1",

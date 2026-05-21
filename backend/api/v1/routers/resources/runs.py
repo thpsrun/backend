@@ -25,11 +25,15 @@ from srl.srcom.v2.runs import (
     compute_v2_eligible_diff,
     snapshot_run,
 )
-from srl.tasks import sync_src_settings
+from srl.tasks import sync_src_action, sync_src_settings
 from srl.time_parser import parse_time
 from srl.utils import convert_time
 
 from api.permissions import authed, public_read
+from api.v1.routers.auth.moderation import (
+    ModerationError,
+    _apply_moderation,
+)
 from api.v1.routers.utils.embeds import (
     InvalidEmbedsError,
     parse_embeds,
@@ -879,6 +883,21 @@ def update_run(
             for field, value in update_data.items():
                 setattr(run, field, value)
 
+            moderation_sync_task = None
+            if run_data.moderator_action is not None:
+                actor_player = getattr(request.user, "player", None)
+                if actor_player is None:
+                    raise ModerationError(
+                        403,
+                        "This endpoint requires a claimed Player profile "
+                        "when using moderator_action.",
+                    )
+                moderation_sync_task = _apply_moderation(
+                    run=run,
+                    action_in=run_data.moderator_action,
+                    actor_player=actor_player,
+                )
+
             try:
                 run.validate_allowed_method_data()
             except ValidationError:
@@ -945,8 +964,27 @@ def update_run(
                 )
                 sync_src_settings.delay(edit_task.id, actor_user_id=actor_user_id)
 
+        if moderation_sync_task is not None:
+            mod_actor_user_id = (
+                request.user.pk
+                if getattr(request.user, "is_authenticated", False)
+                else None
+            )
+            sync_src_action.delay(
+                moderation_sync_task.id,
+                actor_user_id=mod_actor_user_id,
+            )
+
         return Status(200, response)
 
+    except ModerationError as e:
+        return Status(
+            e.code,
+            ErrorResponse(
+                error=e.message,
+                details=None,
+            ),
+        )
     except ValidationError as e:
         return Status(
             422,

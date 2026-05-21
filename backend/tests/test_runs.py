@@ -168,6 +168,9 @@ class RunsWriteTest(AuthTestBase):
         cls,
     ) -> None:
         super().setUpTestData()
+        cls.game.required_methods_fg = [LeaderboardChoices.REALTIME]
+        cls.game.required_methods_il = [LeaderboardChoices.REALTIME]
+        cls.game.save()
         cls.category = Categories.objects.create(
             id="cat1",
             game=cls.game,
@@ -741,7 +744,7 @@ class BackfillRunPrimary(TestCase):
             game=other_game,
         )
         other_run = Runs.objects.create(
-            id="otherlegacy1",
+            id="otherleg1",
             game=other_game,
             category=other_cat,
             runtype="main",
