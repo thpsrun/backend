@@ -93,6 +93,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "auditlog.middleware.AuditActorMiddleware",
     "api.middleware.APIActivityLogMiddleware",
+    "accounts.middleware.OAuthPopupCOOPMiddleware",
 ]
 
 CORS_ALLOWED_ORIGINS = [FRONTEND_URL]

@@ -14,7 +14,13 @@ from django.db import transaction
 from django.http import HttpRequest, HttpResponseRedirect
 from srl.models import Players
 
-from accounts.oauth_reauth import handle_reauth, peek_intent
+from accounts.oauth_connect import (
+    _CONNECT_COMPLETE_URL_PATH,
+    clear_intent as clear_connect_intent,
+    handle_connect,
+    peek_intent as peek_connect_intent,
+)
+from accounts.oauth_reauth import handle_reauth, peek_intent as peek_reauth_intent
 
 TWITCH_LOGIN_RE: re.Pattern[str] = re.compile(r"^[A-Za-z0-9_]{1,25}$")
 
@@ -56,15 +62,30 @@ class SocialAccountAdapter(DefaultSocialAccountAdapter):
         request: HttpRequest,
         sociallogin: SocialLogin,
     ) -> None:
-        existing_user = sociallogin.user if sociallogin.is_existing else None
-        _check_oauth_unique(sociallogin, exclude_user=existing_user)
+        process = sociallogin.state.get("process")
 
-        intent = peek_intent(request)
-        if intent is not None:
-            handle_reauth(request, sociallogin, intent)
+        if process == "connect" and getattr(request.user, "is_authenticated", False):
+            exclude_user = request.user
+        else:
+            exclude_user = sociallogin.user if sociallogin.is_existing else None
+        _check_oauth_unique(sociallogin, exclude_user=exclude_user)
+
+        if process == "connect":
+            connect_intent = peek_connect_intent(request)
+            if connect_intent is None:
+                clear_connect_intent(request)
+                raise ImmediateHttpResponse(
+                    HttpResponseRedirect(
+                        f"{_CONNECT_COMPLETE_URL_PATH}"
+                        f"?status=error&reason=intent_expired",
+                    ),
+                )
+            handle_connect(request, sociallogin, connect_intent)
             return
 
-        if sociallogin.state.get("process") == "connect":
+        reauth_intent = peek_reauth_intent(request)
+        if reauth_intent is not None:
+            handle_reauth(request, sociallogin, reauth_intent)
             return
 
         if sociallogin.user:
@@ -77,6 +98,17 @@ class SocialAccountAdapter(DefaultSocialAccountAdapter):
                 raise ImmediateHttpResponse(
                     HttpResponseRedirect(f"{settings.FRONTEND_URL}/login/banned/"),
                 )
+
+    def get_connect_redirect_url(
+        self,
+        request: HttpRequest,
+        socialaccount: SocialAccount,
+    ) -> str:
+        clear_connect_intent(request)
+        return (
+            f"{_CONNECT_COMPLETE_URL_PATH}"
+            f"?status=ok&provider={socialaccount.provider}"
+        )
 
     def validate_disconnect(
         self,

@@ -1,4 +1,5 @@
 import time
+from urllib.parse import parse_qs, urlparse
 
 from accounts.oauth_reauth import REAUTH_INTENT_SESSION_KEY
 from allauth.account.internal.flows.login import AUTHENTICATION_METHODS_SESSION_KEY
@@ -6,7 +7,6 @@ from allauth.socialaccount.models import SocialAccount
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import Client, TestCase
-from django.urls import reverse
 from srl.models.players import Players
 
 User = get_user_model()
@@ -46,7 +46,14 @@ class InitiateOAuthReauthTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertIn("authorize_url", body)
-        self.assertEqual(body["authorize_url"], reverse("discord_login"))
+        parsed = urlparse(body["authorize_url"])
+        self.assertEqual(parsed.scheme, "https")
+        self.assertEqual(parsed.netloc, "discord.com")
+        self.assertEqual(parsed.path, "/api/oauth2/authorize")
+        params = parse_qs(parsed.query)
+        self.assertEqual(params.get("response_type"), ["code"])
+        self.assertIn("state", params)
+        self.assertIn("client_id", params)
         intent = self.client.session[REAUTH_INTENT_SESSION_KEY]
         self.assertEqual(intent["provider"], "discord")
         self.assertEqual(intent["user_id"], self.user.pk)

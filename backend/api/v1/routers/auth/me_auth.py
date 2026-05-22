@@ -1,19 +1,20 @@
 import hashlib
 import logging
 
+from accounts.oauth_connect import write_intent as write_connect_intent
 from accounts.oauth_reauth import write_intent
 from allauth.account.adapter import get_adapter
 from allauth.account.internal.flows.reauthentication import did_recently_authenticate
 from allauth.mfa.models import Authenticator
 from allauth.socialaccount.adapter import get_adapter as get_socialaccount_adapter
 from allauth.socialaccount.models import SocialAccount
+from allauth.socialaccount.providers.base.constants import AuthProcess
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.sessions.models import Session
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.http import HttpRequest
-from django.urls import NoReverseMatch, reverse
+from django.http import HttpRequest, HttpResponseRedirect
 from django.utils import timezone
 from ninja import Router, Status
 
@@ -22,6 +23,7 @@ from api.rate_limiting import auth_rate_limit
 from api.v1.schemas.auth import (
     AuthenticatorListItem,
     AuthMethodsResponse,
+    OAuthConnectInitiateResponse,
     OAuthReauthInitiateResponse,
     SocialAccountListItem,
     SocialAccountListResponse,
@@ -386,9 +388,10 @@ def initiate_oauth_reauth(
                 details=None,
             ),
         )
+    social_adapter = get_socialaccount_adapter(request)
     try:
-        authorize_url = reverse(f"{provider}_login")
-    except NoReverseMatch:
+        provider_obj = social_adapter.get_provider(request, provider)
+    except Exception:
         return Status(
             400,
             ErrorResponse(
@@ -396,6 +399,21 @@ def initiate_oauth_reauth(
                 details=None,
             ),
         )
+
+    redirect_response = provider_obj.redirect(
+        request,
+        process=AuthProcess.LOGIN,
+        next_url=None,
+    )
+    if not isinstance(redirect_response, HttpResponseRedirect):
+        return Status(
+            400,
+            ErrorResponse(
+                error="provider_redirect_failed",
+                details=None,
+            ),
+        )
+    authorize_url = redirect_response["Location"]
     write_intent(
         request,
         provider=provider,
@@ -411,6 +429,89 @@ def initiate_oauth_reauth(
     return Status(
         200,
         OAuthReauthInitiateResponse(
+            authorize_url=authorize_url,
+        ),
+    )
+
+
+@router.post(
+    "/me/auth/connect/oauth/{provider}",
+    response={
+        200: OAuthConnectInitiateResponse,
+        400: ErrorResponse,
+        409: ErrorResponse,
+    },
+    summary="Initiate OAuth Connect",
+    description=(
+        "Returns a provider authorize URL for linking a new social account to the current "
+        "user. Open the URL in a popup; the backend redirects the popup to a completion "
+        "page that postMessages the result to the opener. Returns 409 `already_linked` if "
+        "the user already has this provider linked."
+    ),
+    auth=authed("profile.edit_own"),
+)
+@auth_rate_limit
+def initiate_oauth_connect(
+    request: HttpRequest,
+    provider: str,
+) -> Status:
+    user = request.auth  # type: ignore
+    if provider not in settings.SOCIALACCOUNT_PROVIDERS:
+        return Status(
+            400,
+            ErrorResponse(
+                error="unsupported_provider",
+                details=None,
+            ),
+        )
+    if SocialAccount.objects.filter(user=user, provider=provider).exists():
+        return Status(
+            409,
+            ErrorResponse(
+                error="already_linked",
+                details=None,
+            ),
+        )
+    social_adapter = get_socialaccount_adapter(request)
+    try:
+        provider_obj = social_adapter.get_provider(request, provider)
+    except Exception:
+        return Status(
+            400,
+            ErrorResponse(
+                error="unsupported_provider",
+                details=None,
+            ),
+        )
+
+    redirect_response = provider_obj.redirect(
+        request,
+        process=AuthProcess.CONNECT,
+        next_url=None,
+    )
+    if not isinstance(redirect_response, HttpResponseRedirect):
+        return Status(
+            400,
+            ErrorResponse(
+                error="provider_redirect_failed",
+                details=None,
+            ),
+        )
+    authorize_url = redirect_response["Location"]
+    write_connect_intent(
+        request,
+        provider=provider,
+        user_id=user.pk,
+    )
+    _log_security_event(
+        "oauth_connect_initiated",
+        request,
+        user,
+        provider=provider,
+    )
+    return Status(
+        200,
+        OAuthConnectInitiateResponse(
             authorize_url=authorize_url,
         ),
     )

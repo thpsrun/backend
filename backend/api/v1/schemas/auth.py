@@ -275,7 +275,25 @@ class OAuthReauthInitiateResponse(Schema):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "authorize_url": "/accounts/discord/login/",
+                "authorize_url": (
+                    "https://discord.com/api/oauth2/authorize"
+                    "?response_type=code&client_id=...&redirect_uri=...&state=..."
+                ),
+            },
+        },
+    )
+
+
+class OAuthConnectInitiateResponse(Schema):
+    authorize_url: str
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "authorize_url": (
+                    "https://discord.com/api/oauth2/authorize"
+                    "?response_type=code&client_id=...&redirect_uri=...&state=..."
+                ),
             },
         },
     )
