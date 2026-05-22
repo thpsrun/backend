@@ -6,6 +6,7 @@ from accounts.oauth_reauth import write_intent
 from allauth.account.adapter import get_adapter
 from allauth.account.internal.flows.reauthentication import did_recently_authenticate
 from allauth.mfa.models import Authenticator
+from allauth.socialaccount import signals as socialaccount_signals
 from allauth.socialaccount.adapter import get_adapter as get_socialaccount_adapter
 from allauth.socialaccount.models import SocialAccount
 from allauth.socialaccount.providers.base.constants import AuthProcess
@@ -204,11 +205,16 @@ def delete_social_account(
                 return Status(
                     409,
                     ErrorResponse(
-                        error=code,
+                        error=code,  # type: ignore
                         details=None,
                     ),
                 )
             account.delete()
+            socialaccount_signals.social_account_removed.send(
+                sender=SocialAccount,
+                request=request,
+                socialaccount=account,
+            )
             _revoke_other_sessions(locked_user, session_key)
     except User.DoesNotExist:
         return Status(

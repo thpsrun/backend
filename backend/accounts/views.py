@@ -10,11 +10,23 @@ from accounts.oauth_connect import (
 from accounts.oauth_connect import (
     peek_intent as peek_connect_intent,
 )
+from accounts.oauth_login import (
+    clear_intent as clear_login_intent,
+)
+from accounts.oauth_login import (
+    peek_intent as peek_login_intent,
+)
 from accounts.oauth_reauth import (
     clear_intent as clear_reauth_intent,
 )
 from accounts.oauth_reauth import (
     peek_intent as peek_reauth_intent,
+)
+from accounts.oauth_signup import (
+    clear_intent as clear_signup_intent,
+)
+from accounts.oauth_signup import (
+    peek_intent as peek_signup_intent,
 )
 
 ALLOWED_STATUSES = frozenset({"ok", "error", "cancelled"})
@@ -42,7 +54,32 @@ CONNECT_ALLOWED_REASONS = frozenset(
     }
 )
 
-CONNECT_ALLOWED_PROVIDERS = frozenset(settings.SOCIALACCOUNT_PROVIDERS.keys())
+SIGNUP_ALLOWED_REASONS = frozenset(
+    {
+        "intent_expired",
+        "provider_mismatch",
+        "already_linked",
+        "provider_error",
+        "discord_handle_taken",
+        "twitch_handle_taken",
+        "signup_closed",
+    }
+)
+
+LOGIN_ALLOWED_REASONS = frozenset(
+    {
+        "intent_expired",
+        "provider_mismatch",
+        "no_link",
+        "banned",
+        "provider_error",
+        "discord_handle_taken",
+        "twitch_handle_taken",
+    }
+)
+
+OAUTH_ALLOWED_PROVIDERS = frozenset(settings.SOCIALACCOUNT_PROVIDERS.keys())
+CONNECT_ALLOWED_PROVIDERS = OAUTH_ALLOWED_PROVIDERS
 
 
 @require_GET
@@ -87,6 +124,62 @@ def oauth_connect_complete(
 
 
 @require_GET
+def oauth_signup_complete(
+    request: HttpRequest,
+) -> HttpResponse:
+    raw_status = request.GET.get("status", "")
+    raw_reason = request.GET.get("reason", "")
+    raw_provider = request.GET.get("provider", "")
+    raw_error = request.GET.get("error", "")
+
+    if raw_error and raw_status != "error":
+        raw_status = "error"
+        raw_reason = raw_error
+
+    status = raw_status if raw_status in ALLOWED_STATUSES else "error"
+    reason = raw_reason if raw_reason in SIGNUP_ALLOWED_REASONS else ""
+    provider = raw_provider if raw_provider in OAUTH_ALLOWED_PROVIDERS else ""
+    return render(
+        request,
+        "account/oauth_signup_complete.html",
+        {
+            "status": status,
+            "reason": reason,
+            "provider": provider,
+            "frontend_origin": settings.FRONTEND_URL,
+        },
+    )
+
+
+@require_GET
+def oauth_login_complete(
+    request: HttpRequest,
+) -> HttpResponse:
+    raw_status = request.GET.get("status", "")
+    raw_reason = request.GET.get("reason", "")
+    raw_provider = request.GET.get("provider", "")
+    raw_error = request.GET.get("error", "")
+
+    if raw_error and raw_status != "error":
+        raw_status = "error"
+        raw_reason = raw_error
+
+    status = raw_status if raw_status in ALLOWED_STATUSES else "error"
+    reason = raw_reason if raw_reason in LOGIN_ALLOWED_REASONS else ""
+    provider = raw_provider if raw_provider in OAUTH_ALLOWED_PROVIDERS else ""
+    return render(
+        request,
+        "account/oauth_login_complete.html",
+        {
+            "status": status,
+            "reason": reason,
+            "provider": provider,
+            "frontend_origin": settings.FRONTEND_URL,
+        },
+    )
+
+
+@require_GET
 def socialaccount_login_cancelled(
     request: HttpRequest,
 ) -> HttpResponse:
@@ -99,6 +192,16 @@ def socialaccount_login_cancelled(
         clear_reauth_intent(request)
         return HttpResponseRedirect(
             f"{reverse('oauth_reauth_complete')}?status=cancelled",
+        )
+    if peek_signup_intent(request) is not None:
+        clear_signup_intent(request)
+        return HttpResponseRedirect(
+            f"{reverse('oauth_signup_complete')}?status=cancelled",
+        )
+    if peek_login_intent(request) is not None:
+        clear_login_intent(request)
+        return HttpResponseRedirect(
+            f"{reverse('oauth_login_complete')}?status=cancelled",
         )
     return HttpResponseRedirect(f"{settings.FRONTEND_URL}/login/cancelled/")
 
@@ -116,5 +219,15 @@ def socialaccount_login_error(
         clear_reauth_intent(request)
         return HttpResponseRedirect(
             f"{reverse('oauth_reauth_complete')}?status=error&reason=provider_error",
+        )
+    if peek_signup_intent(request) is not None:
+        clear_signup_intent(request)
+        return HttpResponseRedirect(
+            f"{reverse('oauth_signup_complete')}?status=error&reason=provider_error",
+        )
+    if peek_login_intent(request) is not None:
+        clear_login_intent(request)
+        return HttpResponseRedirect(
+            f"{reverse('oauth_login_complete')}?status=error&reason=provider_error",
         )
     return HttpResponseRedirect(f"{settings.FRONTEND_URL}/login/error/")

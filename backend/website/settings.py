@@ -276,6 +276,10 @@ MFA_TOTP_ISSUER = os.getenv("SITE_NAME", "THPS Speedrunning")
 SOCIALACCOUNT_ADAPTER = "accounts.adapters.SocialAccountAdapter"
 MFA_ADAPTER = "accounts.adapters.MFAAdapter"
 
+# This disables the auto-signup since we want to grab the user's SRC API Key for signup.
+# This would just circumvent it.
+SOCIALACCOUNT_AUTO_SIGNUP = False
+
 MFA_SUPPORTED_TYPES = ["totp", "webauthn", "recovery_codes"]
 MFA_PASSKEY_LOGIN_ENABLED = True
 MFA_PASSKEY_SIGNUP_ENABLED = False
@@ -283,6 +287,10 @@ MFA_WEBAUTHN_ALLOW_INSECURE_ORIGIN = DEBUG  # WebAuthn refuses HTTP except on lo
 OAUTH_REAUTH_INTENT_TTL_SECONDS = int(
     os.getenv("OAUTH_REAUTH_INTENT_TTL_SECONDS", "600")
 )
+OAUTH_SIGNUP_INTENT_TTL_SECONDS = int(
+    os.getenv("OAUTH_SIGNUP_INTENT_TTL_SECONDS", "600")
+)
+OAUTH_LOGIN_INTENT_TTL_SECONDS = int(os.getenv("OAUTH_LOGIN_INTENT_TTL_SECONDS", "600"))
 
 # Session life when `Remember Me` is not chosen (7 days) or, if set, 30 days.
 SESSION_COOKIE_AGE = 60 * 60 * 24 * 7

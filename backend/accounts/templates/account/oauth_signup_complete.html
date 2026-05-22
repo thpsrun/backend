@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+    <head><meta charset="utf-8"><title>Signup Completed</title></head>
+    <body>
+        <script>
+        (function () {
+            var msg = {
+                type: "oauth_signup",
+                status: "{{ status|escapejs }}",
+                reason: "{{ reason|escapejs }}",
+                provider: "{{ provider|escapejs }}"
+            };
+            var origin = "{{ frontend_origin|escapejs }}";
+            if (window.opener && !window.opener.closed) {
+                window.opener.postMessage(msg, origin);
+            }
+            setTimeout(function () { window.close(); }, 100);
+        })();
+        </script>
+    <noscript>You can close this window.</noscript>
+    </body>
+</html>

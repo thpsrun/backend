@@ -297,3 +297,33 @@ class OAuthConnectInitiateResponse(Schema):
             },
         },
     )
+
+
+class OAuthSignupInitiateResponse(Schema):
+    authorize_url: str
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "authorize_url": (
+                    "https://discord.com/api/oauth2/authorize"
+                    "?response_type=code&client_id=...&redirect_uri=...&state=..."
+                ),
+            },
+        },
+    )
+
+
+class OAuthLoginInitiateResponse(Schema):
+    authorize_url: str
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "authorize_url": (
+                    "https://discord.com/api/oauth2/authorize"
+                    "?response_type=code&client_id=...&redirect_uri=...&state=..."
+                ),
+            },
+        },
+    )

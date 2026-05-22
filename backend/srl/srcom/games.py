@@ -1,11 +1,44 @@
+import os
+
 from celery import shared_task
 from django.conf import settings
 from django.db import transaction
 
 from srl.models import Games
+from srl.srcom._static_fetch import (
+    StaticAssetDownloadError,
+    download_speedrun_asset,
+)
 from srl.srcom.reconciliation import reconciliation_upsert_check
 from srl.srcom.schema.src import SrcGamesModel
 from srl.utils import src_api
+
+BoxartDownloadError = StaticAssetDownloadError
+
+
+def save_boxart_locally(
+    game_id: str,
+    url: str,
+) -> str:
+    """Download a boxart and save it under MEDIA_ROOT/boxart/."""
+    data, ext = download_speedrun_asset(url)
+    folder_path = os.path.join(settings.MEDIA_ROOT, "boxart")
+    try:
+        os.makedirs(folder_path, exist_ok=True)
+    except OSError as exc:
+        raise StaticAssetDownloadError(
+            f"cannot create {folder_path}: {exc}",
+        ) from exc
+
+    file_path = os.path.join(folder_path, f"{game_id}{ext}")
+    try:
+        with open(file_path, "wb") as f:
+            f.write(data)
+    except OSError as exc:
+        raise StaticAssetDownloadError(
+            f"cannot write {file_path}: {exc}",
+        ) from exc
+    return f"{settings.MEDIA_URL}boxart/{game_id}{ext}"
 
 
 @shared_task
@@ -35,6 +68,12 @@ def sync_game(
         else settings.POINTS_MAX_CE
     )
 
+    src_boxart_url: str = src_game.assets.cover_large.uri
+    try:
+        boxart_value: str = save_boxart_locally(src_game.id, src_boxart_url)
+    except StaticAssetDownloadError:
+        boxart_value = src_boxart_url
+
     with transaction.atomic():
         game = reconciliation_upsert_check(
             Games,
@@ -43,7 +82,7 @@ def sync_game(
                 "slug": src_game.abbreviation,
                 "release": src_game.release_date,
                 "defaulttime": src_game.ruleset.defaulttime,
-                "boxart": src_game.assets.cover_large.uri,
+                "boxart": boxart_value,
                 "twitch": src_game.names.twitch,
                 "pointsmax": points_max,
                 "ipointsmax": ipoints_max,

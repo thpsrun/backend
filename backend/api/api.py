@@ -17,6 +17,8 @@ from api.v1.routers.auth.api_keys import router as api_keys_router
 from api.v1.routers.auth.bot_session import router as bot_session_router
 from api.v1.routers.auth.me import router as me_router
 from api.v1.routers.auth.me_auth import router as me_auth_router
+from api.v1.routers.auth.oauth_login import router as oauth_login_router
+from api.v1.routers.auth.oauth_signup import router as oauth_signup_router
 from api.v1.routers.auth.pfp import router as pfp_router
 from api.v1.routers.auth.profile_bg import router as profile_bg_router
 from api.v1.routers.auth.reconcile import router as reconcile_router
@@ -435,6 +437,8 @@ ninja_api.add_router("/countries", countries_router, tags=["Reference"])
 ninja_api.add_router("/awards", awards_router, tags=["Reference"])
 
 ninja_api.add_router("/auth", register_router, tags=["Account"])
+ninja_api.add_router("/auth", oauth_signup_router, tags=["Account"])
+ninja_api.add_router("/auth", oauth_login_router, tags=["Account"])
 ninja_api.add_router("/auth", me_router, tags=["Profile"])
 ninja_api.add_router("/auth", me_auth_router, tags=["Auth Self-Service"])
 ninja_api.add_router("/auth", pfp_router, tags=["Profile Picture"])

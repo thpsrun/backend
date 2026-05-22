@@ -7,6 +7,8 @@ _OAUTH_POPUP_PATH_RE = re.compile(
     r"^/accounts/("
     r"oauth-connect-complete/"
     r"|oauth-reauth-complete/"
+    r"|oauth-signup-complete/"
+    r"|oauth-login-complete/"
     r"|social/login/(cancelled|error)/"
     r"|[^/]+/login/callback/.*"
     r")$",
@@ -31,5 +33,7 @@ class OAuthPopupCOOPMiddleware:
     ) -> HttpResponse:
         response = self.get_response(request)
         if _OAUTH_POPUP_PATH_RE.match(request.path):
-            response.headers["Cross-Origin-Opener-Policy"] = "unsafe-none"
+            response.headers["Cross-Origin-Opener-Policy"] = (  # type: ignore
+                "unsafe-none"
+            )
         return response

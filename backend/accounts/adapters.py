@@ -16,11 +16,20 @@ from srl.models import Players
 
 from accounts.oauth_connect import (
     _CONNECT_COMPLETE_URL_PATH,
-    clear_intent as clear_connect_intent,
     handle_connect,
+)
+from accounts.oauth_connect import (
+    clear_intent as clear_connect_intent,
+)
+from accounts.oauth_connect import (
     peek_intent as peek_connect_intent,
 )
-from accounts.oauth_reauth import handle_reauth, peek_intent as peek_reauth_intent
+from accounts.oauth_login import handle_login
+from accounts.oauth_login import peek_intent as peek_login_intent
+from accounts.oauth_reauth import handle_reauth
+from accounts.oauth_reauth import peek_intent as peek_reauth_intent
+from accounts.oauth_signup import handle_signup
+from accounts.oauth_signup import peek_intent as peek_signup_intent
 
 TWITCH_LOGIN_RE: re.Pattern[str] = re.compile(r"^[A-Za-z0-9_]{1,25}$")
 
@@ -39,14 +48,14 @@ def _check_oauth_unique(
     if provider == "discord":
         handle = (extra.get("username") or "")[:32]
         if handle and qs.filter(discord__iexact=handle).exists():
-            raise ValidationError("discord_handle_taken")
+            raise ValidationError("discord_handle_taken", code="discord_handle_taken")
 
     elif provider == "twitch":
         login = extra.get("login")
         if login and TWITCH_LOGIN_RE.match(login):
             url = f"https://twitch.tv/{login}"
             if qs.filter(twitch__iexact=url).exists():
-                raise ValidationError("twitch_handle_taken")
+                raise ValidationError("twitch_handle_taken", code="twitch_handle_taken")
 
 
 class SocialAccountAdapter(DefaultSocialAccountAdapter):
@@ -68,7 +77,7 @@ class SocialAccountAdapter(DefaultSocialAccountAdapter):
             exclude_user = request.user
         else:
             exclude_user = sociallogin.user if sociallogin.is_existing else None
-        _check_oauth_unique(sociallogin, exclude_user=exclude_user)
+        _check_oauth_unique(sociallogin, exclude_user=exclude_user)  # type: ignore
 
         if process == "connect":
             connect_intent = peek_connect_intent(request)
@@ -86,6 +95,16 @@ class SocialAccountAdapter(DefaultSocialAccountAdapter):
         reauth_intent = peek_reauth_intent(request)
         if reauth_intent is not None:
             handle_reauth(request, sociallogin, reauth_intent)
+            return
+
+        signup_intent = peek_signup_intent(request)
+        if signup_intent is not None:
+            handle_signup(request, sociallogin, signup_intent)
+            return
+
+        login_intent = peek_login_intent(request)
+        if login_intent is not None:
+            handle_login(request, sociallogin, login_intent)
             return
 
         if sociallogin.user:

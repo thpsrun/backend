@@ -2,7 +2,9 @@ import environ
 from accounts.headless_views import SRCProviderSignupView
 from accounts.views import (
     oauth_connect_complete,
+    oauth_login_complete,
     oauth_reauth_complete,
+    oauth_signup_complete,
     socialaccount_login_cancelled,
     socialaccount_login_error,
 )
@@ -31,6 +33,16 @@ urlpatterns = [
         "accounts/oauth-connect-complete/",
         oauth_connect_complete,
         name="oauth_connect_complete",
+    ),
+    path(
+        "accounts/oauth-signup-complete/",
+        oauth_signup_complete,
+        name="oauth_signup_complete",
+    ),
+    path(
+        "accounts/oauth-login-complete/",
+        oauth_login_complete,
+        name="oauth_login_complete",
     ),
     path(
         "accounts/social/login/cancelled/",
