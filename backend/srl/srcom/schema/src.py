@@ -59,6 +59,7 @@ class SrcGamesModel(BaseModel):
     levels: List[SrcLevelsModel] | None = None
     variables: List[SrcVariablesModel] | None = None
     platforms: List[SrcPlatformModel]
+    moderators: Dict[str, str] = {}
 
     @field_validator("categories", mode="before")
     @classmethod

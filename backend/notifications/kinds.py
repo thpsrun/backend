@@ -1,4 +1,9 @@
-from notifications.registry import NotificationKind, register
+from notifications.registry import (
+    NotificationGroup,
+    NotificationKind,
+    register,
+    register_group,
+)
 
 RUN_APPROVED = "run_approved"
 RUN_DENIED = "run_denied"
@@ -7,7 +12,16 @@ API_KEY_EXPIRING = "api_key_expiring"
 RUN_REVIEW = "run_review"
 USER_DATA_EXPORT_READY = "user_data_export_ready"
 USER_DATA_EXPORT_FAILED = "user_data_export_failed"
+USER_DATA_EXPORT_GROUP = "user_data_export"
 
+
+register_group(
+    NotificationGroup(
+        key=USER_DATA_EXPORT_GROUP,
+        label="Data Export",
+        description="Notifications about your account data export.",
+    ),
+)
 
 register(
     NotificationKind(
@@ -49,6 +63,7 @@ register(
         key=USER_DATA_EXPORT_READY,
         label="Data Export Ready",
         description="Your account data export is ready to download.",
+        group=USER_DATA_EXPORT_GROUP,
     ),
 )
 register(
@@ -56,5 +71,6 @@ register(
         key=USER_DATA_EXPORT_FAILED,
         label="Data Export Failed",
         description="Your account data export failed. You can try again now.",
+        group=USER_DATA_EXPORT_GROUP,
     ),
 )

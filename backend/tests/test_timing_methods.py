@@ -6,6 +6,7 @@ from api.v1.routers.utils.cache_utils import (
     lbs_runs_cache_key,
 )
 from api.v1.routers.utils.query_utils import _build_lbs_run_dict
+from auditlog.context import clear_actor
 from django.core.cache import caches
 from django.test import TestCase
 from srl.leaderboard.recalculation import process_leaderboard
@@ -277,6 +278,12 @@ class CacheKeyTimingConfigTest(TestCase):
 
 class GameTimingRecalcSignalTest(TestCase):
 
+    def setUp(
+        self,
+    ) -> None:
+        clear_actor()
+        super().setUp()
+
     @classmethod
     def setUpTestData(
         cls,
@@ -341,6 +348,12 @@ class GameTimingRecalcSignalTest(TestCase):
 
 
 class ChildTimingRecalcSignalTest(TestCase):
+
+    def setUp(
+        self,
+    ) -> None:
+        clear_actor()
+        super().setUp()
 
     @classmethod
     def setUpTestData(

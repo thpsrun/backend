@@ -6,7 +6,6 @@ set +a
 
 BACKUP_NAME="db_backup_$DATE.sql.gz"
 BACKUP_DIR="backups/"
-REMOTE_PATH="B2:$B2_BUCKET/backups"
 
 echo "Available backups in ${BACKUP_DIR}:"
 mapfile -t backups < <(find "${BACKUP_DIR}" -type f -name "*.sql.gz")

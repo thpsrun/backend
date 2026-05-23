@@ -8,23 +8,12 @@ def transfer_players_to_through_model(apps, schema_editor):
     Runs = apps.get_model("srl", "Runs")
     RunPlayers = apps.get_model("srl", "RunPlayers")
 
-    total_runs = 0
-    runs_with_player1 = 0
-    runs_with_player2 = 0
-    run_players_created = 0
-
-    for run in Runs.objects.all():
-        total_runs += 1
-
-        if run.player:
+    for run in Runs.objects.iterator():
+        if run.player_id:
             RunPlayers.objects.create(run=run, player=run.player, order=1)
-            runs_with_player1 += 1
-            run_players_created += 1
 
-        if run.player2:
+        if run.player2_id and run.player2_id != run.player_id:
             RunPlayers.objects.create(run=run, player=run.player2, order=2)
-            runs_with_player2 += 1
-            run_players_created += 1
 
 
 def reverse_transfer_players(apps, schema_editor):

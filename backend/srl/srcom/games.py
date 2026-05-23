@@ -4,7 +4,7 @@ from celery import shared_task
 from django.conf import settings
 from django.db import transaction
 
-from srl.models import Games
+from srl.models import Games, Players
 from srl.srcom._static_fetch import (
     StaticAssetDownloadError,
     download_speedrun_asset,
@@ -93,3 +93,7 @@ def sync_game(
 
         for plat in src_game.platforms:
             game.platforms.add(plat.id)
+
+        game.moderators.set(
+            Players.objects.filter(id__in=src_game.moderators.keys()),
+        )

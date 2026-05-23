@@ -11,6 +11,7 @@ from django.db import transaction
 from django.test import TestCase
 from ninja.testing import TestClient
 from srl.models import Games, Players, Runs
+from srl.models.base import LeaderboardChoices
 from srl.models.src_sync import SRCSyncTask
 
 User = CustomUser
@@ -267,6 +268,8 @@ class UpdateRunModeratorActionTests(TestCase):
             idefaulttime="rta",
             pointsmax=1000,
             ipointsmax=100,
+            required_methods_fg=[LeaderboardChoices.REALTIME],
+            required_methods_il=[LeaderboardChoices.REALTIME],
         )
         self.mod_game.moderators.add(self.mod_player)
 
@@ -327,7 +330,16 @@ class UpdateRunModeratorActionTests(TestCase):
         self.run.refresh_from_db()
         self.assertEqual(self.run.vid_status, "new")
         self.assertEqual(self.run.time_secs, 270.0)
-        self.assertEqual(SRCSyncTask.objects.filter(run=self.run).count(), 0)
+        self.assertEqual(
+            SRCSyncTask.objects.filter(
+                run=self.run,
+                action__in=[
+                    SRCSyncTask.ActionType.VERIFY,
+                    SRCSyncTask.ActionType.REJECT,
+                ],
+            ).count(),
+            0,
+        )
 
     def test_invalid_state_rolls_back_data_edit(
         self,
@@ -395,7 +407,7 @@ class UpdateRunModeratorActionTests(TestCase):
             {
                 "status": {
                     "status": "rejected",
-                    "reason": "mwmwmwmwmwmwmwmwmwmwmwmwmwmwmwmwwmmw",
+                    "reason": "cheat suspected",
                 }
             },
         )

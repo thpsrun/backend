@@ -122,6 +122,12 @@ class PreferencesOut(BaseModel):
                         "description": "One of your submitted runs was denied.",
                         "enabled": True,
                     },
+                    {
+                        "kind": "user_data_export",
+                        "label": "Data Export",
+                        "description": "Notifications about your account data export.",
+                        "enabled": True,
+                    },
                 ],
             },
         },
@@ -137,6 +143,7 @@ class PreferencesUpdateIn(BaseModel):
                 "preferences": {
                     "run_denied": False,
                     "api_key_expiring": False,
+                    "user_data_export": False,
                 },
             },
         },
@@ -172,6 +179,12 @@ class NotificationKindsOut(BaseModel):
                         "kind": "run_approved",
                         "label": "Run Approved",
                         "description": "One of your submitted runs was approved.",
+                        "default_enabled": True,
+                    },
+                    {
+                        "kind": "user_data_export",
+                        "label": "Data Export",
+                        "description": "Notifications about your account data export.",
                         "default_enabled": True,
                     },
                 ],

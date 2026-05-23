@@ -10,17 +10,27 @@ def _is_enabled_for(
     user_id: int,
     kind_key: str,
 ) -> bool:
-    """Return True if the user has the kind enabled (or has no row + kind defaults on)."""
+    """Return True if the user has the kind (or its group) enabled."""
     kind = registry.get(kind_key)
     if kind is None:
         return False
+
+    if kind.group is not None:
+        pref_key = kind.group
+        group = registry.get_group(kind.group)
+        assert group is not None
+        default_enabled = group.default_enabled
+    else:
+        pref_key = kind.key
+        default_enabled = kind.default_enabled
+
     pref = (
-        NotificationPreference.objects.filter(user_id=user_id, type=kind_key)
+        NotificationPreference.objects.filter(user_id=user_id, type=pref_key)
         .values_list("enabled", flat=True)
         .first()
     )
     if pref is None:
-        return kind.default_enabled
+        return default_enabled
     return bool(pref)
 
 

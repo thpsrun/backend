@@ -150,13 +150,7 @@ class Command(BaseCommand):
             total_leaderboards = len(leaderboards)
             self.stdout.write(f"Found {total_leaderboards} leaderboards to process.\n")
 
-            (
-                game_time_columns,
-                game_is_ce,
-                value_timings,
-                variable_timings,
-                category_timings,
-            ) = build_leaderboard_metadata(leaderboards)
+            _, game_is_ce, *_ = build_leaderboard_metadata(leaderboards)
 
             game_ids = {lb["game_id"] for lb in leaderboards}
             game_slugs: dict[str, str] = {}
@@ -182,12 +176,8 @@ class Command(BaseCommand):
                         entries_created, runs_processed, points_fixed = (
                             process_leaderboard(
                                 leaderboard,
-                                dry_run,
-                                game_is_ce,
-                                game_time_columns,
-                                value_timings=value_timings,
-                                variable_timings=variable_timings,
-                                category_timings=category_timings,
+                                dry_run=dry_run,
+                                game_is_ce=game_is_ce,
                             )
                         )
 

@@ -1,12 +1,22 @@
 ## Migration Guide For Future Ana
 
+## COPY THIS ENTIRE BLOCK
 ```
+docker compose stop django celery
+docker exec -it postgres psql -U "postgres" -d "thps_run" -c "
+INSERT INTO django_migrations (app, name, applied)
+SELECT 'accounts', '0001_initial', applied - INTERVAL '1 second'
+FROM django_migrations
+WHERE app = 'admin' AND name = '0001_initial';"
+
 docker compose down && docker compose up -d
 docker exec -it django python3 manage.py migrate srl
 docker exec -it django python3 manage.py migrate accounts --fake-initial
 docker exec -it django python3 manage.py migrate
 docker exec -it django python3 manage.py build_run_history --clear
 docker exec -it django python3 manage.py build_streaks --all
+docker exec -it django python3 manage.py repair_pfps
+docker exec -it django python3 manage.py download_boxarts
 ```
 
 - Add Cloudflare Tunrstile to frontend and inject `cf-turnstile-response`.
@@ -15,7 +25,7 @@ docker exec -it django python3 manage.py build_streaks --all
 
 Tailscale Django Admin:
 #### Step 1
-```nginx
+```
 location /illiad/ {
     allow 100.64.0.0/10;
     deny all;

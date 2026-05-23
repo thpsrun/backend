@@ -7,6 +7,7 @@ from django.utils import timezone
 from ninja import Query, Router, Status
 from notifications import registry
 from notifications.models import Notification, NotificationPreference
+from notifications.registry import NotificationGroup, NotificationKind
 
 from api.permissions import session_only
 from api.v1.schemas.base import ErrorResponse
@@ -118,6 +119,34 @@ def mark_read_by_target(request: HttpRequest, payload: ReadByTargetIn) -> Any:
     return {"updated": updated}
 
 
+def _preference_entries() -> list[NotificationKind | NotificationGroup]:
+    """Returns the user-facing preference entries."""
+    seen_groups: set[str] = set()
+    out: list[NotificationKind | NotificationGroup] = []
+    for kind in registry.all_kinds():
+        if kind.group is None:
+            out.append(kind)
+            continue
+        if kind.group in seen_groups:
+            continue
+        group = registry.get_group(kind.group)
+        assert group is not None
+        out.append(group)
+        seen_groups.add(kind.group)
+    return out
+
+
+def _is_valid_preference_key(
+    key: str,
+) -> bool:
+    if registry.is_group(key):
+        return True
+    kind = registry.get(key)
+    if kind is None:
+        return False
+    return kind.group is None
+
+
 @router.get(
     "/preferences",
     auth=session_only("notifications.read_own"),
@@ -137,13 +166,13 @@ def get_preferences(
         ),
     )
     out: list[PreferenceOut] = []
-    for kind in registry.all_kinds():
-        enabled = stored.get(kind.key, kind.default_enabled)
+    for entry in _preference_entries():
+        enabled = stored.get(entry.key, entry.default_enabled)
         out.append(
             PreferenceOut(
-                kind=kind.key,
-                label=kind.label,
-                description=kind.description,
+                kind=entry.key,
+                label=entry.label,
+                description=entry.description,
                 enabled=enabled,
             ),
         )
@@ -165,7 +194,7 @@ def put_preferences(
     request: HttpRequest,
     payload: PreferencesUpdateIn,
 ) -> Any:
-    unknown = [k for k in payload.preferences.keys() if not registry.is_registered(k)]
+    unknown = [k for k in payload.preferences.keys() if not _is_valid_preference_key(k)]
     if unknown:
         return Status(
             400,
@@ -175,10 +204,10 @@ def put_preferences(
             ),
         )
 
-    for kind_key, enabled in payload.preferences.items():
+    for pref_key, enabled in payload.preferences.items():
         NotificationPreference.objects.update_or_create(
             user=request.user,
-            type=kind_key,
+            type=pref_key,
             defaults={"enabled": bool(enabled)},
         )
     return get_preferences(request)
@@ -200,12 +229,12 @@ def list_kinds(
     return {
         "kinds": [
             NotificationKindOut(
-                kind=k.key,
-                label=k.label,
-                description=k.description,
-                default_enabled=k.default_enabled,
+                kind=entry.key,
+                label=entry.label,
+                description=entry.description,
+                default_enabled=entry.default_enabled,
             )
-            for k in registry.all_kinds()
+            for entry in _preference_entries()
         ],
     }
 
