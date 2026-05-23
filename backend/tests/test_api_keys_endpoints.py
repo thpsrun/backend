@@ -514,7 +514,8 @@ class MyCapabilitiesTest(APIKeyEndpointsTestBase):
         caps = response.json()["capabilities"]
         self.assertIn("runs.submit", caps)
         self.assertIn("guides.create", caps)
-        self.assertIn("profile.edit_own", caps)
+        # profile.edit_own is session-only and intentionally not exposed in the scope picker.
+        self.assertNotIn("profile.edit_own", caps)
         self.assertNotIn("users.admin", caps)
         self.assertNotIn("runs.verify", caps)
 
@@ -558,7 +559,7 @@ class MyCapabilitiesTest(APIKeyEndpointsTestBase):
 
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertIn("users.admin", body["capabilities"])
+        self.assertNotIn("users.admin", body["capabilities"])
         self.assertIn("runs.delete", body["capabilities"])
         self.assertIn("runs.verify", body["capabilities"])
         self.assertIn("games.manage", body["capabilities"])

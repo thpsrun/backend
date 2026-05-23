@@ -1,3 +1,6 @@
+import uuid
+
+from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django_resized import ResizedImageField
@@ -9,8 +12,6 @@ class CustomUser(AbstractUser):
         verbose_name = "User"
         verbose_name_plural = "Users"
 
-    # NOTE: This extends the basic Django User account system with more data, because of this
-    # you also need to declare the `field` in the admin.py file as well.
     encrypted_api_key = models.TextField(
         verbose_name="Encrypted SRC API Key",
         null=True,
@@ -69,3 +70,42 @@ class CustomUser(AbstractUser):
         blank=True,
         help_text="Profile background image. Max 2560x1440. Max 10MB.",
     )
+
+
+class UserDataExport(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        RUNNING = "RUNNING", "Running"
+        READY = "READY", "Ready"
+        FAILED = "FAILED", "Failed"
+        EXPIRED = "EXPIRED", "Expired"
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="data_exports",
+    )
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+    requested_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    file_path = models.CharField(max_length=512, blank=True)
+    file_size_bytes = models.BigIntegerField(null=True, blank=True)
+    error_message = models.TextField(blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["user", "requested_at"]),
+            models.Index(fields=["user", "status"]),
+        ]
+        ordering = ["-requested_at"]

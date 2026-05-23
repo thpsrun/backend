@@ -1,20 +1,28 @@
-### v4 - The [[SOMETHING]] Update
-###### Date Unknown
+### v4 - The Definitive Update
+###### June 1, 2026
 
 ### Major Changes
 
 #### Overall
-*   Entire frontend of the website is redesigned. New UI, not basic HTML/JS, and much more!!? This is all hosted on the frontend repo, just to keep Django's complexities separate from React's. (Thanks to Noami for helping!)
+*   Entire frontend of the website is redesigned. New UI, not basic HTML/JS, and much more!!? This is all hosted on the frontend repo, just to keep Django's complexities separate from React's. (Thanks to Noami for helping get started! <3)
     *   New main page!
     *   New game screen!
     *   New login system!
         *   SRC API Key is required to integrate!
+    *   New game pages!
+        *   Full-game and ILs have new views!
+    *   New rankings!
+    *   New player profile pages!?
+*   Introducing `Run History`!
+    *   Runs have been crawled from the beginning of the community's history to current day to help determine rankings, points, and records throughout history!
+    *   Ranking pages now go back to over a decade ago to show the progress of the Overall rankings by year or month, and can be done by game!
 *   Migrated the entire API to Django Ninja.
     *   Versioned the API endpoints for future-proofing and to allow better API upgrading as new features/endpoints are added/tested.
     *   GET endpoints are now publicly accessible! All other methods will require authentication.
-        *   Roles system has also been added to API keys to manage scope and rate-limiting.
+        *   API Keys can be created by authenticated users, with regular users getting vast GET permissions, moderators getting more, and super admins getting even more.
     *   Documentation is also publicly accessible via `/api/v1/docs`.
 *   Rebuilt the Guides system to be within the API instead of GitHub.
+    *   Guides are now easily shown on the game's page, and from there you can create new guides with tags!
 *   Consolidated the SRC -> thps.run pipeline from two different chains into one.
 *   Caching has been added to all API endpoints.
     *   Cached responses last ~7 days.
@@ -66,21 +74,24 @@
 
 
 ### Added
+*   Added a brand new login system that requires a valid SRC API Key to determine if you own your account.
+    *   Runners without an `approved` run will not be able to make an account until it is approved.
+    *   Runners can elect to keep their SRC API Key saved in the database or not. If you do, you can submit runs through the site!
+        *   API Keys are encrypted in transit and at rest.
+*   Added the ability for runners to sign-up with Discord and Twitch, allowing for passwordless setups!
+    *   SRC API Key is still required!
+*   Added the ability to use a passkey as a method to log into the site.
+*   Added the ability to remove passwords, passkeys, and OAuth methods - as long as one valid form remains at all times.
 *   Added indexes to multiple models to help speed up load times in virtually all instances.
-*   TODO: Added new login system that allows you to create an account on thps.run and associate your account with SRC.
-    *   Logins can be created through the new login interface or through OAuth with Discord.
-    *   Added support for token-based one-time passwords (TOTP) to use with your favorite authenticator app or the use of Passkeys.
-        *   Contributors and higher are required to have this enabled.
-*   TODO: Added new user system and profile editing system.
-    *   NOTE: When a login is created and associated to your SRC account, thps.run/THPSBot will NOT update your fields automatically anymore. You can edit them inyour new profile page!
-*   TODO: Added new revision to accomodate addition of storing user credentials/OAuth tokens to the Privacy Policy.
 *   Added `appear_on_main` field to `Categories` and `VariableValues` that will allow for querying only categories that, well, we only want to appear on the main page.
-    *   Also added a devoted `Manage Page Visibility` Django Action that will allow admins to easily mark the category + variable:value pairs to show on the main page.
-        *   Not the best system, will work to update this in the future maybe.
+    *   Also added a devoted page to the superuser's `Admin Panel` to help decide which runs appear on the front page.
+*   Added the ability for superadmins to adjust the ordering of `Categories`, `Variable-Value` pairs, and `Levels`.
 *   Added `order` field to `Categories`, `Levels`, and `VariableValues` that will help establish the order of that model when returned from the API.
     *   Also created a specialized `Manage Category & Level Ordering` Django Action to help admins manage the order of the model objects.
 *   Added a new `is_ce` property to `Games` to help centralize determining if the object is a Category Extension or not.
 *   Added `archived` field to `Variables`, `VariableValues`, `Categories`, and `Levels`.
+*   Added `rules` field to  `Variables`, `VariableValues`, `Categories`, `Levels` and `Games`.
+*   Added the ability to see rules in submit and edit run views and on the category's page.
 *   Added a `Categories`-specific override that lets you force change the default timing method of the category.
     *   THPS4 5th Gen, you're welcome.
 *   Added `slug` field to `Variables`, `VariableValues`, `Categories`, `Levels` and `Platforms`.
@@ -88,9 +99,15 @@
 *   Added Pydantic schema and models.
     *   About time tbh.
 *   Added "smart" caches that are generated and stored for 7 days unless data is modified.
-    *   This was mostly meant for the React endpoints, but has been extended to all endppoints to keep them consistent.
+    *   This was mostly meant for the React endpoints, but has been extended to all endpoints to keep them consistent.
+    *   Logic has been added to help invalidate caches when data is updated.
 *   Added new tests and vulnerability checks to the project's CI/CD pipeline to catch problems before they are pushed to production.
 *   Added a new Dockerfile build process to reduce the size of the overall images and harden it for regulatory compliance.
+*   Added the ability for runners to delete themselves from the database.
+    *   Their run data will remain, but will be marked as `Anonymous`.
+*   Added the ability for runners to backup their data to a .zip format.
+
+> There is definitely a lot more I forgot to add! But, yeah, a lot has changed <3
 
 ### Fixed
 *   Fixed all sorts of type checking issues throughout the project.
@@ -119,23 +136,3 @@
 *   Removed `all_cats` as a field, since new logic helps consolidate field options.
 *   Removed `subcategory` from all `Runs` objects.
     *   There is now a dynamic process to show the full subcategory instead of it needing to be updated everytime a category and/or variable is to be updated.
-
-### Misc.
-*   
-
-### TODO
-*   Add new login system and upgrade `Users` model to accept OAuth tokens from Discord, allow for new signups, and require an SRC account.
-    *   When synced, SRC account should be crawled to see if the user has any runs in the database; if no, then they are restricted.
-    *   TOTP-based tokens and Passkeys should also be added.
-    *   Revise Privacy Policy on new guidelines.
-*   Upgrade the `website` endpoint with custom APIs for:
-    *   Player Profile
-        *   Run History
-    *   Overall Points Leaderboard
-    *   IL Leaderboard Per Game
-        *   Special version for THPS4 and THPS12CE(?)
-    *   Single-game IL Leaderboard
-    *   Full-game leaderboard
-        *   With pagination?
-*   Research caching for website endpoint (~5m?)
-    *   Other endpoints would be exempted

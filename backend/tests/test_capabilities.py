@@ -1,4 +1,8 @@
-from api.permissions import CAPABILITY_SCOPED
+from api.permissions import (
+    ADMIN_ONLY_CAPABILITIES,
+    CAPABILITY_SCOPED,
+    SESSION_ONLY_CAPABILITIES,
+)
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.test import TestCase
@@ -34,7 +38,6 @@ ALL_CAPS: list[str] = [
     "api_keys.revoke_own",
     "api_keys.admin",
     "users.admin",
-    "users.view_private",
 ]
 
 
@@ -48,14 +51,40 @@ class CapabilityRegistryShapeTest(TestCase):
                 f"capability {cap!r} is not registered",
             )
 
-    def test_every_capability_has_scope_entry(
+    def test_every_capability_has_registry_entry(
         self,
     ) -> None:
+        known = (
+            set(CAPABILITY_SCOPED)
+            | set(SESSION_ONLY_CAPABILITIES)
+            | set(ADMIN_ONLY_CAPABILITIES)
+        )
         for cap in ALL_CAPS:
             self.assertIn(
                 cap,
-                CAPABILITY_SCOPED,
-                f"capability {cap!r} missing from CAPABILITY_SCOPED map",
+                known,
+                f"capability {cap!r} missing from CAPABILITY_SCOPED, "
+                "SESSION_ONLY_CAPABILITIES, and ADMIN_ONLY_CAPABILITIES",
+            )
+
+    def test_registry_tiers_are_disjoint(
+        self,
+    ) -> None:
+        tiers = {
+            "CAPABILITY_SCOPED": set(CAPABILITY_SCOPED),
+            "SESSION_ONLY_CAPABILITIES": set(SESSION_ONLY_CAPABILITIES),
+            "ADMIN_ONLY_CAPABILITIES": set(ADMIN_ONLY_CAPABILITIES),
+        }
+        for a, b in (
+            ("CAPABILITY_SCOPED", "SESSION_ONLY_CAPABILITIES"),
+            ("CAPABILITY_SCOPED", "ADMIN_ONLY_CAPABILITIES"),
+            ("SESSION_ONLY_CAPABILITIES", "ADMIN_ONLY_CAPABILITIES"),
+        ):
+            overlap = tiers[a] & tiers[b]
+            self.assertEqual(
+                overlap,
+                set(),
+                f"caps appear in both {a} and {b}: {sorted(overlap)}",
             )
 
 

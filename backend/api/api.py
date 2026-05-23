@@ -5,7 +5,7 @@ from typing import Any
 import sentry_sdk
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse
-from ninja import NinjaAPI, Redoc
+from ninja import NinjaAPI, Redoc, Router
 from ninja.errors import ValidationError
 
 from api.client_ip import client_ip
@@ -15,6 +15,7 @@ from api.v1.routers.auth.admin_navbar import router as admin_navbar_router
 from api.v1.routers.auth.admin_users import router as admin_users_router
 from api.v1.routers.auth.api_keys import router as api_keys_router
 from api.v1.routers.auth.bot_session import router as bot_session_router
+from api.v1.routers.auth.data_export import router as data_export_router
 from api.v1.routers.auth.me import router as me_router
 from api.v1.routers.auth.me_auth import router as me_auth_router
 from api.v1.routers.auth.oauth_login import router as oauth_login_router
@@ -141,40 +142,12 @@ ninja_api: NinjaAPI = NinjaAPI(
                 "description": "Specified endpoints related to the tags system.",
             },
             {
-                "name": "Website",
-                "description": "Specific endpoints related to how the frontend operates.",
-            },
-            {
                 "name": "Leaderboards",
                 "description": "Specific endpoints related to the points leaderboard history.",
             },
             {
                 "name": "Reference",
                 "description": "Static reference data lookups that do not require authentication.",
-            },
-            {
-                "name": "Account",
-                "description": "Account registration endpoints.",
-            },
-            {
-                "name": "Profile",
-                "description": "Read, update, and delete the authenticated player's profile.",
-            },
-            {
-                "name": "Profile Picture",
-                "description": "Upload the authenticated player's profile picture.",
-            },
-            {
-                "name": "Profile Background",
-                "description": "Upload and remove the authenticated player's profile background.",
-            },
-            {
-                "name": "SRC API Key",
-                "description": "Store and remove the authenticated player's Speedrun.com API key.",
-            },
-            {
-                "name": "SRC Sessions",
-                "description": "Status and refresh endpoints for the SRC v2 bot session.",
             },
             {
                 "name": "Submissions",
@@ -184,48 +157,6 @@ ninja_api: NinjaAPI = NinjaAPI(
                 "name": "API Keys",
                 "description": "Self-service endpoints for managing the "
                 "authenticated user's API keys.",
-            },
-            {
-                "name": "Auth Self-Service",
-                "description": "Self-service endpoints for managing the "
-                "authenticated user's password, linked OAuth accounts, and "
-                "passkeys.",
-            },
-            {
-                "name": "Notifications",
-                "description": "Self-service endpoints for listing, reading, "
-                "and deleting the authenticated user's notifications, plus "
-                "per-kind preference toggles.",
-            },
-            {
-                "name": "Sync Logs",
-                "description": "Administrative sync log endpoints.",
-            },
-            {
-                "name": "Admin API Keys",
-                "description": "Superuser Only: endpoints for inspecting and "
-                "revoking any user's API keys.",
-            },
-            {
-                "name": "Admin Game Display",
-                "description": "Superuser Only: endpoints to manage main-page "
-                "visibility and category/level/variable ordering for a game.",
-            },
-            {
-                "name": "Admin Navbar",
-                "description": "Superuser Only: endpoints to manage navigation "
-                "items and social media links for the site navbar.",
-            },
-            {
-                "name": "Admin Users",
-                "description": "Superuser Only: endpoints to manage users: force "
-                "password reset, revoke sessions, ban / un-ban, set moderator "
-                "status per game, grant or revoke awards, and manage profile "
-                "pictures.",
-            },
-            {
-                "name": "Reconcile",
-                "description": "Superuser Only: endpoints for managing SRC reconciliation jobs.",
             },
         ],
         "x-tagGroups": [
@@ -246,7 +177,6 @@ ninja_api: NinjaAPI = NinjaAPI(
             {
                 "name": "Site",
                 "tags": [
-                    "Website",
                     "Leaderboards",
                     "Guides",
                     "Tags",
@@ -255,27 +185,8 @@ ninja_api: NinjaAPI = NinjaAPI(
             {
                 "name": "Authenticated User",
                 "tags": [
-                    "Account",
-                    "Profile",
-                    "Profile Picture",
-                    "Profile Background",
-                    "SRC API Key",
                     "Submissions",
                     "API Keys",
-                    "Auth Self-Service",
-                    "Notifications",
-                ],
-            },
-            {
-                "name": "Administration",
-                "tags": [
-                    "Admin API Keys",
-                    "Admin Game Display",
-                    "Admin Navbar",
-                    "Admin Users",
-                    "Sync Logs",
-                    "Reconcile",
-                    "SRC Sessions",
                 ],
             },
         ],
@@ -410,11 +321,22 @@ def health_check(
     }
 
 
+def _hide_from_schema(
+    router: Router,
+) -> Router:
+    for path_view in router.path_operations.values():
+        for op in path_view.operations:
+            op.include_in_schema = False
+    return router
+
+
 ninja_api.add_router("/games", games_router, tags=["Games"])
 ninja_api.add_router("/games", game_audit_router, tags=["Games"])
 ninja_api.add_router("/categories", categories_router, tags=["Categories"])
 ninja_api.add_router("/levels", levels_router, tags=["Levels"])
-ninja_api.add_router("/notifications", notifications_router, tags=["Notifications"])
+ninja_api.add_router(
+    "/notifications", _hide_from_schema(notifications_router), tags=["Notifications"]
+)
 ninja_api.add_router("/platforms", platforms_router, tags=["Platforms"])
 ninja_api.add_router("/players", players_router, tags=["Players"])
 ninja_api.add_router("/variables", variables_router, tags=["Variables"])
@@ -424,33 +346,54 @@ ninja_api.add_router("/streams", streams_router, tags=["Streams"])
 ninja_api.add_router("/guides", guides_router, tags=["Guides"])
 ninja_api.add_router("/tags", tags_router, tags=["Tags"])
 
-ninja_api.add_router("/website", website_router, tags=["Website"])
-ninja_api.add_router("/website", lbs_page_router, tags=["Website"])
-ninja_api.add_router("/website", leaderboard_page_router, tags=["Website"])
+ninja_api.add_router("/website", _hide_from_schema(website_router), tags=["Website"])
+ninja_api.add_router("/website", _hide_from_schema(lbs_page_router), tags=["Website"])
+ninja_api.add_router(
+    "/website", _hide_from_schema(leaderboard_page_router), tags=["Website"]
+)
 ninja_api.add_router(
     "/pointslb/history", leaderboard_history_router, tags=["Leaderboards"]
 )
-ninja_api.add_router("/website", navbar_router, tags=["Website"])
-ninja_api.add_router("", history_router, tags=["Website"])
+ninja_api.add_router("/website", _hide_from_schema(navbar_router), tags=["Website"])
+ninja_api.add_router("", _hide_from_schema(history_router), tags=["Website"])
 
 ninja_api.add_router("/countries", countries_router, tags=["Reference"])
 ninja_api.add_router("/awards", awards_router, tags=["Reference"])
 
-ninja_api.add_router("/auth", register_router, tags=["Account"])
-ninja_api.add_router("/auth", oauth_signup_router, tags=["Account"])
-ninja_api.add_router("/auth", oauth_login_router, tags=["Account"])
-ninja_api.add_router("/auth", me_router, tags=["Profile"])
-ninja_api.add_router("/auth", me_auth_router, tags=["Auth Self-Service"])
-ninja_api.add_router("/auth", pfp_router, tags=["Profile Picture"])
-ninja_api.add_router("/auth", profile_bg_router, tags=["Profile Background"])
+ninja_api.add_router("/auth", _hide_from_schema(register_router), tags=["Account"])
+ninja_api.add_router("/auth", _hide_from_schema(oauth_signup_router), tags=["Account"])
+ninja_api.add_router("/auth", _hide_from_schema(oauth_login_router), tags=["Account"])
+ninja_api.add_router("/auth", _hide_from_schema(me_router), tags=["Profile"])
+ninja_api.add_router(
+    "/auth", _hide_from_schema(me_auth_router), tags=["Auth Self-Service"]
+)
+ninja_api.add_router(
+    "/auth", _hide_from_schema(data_export_router), tags=["Data Export"]
+)
+ninja_api.add_router("/auth", _hide_from_schema(pfp_router), tags=["Profile Picture"])
+ninja_api.add_router(
+    "/auth", _hide_from_schema(profile_bg_router), tags=["Profile Background"]
+)
 ninja_api.add_router("/auth", submissions_router, tags=["Submissions"])
 ninja_api.add_router("/auth", api_keys_router, tags=["API Keys"])
-ninja_api.add_router("/auth", admin_api_keys_router, tags=["Admin API Keys"])
-ninja_api.add_router("/auth", admin_game_display_router, tags=["Admin Game Display"])
-ninja_api.add_router("/auth", admin_navbar_router, tags=["Admin Navbar"])
-ninja_api.add_router("/auth", admin_users_router, tags=["Admin Users"])
+ninja_api.add_router(
+    "/auth", _hide_from_schema(admin_api_keys_router), tags=["Admin API Keys"]
+)
+ninja_api.add_router(
+    "/auth",
+    _hide_from_schema(admin_game_display_router),
+    tags=["Admin Game Display"],
+)
+ninja_api.add_router(
+    "/auth", _hide_from_schema(admin_navbar_router), tags=["Admin Navbar"]
+)
+ninja_api.add_router(
+    "/auth", _hide_from_schema(admin_users_router), tags=["Admin Users"]
+)
 
-ninja_api.add_router("/auth", sync_logs_router, tags=["Sync Logs"])
-ninja_api.add_router("/auth", reconcile_router, tags=["Reconcile"])
-ninja_api.add_router("/auth", src_key_router, tags=["SRC API Key"])
-ninja_api.add_router("/auth", bot_session_router, tags=["SRC Sessions"])
+ninja_api.add_router("/auth", _hide_from_schema(sync_logs_router), tags=["Sync Logs"])
+ninja_api.add_router("/auth", _hide_from_schema(reconcile_router), tags=["Reconcile"])
+ninja_api.add_router("/auth", _hide_from_schema(src_key_router), tags=["SRC API Key"])
+ninja_api.add_router(
+    "/auth", _hide_from_schema(bot_session_router), tags=["SRC Sessions"]
+)

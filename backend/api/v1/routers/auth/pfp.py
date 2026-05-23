@@ -7,7 +7,7 @@ from ninja import File, Router, Status
 from ninja.files import UploadedFile
 from srl.models import Players
 
-from api.permissions import authed
+from api.permissions import session_only
 from api.v1.routers.utils.images import ImageValidationError, validate_image
 from api.v1.schemas.auth import PfpUploadResponse
 from api.v1.schemas.base import ErrorResponse
@@ -36,7 +36,7 @@ os.makedirs(PFP_DIR, exist_ok=True)
         "Accepts JPEG, PNG, WEBP, or GIF images up to 5 MB and 4 MP. "
         "Saves to static/pfp/`playerid`.jpg."
     ),
-    auth=authed("profile.edit_own"),
+    auth=session_only("profile.edit_own"),
 )
 def upload_pfp(
     request: HttpRequest,

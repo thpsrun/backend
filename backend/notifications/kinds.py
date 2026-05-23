@@ -5,6 +5,8 @@ RUN_DENIED = "run_denied"
 MOD_PROMOTED = "mod_promoted"
 API_KEY_EXPIRING = "api_key_expiring"
 RUN_REVIEW = "run_review"
+USER_DATA_EXPORT_READY = "user_data_export_ready"
+USER_DATA_EXPORT_FAILED = "user_data_export_failed"
 
 
 register(
@@ -40,5 +42,19 @@ register(
         key=RUN_REVIEW,
         label="Run Sent For Review",
         description="A moderator sent one of your runs back with notes to address!",
+    ),
+)
+register(
+    NotificationKind(
+        key=USER_DATA_EXPORT_READY,
+        label="Data Export Ready",
+        description="Your account data export is ready to download.",
+    ),
+)
+register(
+    NotificationKind(
+        key=USER_DATA_EXPORT_FAILED,
+        label="Data Export Failed",
+        description="Your account data export failed. You can try again now.",
     ),
 )

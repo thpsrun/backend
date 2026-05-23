@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from typing import Any
 
+from auditlog.context import set_actor
 from django.contrib.auth.models import AnonymousUser
 from django.http import HttpRequest
 from ninja.errors import HttpError
@@ -19,7 +20,9 @@ from srl.rules import (
 from api.csrf import enforce_csrf
 from api.models import APIKey
 
-# Map of capabilities/features of the site and whether the capability is scoped to a specific game.
+# Capabilities exposed as API-key scopes. Each maps to True if game-scoped, False if
+# user-scoped. The /me/capabilities advisory endpoint, the API key scope-creation path,
+# and the backability check that drives signal-based revocation all read from this dict.
 CAPABILITY_SCOPED: dict[str, bool] = {
     "runs.submit": True,
     "runs.edit_own": True,
@@ -36,16 +39,34 @@ CAPABILITY_SCOPED: dict[str, bool] = {
     "api_keys.create_own": False,
     "api_keys.list_own": False,
     "api_keys.revoke_own": False,
-    "api_keys.admin": False,
-    "users.admin": False,
-    "users.view_private": False,
-    "profile.edit_own": False,
-    "submissions.list_own": False,
-    "sync_logs.admin": False,
-    "reconcile.admin": False,
-    "games.display.admin": False,
-    "navbar.admin": False,
 }
+
+# Capabilities that are registered for has_perm() checks but only reachable via session
+# authentication. Keep these out of CAPABILITY_SCOPED so they don't show up in the API key
+# scope-picker or /me/capabilities - they're frontend-only.
+SESSION_ONLY_CAPABILITIES: frozenset[str] = frozenset(
+    {
+        "profile.edit_own",
+        "submissions.list_own",
+        "notifications.read_own",
+        "notifications.manage_own",
+    },
+)
+
+# Admin-only capabilities. Registered for has_perm() and usable on authed(...) routes
+# (a superuser's unscoped API key still admits them), but intentionally not exposed as
+# a scope pick: there's no "just users.admin" sub-key story we want to surface, and these
+# don't belong in the /me/capabilities advisory aimed at end users.
+ADMIN_ONLY_CAPABILITIES: frozenset[str] = frozenset(
+    {
+        "api_keys.admin",
+        "users.admin",
+        "sync_logs.admin",
+        "reconcile.admin",
+        "games.display.admin",
+        "navbar.admin",
+    },
+)
 
 # Categorization of the game-scoped capabilities by the natural power a user needs to exercise
 # them. Source of truth for both the /me/capabilities advisory endpoint and the backability
@@ -84,50 +105,82 @@ assert _CATEGORIZED_SCOPED_CAPS == _SCOPED_CAPS, (
     f"Unknown: {sorted(_CATEGORIZED_SCOPED_CAPS - _SCOPED_CAPS)}."
 )
 
+# Disjoint tiers: a cap belongs to exactly one of the three registries.
+_TIER_SETS: dict[str, frozenset[str]] = {
+    "CAPABILITY_SCOPED": frozenset(CAPABILITY_SCOPED.keys()),
+    "SESSION_ONLY_CAPABILITIES": SESSION_ONLY_CAPABILITIES,
+    "ADMIN_ONLY_CAPABILITIES": ADMIN_ONLY_CAPABILITIES,
+}
+for _a, _b in (
+    ("CAPABILITY_SCOPED", "SESSION_ONLY_CAPABILITIES"),
+    ("CAPABILITY_SCOPED", "ADMIN_ONLY_CAPABILITIES"),
+    ("SESSION_ONLY_CAPABILITIES", "ADMIN_ONLY_CAPABILITIES"),
+):
+    _overlap = _TIER_SETS[_a] & _TIER_SETS[_b]
+    assert not _overlap, f"Capability appears in both {_a} and {_b}: {sorted(_overlap)}"
+
 
 def _register_capabilities() -> None:
     # Ignore the type: ignores, please. pylance likes to raise errors since it doesn't completely
     # understand these in this context lol.
+    registered: set[str] = set()
+
+    def reg(name: str, rule) -> None:
+        registered.add(name)
+        add_perm(name, rule)
 
     # Runs capabilities
-    add_perm("runs.submit", is_authenticated & has_claimed_player)  # type: ignore
-    add_perm("runs.edit_own", is_authenticated & is_run_participant)  # type: ignore
-    add_perm("runs.edit_any", is_superuser | is_run_game_moderator)  # type: ignore
-    add_perm("runs.verify", is_superuser | is_run_game_moderator)  # type: ignore
-    add_perm("runs.delete", is_superuser)
+    reg("runs.submit", is_authenticated & has_claimed_player)  # type: ignore
+    reg("runs.edit_own", is_authenticated & is_run_participant)  # type: ignore
+    reg("runs.edit_any", is_superuser | is_run_game_moderator)  # type: ignore
+    reg("runs.verify", is_superuser | is_run_game_moderator)  # type: ignore
+    reg("runs.delete", is_superuser)
 
     # Guides capabilities
-    add_perm("guides.create", is_authenticated & has_claimed_player)  # type: ignore
-    add_perm("guides.edit_own", is_authenticated & owns_guide)  # type: ignore
-    add_perm("guides.edit_any", is_superuser | is_guide_game_moderator)  # type: ignore
-    add_perm("guides.delete_own", is_authenticated & owns_guide)  # type: ignore
-    add_perm("guides.delete_any", is_superuser | is_guide_game_moderator)  # type: ignore
+    reg("guides.create", is_authenticated & has_claimed_player)  # type: ignore
+    reg("guides.edit_own", is_authenticated & owns_guide)  # type: ignore
+    reg("guides.edit_any", is_superuser | is_guide_game_moderator)  # type: ignore
+    reg("guides.delete_own", is_authenticated & owns_guide)  # type: ignore
+    reg("guides.delete_any", is_superuser | is_guide_game_moderator)  # type: ignore
 
     # Games capabilities
-    add_perm("games.manage", is_superuser | is_game_moderator)  # type: ignore
-    add_perm("games.audit.view", is_superuser | is_game_moderator)  # type: ignore
+    reg("games.manage", is_superuser | is_game_moderator)  # type: ignore
+    reg("games.audit.view", is_superuser | is_game_moderator)  # type: ignore
 
     # API keys capabilities
-    add_perm("api_keys.create_own", is_authenticated)
-    add_perm("api_keys.list_own", is_authenticated)
-    add_perm("api_keys.revoke_own", is_authenticated)
+    reg("api_keys.create_own", is_authenticated)
+    reg("api_keys.list_own", is_authenticated)
+    reg("api_keys.revoke_own", is_authenticated)
+    reg("api_keys.admin", is_superuser)
 
-    # Notifications capabilities (user-scoped, no per-game targeting)
-    add_perm("notifications.read_own", is_authenticated)
-    add_perm("notifications.manage_own", is_authenticated)
+    # Notifications capabilities (session-only)
+    reg("notifications.read_own", is_authenticated)
+    reg("notifications.manage_own", is_authenticated)
+
+    # Profile / submissions (session-only)
+    reg("profile.edit_own", is_authenticated & has_claimed_player)  # type: ignore
+    reg("submissions.list_own", is_authenticated & has_claimed_player)  # type: ignore
 
     # Admin capabilities
-    add_perm("api_keys.admin", is_superuser)
-    add_perm("users.admin", is_superuser)
-    add_perm("users.view_private", is_superuser)
+    reg("users.admin", is_superuser)
+    reg("sync_logs.admin", is_superuser)
+    reg("reconcile.admin", is_superuser)
+    reg("games.display.admin", is_superuser)
+    reg("navbar.admin", is_superuser)
 
-    # Misc
-    add_perm("profile.edit_own", is_authenticated & has_claimed_player)  # type: ignore
-    add_perm("submissions.list_own", is_authenticated & has_claimed_player)  # type: ignore
-    add_perm("sync_logs.admin", is_superuser)
-    add_perm("reconcile.admin", is_superuser)
-    add_perm("games.display.admin", is_superuser)
-    add_perm("navbar.admin", is_superuser)
+    declared: set[str] = (
+        set(CAPABILITY_SCOPED)
+        | set(SESSION_ONLY_CAPABILITIES)
+        | set(ADMIN_ONLY_CAPABILITIES)
+    )
+    unregistered = declared - registered
+    undeclared = registered - declared
+    assert not unregistered and not undeclared, (
+        "Capability registry drift between add_perm calls and "
+        "CAPABILITY_SCOPED/SESSION_ONLY_CAPABILITIES/ADMIN_ONLY_CAPABILITIES. "
+        f"Declared but not registered: {sorted(unregistered)}. "
+        f"Registered but not declared: {sorted(undeclared)}."
+    )
 
 
 _register_capabilities()
@@ -220,7 +273,6 @@ def authed(
                 continue
             request.user = user
             request.api_key = key  # type: ignore
-            from auditlog.context import set_actor
 
             actor_label = (
                 (getattr(key, "label", "") if key else "")
@@ -238,6 +290,48 @@ def authed(
             )
             raise HttpError(403, f"Permission denied: {label}")
         raise HttpError(403, "API key scope does not cover this action")
+
+    return dependency
+
+
+def session_only(
+    capability: str | list[str] | None = None,
+    target_resolver: Callable[[HttpRequest], Any] | None = None,
+) -> Callable[[HttpRequest], Any]:
+    if capability is None:
+        capabilities: tuple[str, ...] = ()
+    elif isinstance(capability, str):
+        capabilities = (capability,)
+    else:
+        capabilities = tuple(capability)
+
+    def dependency(
+        request: HttpRequest,
+    ) -> Any:
+        if request.headers.get("X-API-Key"):
+            raise HttpError(403, "This endpoint requires session authentication.")
+
+        user, _ = _resolve_caller(request)
+        request.user = user
+        request.api_key = None  # type: ignore
+
+        actor_label = getattr(user, "username", "") or ""
+        set_actor(user=user, api_key=None, label=actor_label[:128])
+
+        if not capabilities:
+            return user
+
+        target = target_resolver(request) if target_resolver else None
+        for cap in capabilities:
+            if user.has_perm(cap, target):
+                return user
+
+        label = (
+            capabilities[0]
+            if len(capabilities) == 1
+            else f"any of {list(capabilities)}"
+        )
+        raise HttpError(403, f"Permission denied: {label}")
 
     return dependency
 

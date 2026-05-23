@@ -9,7 +9,7 @@ from django.utils import timezone
 from ninja import Router, Status
 from srl.models import CountryCodes, Players
 
-from api.permissions import authed
+from api.permissions import session_only
 from api.v1.schemas.auth import (
     CountryEmbed,
     CustomizationsEmbed,
@@ -113,7 +113,7 @@ def _build_profile_response(
     },
     summary="Get My Profile",
     description="Returns the current authenticated player's profile.",
-    auth=authed("profile.edit_own"),
+    auth=session_only("profile.edit_own"),
 )
 def get_me(
     request: HttpRequest,
@@ -134,7 +134,7 @@ def get_me(
 Updates editable fields on the current authenticated player's profile.
 Only non-null fields in the request body will be applied.
 """,
-    auth=authed("profile.edit_own"),
+    auth=session_only("profile.edit_own"),
 )
 def update_me(
     request: HttpRequest,
@@ -231,7 +231,7 @@ def update_me(
 Deletes the authenticated player's account.
 Blanks the Player record (runs are preserved) and deletes the linked Django User.
 """,
-    auth=authed("profile.edit_own"),
+    auth=session_only("profile.edit_own"),
 )
 def delete_me(
     request: HttpRequest,

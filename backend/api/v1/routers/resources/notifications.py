@@ -8,7 +8,7 @@ from ninja import Query, Router, Status
 from notifications import registry
 from notifications.models import Notification, NotificationPreference
 
-from api.permissions import authed
+from api.permissions import session_only
 from api.v1.schemas.base import ErrorResponse
 from api.v1.schemas.notifications import (
     NotificationKindOut,
@@ -28,7 +28,7 @@ router = Router()
 
 @router.get(
     "",
-    auth=authed("notifications.read_own"),
+    auth=session_only("notifications.read_own"),
     response={
         200: NotificationListOut,
         401: ErrorResponse,
@@ -62,7 +62,7 @@ def list_notifications(
 
 @router.get(
     "/unread-count",
-    auth=authed("notifications.read_own"),
+    auth=session_only("notifications.read_own"),
     response={
         200: UnreadCountOut,
         401: ErrorResponse,
@@ -79,7 +79,7 @@ def unread_count(
 
 @router.post(
     "/read-all",
-    auth=authed("notifications.manage_own"),
+    auth=session_only("notifications.manage_own"),
     response={
         200: ReadCountOut,
         401: ErrorResponse,
@@ -99,7 +99,7 @@ def mark_all_read(
 
 @router.post(
     "/read-by-target",
-    auth=authed("notifications.manage_own"),
+    auth=session_only("notifications.manage_own"),
     response={
         200: ReadCountOut,
         401: ErrorResponse,
@@ -120,7 +120,7 @@ def mark_read_by_target(request: HttpRequest, payload: ReadByTargetIn) -> Any:
 
 @router.get(
     "/preferences",
-    auth=authed("notifications.read_own"),
+    auth=session_only("notifications.read_own"),
     response={
         200: PreferencesOut,
         401: ErrorResponse,
@@ -152,7 +152,7 @@ def get_preferences(
 
 @router.put(
     "/preferences",
-    auth=authed("notifications.manage_own"),
+    auth=session_only("notifications.manage_own"),
     response={
         200: PreferencesOut,
         400: ErrorResponse,
@@ -186,7 +186,7 @@ def put_preferences(
 
 @router.get(
     "/kinds",
-    auth=authed("notifications.read_own"),
+    auth=session_only("notifications.read_own"),
     response={
         200: NotificationKindsOut,
         401: ErrorResponse,
@@ -212,7 +212,7 @@ def list_kinds(
 
 @router.post(
     "/{notification_id}/read",
-    auth=authed("notifications.manage_own"),
+    auth=session_only("notifications.manage_own"),
     response={
         200: NotificationOut,
         401: ErrorResponse,
@@ -244,7 +244,7 @@ def mark_read(
 
 @router.delete(
     "/{notification_id}",
-    auth=authed("notifications.manage_own"),
+    auth=session_only("notifications.manage_own"),
     response={
         200: dict[str, str],
         401: ErrorResponse,

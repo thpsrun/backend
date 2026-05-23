@@ -18,7 +18,7 @@ from srl.tasks import sync_src_action
 from srl.time_parser import parse_time
 from srl.utils import convert_time
 
-from api.permissions import authed
+from api.permissions import authed, session_only
 from api.rate_limiting import auth_rate_limit
 from api.v1.routers.auth.moderation import (
     ModerationError,
@@ -157,7 +157,7 @@ def _build_src_run_payload(
 
 @router.get(
     "/submissions",
-    auth=authed("submissions.list_own"),
+    auth=session_only("submissions.list_own"),
     response={
         200: SubmissionHubResponse,
         401: ErrorResponse,
@@ -171,6 +171,7 @@ def _build_src_run_payload(
         "runs awaiting user response). Each run includes SRC sync status "
         "for any in-flight moderator actions."
     ),
+    include_in_schema=False,
 )
 @auth_rate_limit
 def get_submissions(
@@ -928,7 +929,7 @@ def send_run_for_review(
 
 @router.post(
     "/submissions/{run_id}/resubmit",
-    auth=authed("submissions.list_own"),
+    auth=authed("runs.edit_own", target_resolver=run_from_path),
     response={
         200: RunResubmitResponse,
         401: ErrorResponse,
@@ -948,31 +949,11 @@ def resubmit_run(
     request: HttpRequest,
     run_id: str,
 ) -> Status:
-    try:
-        player: Players = request.auth.player  # type: ignore
-    except Players.DoesNotExist:
-        return Status(
-            403,
-            ErrorResponse(
-                error="This endpoint requires a claimed Player profile.",
-                details=None,
-            ),
-        )
-
     run = Runs.objects.filter(id=run_id).select_related("game").first()
     if not run:
         return Status(
             404,
             ErrorResponse(error="Run not found.", details=None),
-        )
-
-    if not run.players.filter(pk=player.pk).exists():
-        return Status(
-            403,
-            ErrorResponse(
-                error="Only the run owner can resubmit a reviewed run.",
-                details=None,
-            ),
         )
 
     if run.vid_status != "review":

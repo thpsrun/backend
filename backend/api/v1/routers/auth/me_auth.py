@@ -19,7 +19,7 @@ from django.http import HttpRequest, HttpResponseRedirect
 from django.utils import timezone
 from ninja import Router, Status
 
-from api.permissions import authed
+from api.permissions import session_only
 from api.rate_limiting import auth_rate_limit
 from api.v1.schemas.auth import (
     AuthenticatorListItem,
@@ -112,7 +112,7 @@ def _authenticators_for(
         "Returns password status, linked social accounts, and authenticators"
         " for the current user."
     ),
-    auth=authed("profile.edit_own"),
+    auth=session_only("profile.edit_own"),
 )
 def get_auth_methods(
     request: HttpRequest,
@@ -136,7 +136,7 @@ def get_auth_methods(
     },
     summary="List Linked Social Accounts",
     description="Returns the social accounts (Discord, Twitch) linked to the current user.",
-    auth=authed("profile.edit_own"),
+    auth=session_only("profile.edit_own"),
 )
 def list_social_accounts(
     request: HttpRequest,
@@ -163,7 +163,7 @@ def list_social_accounts(
         "Removes the link to a social account."
         " Blocked if it is the user's last remaining auth method."
     ),
-    auth=authed("profile.edit_own"),
+    auth=session_only("profile.edit_own"),
 )
 @auth_rate_limit
 def delete_social_account(
@@ -306,7 +306,7 @@ def _send_password_deletion_email(
         "Removes the password from the account. Requires at least one OAuth"
         " account or WebAuthn passkey, plus a re-authentication proof."
     ),
-    auth=authed("profile.edit_own"),
+    auth=session_only("profile.edit_own"),
 )
 @auth_rate_limit
 def delete_password(
@@ -369,7 +369,7 @@ def delete_password(
         "account. Completing the flow stamps the recent-authentication timestamp for sensitive "
         "actions."
     ),
-    auth=authed("profile.edit_own"),
+    auth=session_only("profile.edit_own"),
 )
 @auth_rate_limit
 def initiate_oauth_reauth(
@@ -454,7 +454,7 @@ def initiate_oauth_reauth(
         "page that postMessages the result to the opener. Returns 409 `already_linked` if "
         "the user already has this provider linked."
     ),
-    auth=authed("profile.edit_own"),
+    auth=session_only("profile.edit_own"),
 )
 @auth_rate_limit
 def initiate_oauth_connect(
