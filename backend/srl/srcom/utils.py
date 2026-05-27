@@ -233,6 +233,7 @@ def update_standings(
             game=game_id,
             category=category_id,
             level=level_id,
+            vid_status="verified",
             obsolete=False,
         )
         base_qs = filter_by_variable_map(base_qs, variable_value_map)
@@ -321,6 +322,7 @@ def update_obsolete(
             game_id=game_id,
             category_id=category_id,
             level_id=level_id,
+            vid_status="verified",
             obsolete=False,
         )
         base_qs = filter_by_variable_map(base_qs, variable_value_map)

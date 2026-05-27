@@ -179,15 +179,25 @@ def refresh_bot_session() -> None:
             bs.validated_at = datetime.now(timezone.utc)
             bs.status = BotSession.Status.ACTIVE
             bs.consecutive_refresh_failures = 0
-            bs.save(
-                update_fields=[
-                    "phpsessid_encrypted",
-                    "csrf_token",
-                    "validated_at",
-                    "status",
-                    "consecutive_refresh_failures",
-                ],
-            )
+            update_fields = [
+                "phpsessid_encrypted",
+                "csrf_token",
+                "validated_at",
+                "status",
+                "consecutive_refresh_failures",
+            ]
+            if bs.disabled_by_circuit_breaker:
+                bs.disabled_by_circuit_breaker = False
+                bs.v2_enabled_override = None
+                update_fields += [
+                    "disabled_by_circuit_breaker",
+                    "v2_enabled_override",
+                ]
+            bs.save(update_fields=update_fields)
+            if "v2_enabled_override" in update_fields:
+                from srl.srcom.v2 import invalidate_v2_enabled_cache
+
+                invalidate_v2_enabled_cache()
         except Exception as exc:
             bs.status = BotSession.Status.LOCKED_OUT
             bs.consecutive_refresh_failures = (bs.consecutive_refresh_failures or 0) + 1
@@ -232,6 +242,9 @@ def trip_circuit_breaker(
             "last_severe_error_category",
         ],
     )
+    from srl.srcom.v2 import invalidate_v2_enabled_cache
+
+    invalidate_v2_enabled_cache()
     sentry_sdk.capture_message(
         f"SRC v2 circuit breaker tripped: {reason}",
         level="error",

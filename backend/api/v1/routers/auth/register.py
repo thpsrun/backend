@@ -1,16 +1,26 @@
+from datetime import timedelta
+
 import requests as http_requests
-from django.contrib.auth import get_user_model, login
+from allauth.account.models import EmailAddress
+from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.http import HttpRequest
+from django.utils import timezone
 from ninja import Router, Status
 from srl.encryption import encrypt_src_key
 from srl.models import Players, RunPlayers
 
 from api.csrf import enforce_csrf
 from api.rate_limiting import auth_rate_limit
-from api.v1.schemas.auth import RegisterRequest, RegisterResponse
+from api.v1.schemas.auth import (
+    CorrectEmailRequest,
+    CorrectEmailResponse,
+    RegisterRequest,
+    RegisterResponse,
+)
 from api.v1.schemas.base import ErrorResponse
 
 User = get_user_model()
@@ -21,7 +31,7 @@ router = Router()
 @router.post(
     "/register",
     response={
-        201: RegisterResponse,
+        202: RegisterResponse,
         400: ErrorResponse,
         403: ErrorResponse,
         404: ErrorResponse,
@@ -148,13 +158,122 @@ def register(
             ),
         )
 
-    login(request, user, backend="django.contrib.auth.backends.ModelBackend")
+    email_address, _ = EmailAddress.objects.update_or_create(
+        user=user,
+        email=body.email,
+        defaults={"primary": True, "verified": False},
+    )
+    email_address.send_confirmation(request, signup=True)
 
     return Status(
-        201,
+        202,
         RegisterResponse(
-            player_id=player.id,
-            player_name=player.name,
+            status="verification_required",
+            email=user.email,
             username=user.username,
+            src_user_id=src_user_id,
         ),
     )
+
+
+@router.post(
+    "/register/correct-email",
+    response={
+        200: CorrectEmailResponse,
+        400: ErrorResponse,
+        500: ErrorResponse,
+    },
+    summary="Correct Signup Email",
+    description="""\
+This endpoint allows for a user to fix a mistyped email address. The user re-verifies themselves
+with their SRC API Key, then they can replace the pending email and have a new code sent to them.
+""",
+    auth=None,
+)
+@auth_rate_limit
+def correct_email(
+    request: HttpRequest,
+    body: CorrectEmailRequest,
+) -> Status:
+    enforce_csrf(request)
+
+    try:
+        src_response = http_requests.get(
+            "https://www.speedrun.com/api/v1/profile",
+            headers={"X-API-Key": body.src_api_key},
+            timeout=10,
+        )
+    except http_requests.RequestException:
+        return Status(
+            400,
+            ErrorResponse(error="src_api_unavailable", details=None),
+        )
+    if src_response.status_code != 200:
+        return Status(
+            400,
+            ErrorResponse(error="src_api_invalid", details=None),
+        )
+    try:
+        src_user_id: str = src_response.json()["data"]["id"]
+    except (KeyError, ValueError):
+        return Status(
+            400,
+            ErrorResponse(error="src_api_invalid", details=None),
+        )
+
+    generic_response = Status(
+        200,
+        CorrectEmailResponse(
+            status="verification_sent",
+            email=body.new_email,
+        ),
+    )
+
+    try:
+        player = Players.objects.select_related("user").get(id=src_user_id)
+    except Players.DoesNotExist:
+        return generic_response
+    user = player.user
+    if user is None:
+        return generic_response
+
+    recency_window = timedelta(
+        days=settings.ACCOUNT_EMAIL_CONFIRMATION_EXPIRE_DAYS,
+    )
+    if user.date_joined < timezone.now() - recency_window:
+        return generic_response
+
+    primary = EmailAddress.objects.filter(user=user, primary=True).first()
+    if primary is not None and primary.verified:
+        return generic_response
+
+    if (
+        EmailAddress.objects.filter(
+            email__iexact=body.new_email,
+            verified=True,
+        )
+        .exclude(user=user)
+        .exists()
+    ):
+        return generic_response
+
+    try:
+        with transaction.atomic():
+            user.email = body.new_email
+            user.save(update_fields=["email"])
+            if primary is None:
+                primary = EmailAddress.objects.create(
+                    user=user,
+                    email=body.new_email,
+                    primary=True,
+                    verified=False,
+                )
+            else:
+                primary.email = body.new_email
+                primary.verified = False
+                primary.save(update_fields=["email", "verified"])
+    except IntegrityError:
+        return generic_response
+
+    primary.send_confirmation(request, signup=True)
+    return generic_response

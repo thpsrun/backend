@@ -1,0 +1,12 @@
+{% load account %}{% autoescape off %}{% user_display user as user_display %}Welcome to thps.run, {{ user_display }}!
+
+You are almost done setting up your account. Confirm your email address
+by following this link:
+
+{{ activate_url }}
+
+Once that is done you can log in and start submitting runs. If you did not sign
+up on thps.run, you can ignore this email.
+
+- thps.run's Admin Team
+{% endautoescape %}

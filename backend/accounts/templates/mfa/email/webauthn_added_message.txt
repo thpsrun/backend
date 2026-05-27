@@ -1,0 +1,11 @@
+{% autoescape off %}Greetings,
+
+A new security key (passkey/WebAuthn) was just added to your thps.run account.
+
+If this was not you, your account may be compromised. Reset your password
+right away at https://thps.run/account/password/reset, remove the new key
+from your account's security settings, and reach out to a moderator on our
+Discord so we can help lock the account down.
+
+- thps.run's Admin Team
+{% endautoescape %}

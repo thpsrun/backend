@@ -37,8 +37,10 @@ class Games(models.Model):
     release = models.DateField(
         verbose_name="Release Date",
     )
-    boxart = models.URLField(
-        verbose_name="Box Art URL",
+    boxart = models.CharField(
+        max_length=200,
+        verbose_name="Box Art",
+        help_text="Absolute URL or MEDIA_URL-relative path to the game's box art image.",
     )
     defaulttime = models.CharField(
         verbose_name="Default Time",

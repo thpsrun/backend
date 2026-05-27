@@ -93,6 +93,18 @@ def _apply_moderation(
                 400,
                 "Notes are required when sending a run back for review.",
             )
+
+        # This is to mainly ensure you cannot send back a run to a player with no thps.run account.
+        has_claimed_runner = run.players.filter(
+            user__isnull=False,
+            claim_status="claimed",
+        ).exists()
+        if not has_claimed_runner:
+            raise ModerationError(
+                409,
+                "Run has no claimed thps.run player who could resubmit; "
+                "reject the run instead.",
+            )
         run.vid_status = "review"
         run.review_notes = action_in.notes
         return None

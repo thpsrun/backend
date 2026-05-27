@@ -7,8 +7,6 @@ from speedruncompy.exceptions import Forbidden
 
 from srl.srcom.v2.errors import ErrorCategory, map_exception
 
-# This is mostly just a wrapper to help get speedruncompy to work on thps.run.
-
 
 class SrcV2Error(Exception):
     """Base for v2 client errors. Always carries a category."""
@@ -78,11 +76,7 @@ _CATEGORY_TO_EXC: dict[ErrorCategory, type[SrcV2Error]] = {
 
 
 class SrcV2Client:
-    """Wraps a single speedruncompy SpeedrunClient.
-
-    Construct one per Celery worker; cheap to recreate. PHPSESSID is
-    loaded from BotSession at construction time.
-    """
+    """Wraps a single speedruncompy SpeedrunClient for the edit-run flow."""
 
     def __init__(
         self,

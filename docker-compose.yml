@@ -77,6 +77,31 @@ services:
     networks:
       - thpsrun
 
+  celery-beat:
+    container_name: celery-beat
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        UID: 1000
+        GID: 1000
+    restart: unless-stopped
+    command: celery -A website beat --loglevel=info -s /tmp/celerybeat-schedule
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./backend:/app
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - thpsrun
+
   redis:
     container_name: redis
     image: redis:8.6.3-alpine

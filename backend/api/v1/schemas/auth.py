@@ -1,5 +1,6 @@
 import re
 from datetime import date, datetime
+from typing import Literal
 
 from ninja import Schema
 from pydantic import (
@@ -42,6 +43,9 @@ class PlayerEmbed(BasePlayerInfoSchema):
     username: str
     country: CountrySchema | None = None
     is_superuser: bool = False
+    email: str
+    email_verified: bool
+    pending_email: str | None
 
 
 class CustomizationsEmbed(Schema):
@@ -104,9 +108,57 @@ class RegisterRequest(Schema):
 
 
 class RegisterResponse(Schema):
-    player_id: str
-    player_name: str
+    status: Literal["verification_required"]
+    email: str
     username: str
+    src_user_id: str
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "status": "verification_required",
+                "email": "runner@example.com",
+                "username": "runner42",
+                "src_user_id": "abc123",
+            },
+        },
+    )
+
+
+class CorrectEmailRequest(Schema):
+    src_api_key: str = Field(
+        ...,
+        min_length=1,
+        description="Speedrun.com API key for identity verification",
+    )
+    new_email: EmailStr = Field(
+        ...,
+        max_length=254,
+        description="Corrected email address",
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "src_api_key": "your-src-api-key",
+                "new_email": "runner@example.com",
+            },
+        },
+    )
+
+
+class CorrectEmailResponse(Schema):
+    status: Literal["verification_sent"]
+    email: str
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "status": "verification_sent",
+                "email": "runner@example.com",
+            },
+        },
+    )
 
 
 class PlayerProfileResponse(Schema):

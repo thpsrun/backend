@@ -1,6 +1,7 @@
 import logging
 import os
 
+from allauth.account.models import EmailAddress
 from django.conf import settings
 from django.contrib.sessions.models import Session
 from django.db import transaction
@@ -44,6 +45,25 @@ def _invalidate_user_sessions(
         logger.exception("Failed to invalidate remote sessions for user %s", user_id)
 
 
+def _email_state(user) -> tuple[str, bool, str | None]:
+    """Return (email, email_verified, pending_email) for a user.
+
+    `pending_email` is the most recent non-primary unverified EmailAddress, or None.
+    """
+    if user is None:
+        return ("", False, None)
+    primary = EmailAddress.objects.filter(user=user, primary=True).first()
+    pending = (
+        EmailAddress.objects.filter(user=user, primary=False, verified=False)
+        .order_by("-id")
+        .first()
+    )
+    email = primary.email if primary else (user.email or "")
+    verified = bool(primary and primary.verified)
+    pending_email = pending.email if pending else None
+    return (email, verified, pending_email)
+
+
 def _build_profile_response(
     player: Players,
 ) -> PlayerProfileResponse:
@@ -58,6 +78,7 @@ def _build_profile_response(
             flag=player.countrycode.flag.url if player.countrycode.flag else None,
         )
 
+    email, email_verified, pending_email = _email_state(user)
     player_embed = PlayerEmbed(
         username=user.username if user else "",
         name=player.name,
@@ -67,6 +88,9 @@ def _build_profile_response(
         pfp=player.pfp,
         is_superuser=user.is_superuser if user else False,
         ex_stream=player.ex_stream,
+        email=email,
+        email_verified=email_verified,
+        pending_email=pending_email,
     )
 
     socials_embed = SocialsEmbed(

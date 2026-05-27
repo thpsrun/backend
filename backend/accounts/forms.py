@@ -1,6 +1,7 @@
 import logging
 
 import requests as http_requests
+from allauth.account.models import EmailAddress
 from allauth.headless.socialaccount.inputs import SignupInput
 from django import forms
 from django.contrib.auth import get_user_model
@@ -82,12 +83,39 @@ class SRCSignupInput(SignupInput):
         request: HttpRequest,
         user: AbstractBaseUser,
     ) -> AbstractBaseUser:
+        form_email = self.cleaned_data["email"]
         user.username = self.cleaned_data["username"]
-        user.email = self.cleaned_data["email"]
+        user.email = form_email
         user.set_unusable_password()
         if self.cleaned_data.get("save_key"):
             user.encrypted_api_key = encrypt_src_key(self.cleaned_data["src_api_key"])
         user.save()
+
+        if self.sociallogin is not None:
+            matching = next(
+                (
+                    addr
+                    for addr in self.sociallogin.email_addresses
+                    if addr.email.lower() == form_email.lower()
+                ),
+                None,
+            )
+            for addr in self.sociallogin.email_addresses:
+                if addr is matching:
+                    continue
+                addr.primary = False
+            if matching is not None:
+                matching.primary = True
+                matching.verified = False
+            else:
+                self.sociallogin.email_addresses.insert(
+                    0,
+                    EmailAddress(
+                        email=form_email,
+                        primary=True,
+                        verified=False,
+                    ),
+                )
         if self._src_player_id is not None:
             player = Players.objects.filter(id=self._src_player_id).first()
             if player is None:

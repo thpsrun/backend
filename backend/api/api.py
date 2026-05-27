@@ -18,6 +18,7 @@ from api.v1.routers.auth.bot_session import router as bot_session_router
 from api.v1.routers.auth.data_export import router as data_export_router
 from api.v1.routers.auth.me import router as me_router
 from api.v1.routers.auth.me_auth import router as me_auth_router
+from api.v1.routers.auth.me_email import router as me_email_router
 from api.v1.routers.auth.oauth_login import router as oauth_login_router
 from api.v1.routers.auth.oauth_signup import router as oauth_signup_router
 from api.v1.routers.auth.pfp import router as pfp_router
@@ -327,6 +328,7 @@ def _hide_from_schema(
     for path_view in router.path_operations.values():
         for op in path_view.operations:
             op.include_in_schema = False
+
     return router
 
 
@@ -366,6 +368,9 @@ ninja_api.add_router("/auth", _hide_from_schema(oauth_login_router), tags=["Acco
 ninja_api.add_router("/auth", _hide_from_schema(me_router), tags=["Profile"])
 ninja_api.add_router(
     "/auth", _hide_from_schema(me_auth_router), tags=["Auth Self-Service"]
+)
+ninja_api.add_router(
+    "/auth", _hide_from_schema(me_email_router), tags=["Email Management"]
 )
 ninja_api.add_router(
     "/auth", _hide_from_schema(data_export_router), tags=["Data Export"]

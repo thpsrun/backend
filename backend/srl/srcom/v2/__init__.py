@@ -20,3 +20,7 @@ def is_v2_enabled() -> bool:
 
     cache.set(_V2_ENABLED_CACHE_KEY, enabled, _V2_ENABLED_CACHE_TTL)
     return enabled
+
+
+def invalidate_v2_enabled_cache() -> None:
+    cache.delete(_V2_ENABLED_CACHE_KEY)

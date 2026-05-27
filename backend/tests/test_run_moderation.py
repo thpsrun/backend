@@ -10,7 +10,7 @@ from auditlog.context import clear_actor
 from django.db import transaction
 from django.test import TestCase
 from ninja.testing import TestClient
-from srl.models import Games, Players, Runs
+from srl.models import Games, Players, RunPlayers, Runs
 from srl.models.base import LeaderboardChoices
 from srl.models.src_sync import SRCSyncTask
 
@@ -48,6 +48,17 @@ class ApplyModerationTests(TestCase):
             user=self.user,
         )
         self.game.moderators.add(self.player)
+        self.runner_user = User.objects.create_user(
+            username="runner",
+            email="runner@example.invalid",
+            password="testpass",
+        )
+        self.runner = Players.objects.create(
+            id="runner",
+            name="runner",
+            user=self.runner_user,
+            claim_status=Players.ClaimStatus.CLAIMED,
+        )
         self.run = Runs.objects.create(  # type: ignore[assignment]
             id="run01",
             game=self.game,
@@ -57,6 +68,7 @@ class ApplyModerationTests(TestCase):
             time="5m 00s",
             time_secs=300.0,
         )
+        RunPlayers.objects.create(run=self.run, player=self.runner)
 
     def tearDown(
         self,
@@ -218,6 +230,86 @@ class ApplyModerationTests(TestCase):
                 )
         self.assertEqual(ctx.exception.code, 409)
 
+    def test_review_blocked_when_no_runner_attached(
+        self,
+    ) -> None:
+        self.run.players.clear()
+        action = ModeratorActionIn(action="review", notes="please reupload")
+        with self.assertRaises(ModerationError) as ctx:
+            with transaction.atomic():
+                _apply_moderation(
+                    run=self.run,
+                    action_in=action,
+                    actor_player=self.player,
+                )
+        self.assertEqual(ctx.exception.code, 409)
+
+    def test_review_blocked_when_runner_unclaimed(
+        self,
+    ) -> None:
+        self.runner.user = None
+        self.runner.claim_status = Players.ClaimStatus.UNCLAIMED
+        self.runner.save(update_fields=["user", "claim_status"])
+        action = ModeratorActionIn(action="review", notes="please reupload")
+        with self.assertRaises(ModerationError) as ctx:
+            with transaction.atomic():
+                _apply_moderation(
+                    run=self.run,
+                    action_in=action,
+                    actor_player=self.player,
+                )
+        self.assertEqual(ctx.exception.code, 409)
+
+    def test_review_blocked_when_runner_user_missing(
+        self,
+    ) -> None:
+        self.runner.user = None
+        self.runner.save(update_fields=["user"])
+        action = ModeratorActionIn(action="review", notes="please reupload")
+        with self.assertRaises(ModerationError) as ctx:
+            with transaction.atomic():
+                _apply_moderation(
+                    run=self.run,
+                    action_in=action,
+                    actor_player=self.player,
+                )
+        self.assertEqual(ctx.exception.code, 409)
+
+    def test_review_blocked_when_runner_claim_status_deleted(
+        self,
+    ) -> None:
+        self.runner.claim_status = Players.ClaimStatus.DELETED
+        self.runner.save(update_fields=["claim_status"])
+        action = ModeratorActionIn(action="review", notes="please reupload")
+        with self.assertRaises(ModerationError) as ctx:
+            with transaction.atomic():
+                _apply_moderation(
+                    run=self.run,
+                    action_in=action,
+                    actor_player=self.player,
+                )
+        self.assertEqual(ctx.exception.code, 409)
+
+    def test_review_allowed_when_at_least_one_claimed_runner(
+        self,
+    ) -> None:
+        unclaimed = Players.objects.create(
+            id="ghost",
+            name="ghost",
+            claim_status=Players.ClaimStatus.UNCLAIMED,
+        )
+        RunPlayers.objects.create(run=self.run, player=unclaimed, order=2)
+        action = ModeratorActionIn(action="review", notes="please reupload")
+        with transaction.atomic():
+            _apply_moderation(
+                run=self.run,
+                action_in=action,
+                actor_player=self.player,
+            )
+            self.run.save()
+        self.run.refresh_from_db()
+        self.assertEqual(self.run.vid_status, "review")
+
 
 class UpdateRunModeratorActionTests(TestCase):
     """PUT /runs/:run_id with moderator_action - atomic data + verdict.
@@ -273,6 +365,17 @@ class UpdateRunModeratorActionTests(TestCase):
         )
         self.mod_game.moderators.add(self.mod_player)
 
+        self.runner_user = User.objects.create_user(
+            username="modrunner",
+            email="modrunner@example.invalid",
+            password="testpass",
+        )
+        self.runner = Players.objects.create(
+            id="modrunner",
+            name="modrunner",
+            user=self.runner_user,
+            claim_status=Players.ClaimStatus.CLAIMED,
+        )
         self.run = Runs.objects.create(  # type: ignore[assignment]
             id="modrun",
             game=self.mod_game,
@@ -283,6 +386,7 @@ class UpdateRunModeratorActionTests(TestCase):
             time_secs=300.0,
             url="https://speedrun.com/mod-game/run/modrun",
         )
+        RunPlayers.objects.create(run=self.run, player=self.runner)
 
     def tearDown(
         self,

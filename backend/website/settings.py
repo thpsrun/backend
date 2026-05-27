@@ -55,6 +55,8 @@ INSTALLED_APPS = [
     "django.contrib.postgres",
     "django.contrib.staticfiles",
     "django.contrib.humanize",
+    # LOCAL (accounts listed first so its templates override allauth's bundled ones)
+    "accounts",
     # THIRD-PARTY
     "corsheaders",
     "django.contrib.sites",
@@ -69,7 +71,6 @@ INSTALLED_APPS = [
     "rest_framework_api_key",
     "rules",
     # LOCAL
-    "accounts",
     "srl",
     "api",
     "auditlog",
@@ -88,6 +89,8 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django_htmx.middleware.HtmxMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "accounts.middleware.PathRateLimitMiddleware",
+    "accounts.middleware.TurnstileMiddleware",
     "allauth.account.middleware.AccountMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
@@ -101,6 +104,7 @@ CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = (
     *_cors_default_headers,
     "x-remember-me",
+    "x-turnstile-token",
 )
 
 ROOT_URLCONF = "website.urls"
@@ -256,6 +260,14 @@ CELERY_BEAT_SCHEDULE = {
     #    "task": "srl.tasks.prune_api_activity_log",
     #    "schedule": crontab(hour=3, minute=15),
     # },
+    "dispatch-run-discovery-1min": {
+        "task": "srl.tasks.dispatch_run_discovery",
+        "schedule": crontab(minute="*"),
+    },
+    "discover-series-games-5min": {
+        "task": "srl.tasks.discover_new_series_games",
+        "schedule": crontab(minute="*/5"),
+    },
 }
 
 # POINTS CONSTANTS
@@ -272,7 +284,14 @@ STREAK_MAX_MONTHS = 4
 SITE_ID = 1
 
 # ALLAUTH SETTINGS
-ACCOUNT_EMAIL_VERIFICATION = "none"
+ACCOUNT_EMAIL_VERIFICATION = "mandatory"
+ACCOUNT_EMAIL_CONFIRMATION_EXPIRE_DAYS = 1
+ACCOUNT_EMAIL_NOTIFICATIONS = True
+ACCOUNT_LOGIN_ON_EMAIL_CONFIRMATION = True
+ACCOUNT_CHANGE_EMAIL = True
+SOCIALACCOUNT_EMAIL_VERIFICATION = "none"
+SOCIALACCOUNT_EMAIL_AUTHENTICATION = True
+PASSWORD_RESET_TIMEOUT = 1800
 ACCOUNT_LOGIN_METHODS = {"username", "email"}
 ACCOUNT_SIGNUP_FIELDS = ["email*", "username*", "password1*", "password2*"]
 MFA_TOTP_ISSUER = os.getenv("SITE_NAME", "THPS Speedrunning")
@@ -295,6 +314,32 @@ OAUTH_SIGNUP_INTENT_TTL_SECONDS = int(
     os.getenv("OAUTH_SIGNUP_INTENT_TTL_SECONDS", "600")
 )
 OAUTH_LOGIN_INTENT_TTL_SECONDS = int(os.getenv("OAUTH_LOGIN_INTENT_TTL_SECONDS", "600"))
+
+# CLOUDFLARE TURNSTILE
+# Site key is read by the frontend; backend stores it so a future config endpoint can
+# expose it without duplicating across repos. The backend itself never sends the site key.
+# In DEBUG, fall back to Cloudflare's always-pass dummy keys. In production both are
+# required so a forgotten env var fails boot rather than silently stripping the
+# Turnstile gate from login/password-reset/provider-signup endpoints.
+if DEBUG:
+    TURNSTILE_SITE_KEY = os.getenv(
+        "TURNSTILE_SITE_KEY",
+        "1x00000000000000000000AA",
+    )
+    TURNSTILE_SECRET_KEY = os.getenv(
+        "TURNSTILE_SECRET_KEY",
+        "1x0000000000000000000000000000000AA",
+    )
+else:
+    TURNSTILE_SITE_KEY = _require_env("TURNSTILE_SITE_KEY")
+    TURNSTILE_SECRET_KEY = _require_env("TURNSTILE_SECRET_KEY")
+TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+TURNSTILE_TIMEOUT_SECONDS = 5
+
+# Opt-in switch for PathRateLimitMiddleware. Default off (limits enforced everywhere).
+# Local dev that legitimately needs to exceed the 3/hour budget can set
+# RATE_LIMIT_DISABLED=True in .env; production must never set this.
+RATE_LIMIT_DISABLED = os.getenv("RATE_LIMIT_DISABLED", "False").lower() == "true"
 
 # Session life when `Remember Me` is not chosen (7 days) or, if set, 30 days.
 SESSION_COOKIE_AGE = 60 * 60 * 24 * 7
@@ -333,7 +378,7 @@ ANYMAIL = {
     "RESEND_API_KEY": os.getenv("RESEND_API_KEY", ""),
 }
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "noreply@thpsspeedrunning.com")
-ACCOUNT_EMAIL_SUBJECT_PREFIX = "[THPS Speedrunning] "
+ACCOUNT_EMAIL_SUBJECT_PREFIX = "[thps.run] "
 
 # SRC INTEGRATION
 SRC_ENCRYPTION_KEY = os.getenv("SRC_ENCRYPTION_KEY")
@@ -367,4 +412,9 @@ SRC_V2_USER_AGENT_SUFFIX = os.getenv(
 )
 SRC_V2_REPLAY_MAX_AGE_DAYS = int(
     os.getenv("SRC_V2_REPLAY_MAX_AGE_DAYS", "7"),
+)
+
+SRC_DISCOVERY_POLL_SECONDS = int(os.getenv("SRC_DISCOVERY_POLL_SECONDS", "60"))
+SRC_DISCOVERY_PER_GAME_LIMIT = int(
+    os.getenv("SRC_DISCOVERY_PER_GAME_LIMIT", "20"),
 )

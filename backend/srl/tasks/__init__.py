@@ -17,6 +17,11 @@ from .reconciliation import (
     run_series_reconciliation,
     sweep_stuck_reconciliation_jobs,
 )
+from .src_discover import (
+    discover_new_series_games,
+    discover_runs,
+    dispatch_run_discovery,
+)
 from .src_sync import (
     refresh_bot_session,
     replay_failed_edits,
@@ -32,8 +37,11 @@ __all__ = [
     "SERIES_RECON_ALL_TARGET",
     "actor_from_user_id",
     "build_streaks_task",
+    "discover_runs",
+    "discover_new_series_games",
     "dispatch_phase_2",
     "dispatch_phase_3",
+    "dispatch_run_discovery",
     "prune_api_activity_log",
     "rebackfill_game_runs",
     "recalculate_game_boards",
