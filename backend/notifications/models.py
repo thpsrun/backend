@@ -43,21 +43,33 @@ class Notification(models.Model):
 
 
 class NotificationPreference(models.Model):
+    CHANNEL_IN_APP = "in_app"
+    CHANNEL_EMAIL = "email"
+    CHANNEL_CHOICES = (
+        (CHANNEL_IN_APP, "In-app"),
+        (CHANNEL_EMAIL, "Email"),
+    )
+
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="notification_prefs",
     )
     type = models.CharField(max_length=50)
+    channel = models.CharField(
+        max_length=20,
+        choices=CHANNEL_CHOICES,
+        default=CHANNEL_IN_APP,
+    )
     enabled = models.BooleanField(default=True)
 
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["user", "type"],
-                name="uniq_notif_pref_user_type",
+                fields=["user", "type", "channel"],
+                name="uniq_notif_pref_user_type_channel",
             ),
         ]
 
     def __str__(self) -> str:
-        return f"{self.user.id}/{self.type}={self.enabled}"
+        return f"{self.user.id}/{self.type}/{self.channel}={self.enabled}"

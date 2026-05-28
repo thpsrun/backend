@@ -5,12 +5,19 @@ from django.db.models import Case, F, IntegerField, Prefetch, Q, Value, When
 from django.http import HttpRequest
 from ninja import Query, Router, Status
 from srl.models import Categories, Games, Levels, Players, Variables, VariableValues
+from srl.timing import resolve_timing
 
 from api.permissions import authed, public_read
 from api.v1.routers.utils.embeds import parse_embeds
 from api.v1.routers.utils.resolvers import game_from_path
 from api.v1.schemas.base import ErrorResponse
-from api.v1.schemas.games import GameCreateSchema, GameSchema, GameUpdateSchema
+from api.v1.schemas.games import (
+    GameCreateSchema,
+    GameModeratorEmbedSchema,
+    GameSchema,
+    GameUpdateSchema,
+    ResolveTimingResponse,
+)
 from api.v1.schemas.players import extract_gradients
 from api.v1.utils import get_or_generate_id
 
@@ -218,17 +225,19 @@ def _build_platforms_embed(
 
 def _build_moderators_embed(
     game: Games,
-) -> list[dict]:
+) -> list[GameModeratorEmbedSchema]:
     return [
-        {
-            "id": player.id,
-            "name": player.name,
-            "nickname": player.nickname,
-            "url": player.url,
-            "country_id": player.countrycode_id,
-            "pfp": player.pfp,
-            "gradients": extract_gradients(player),
-        }
+        GameModeratorEmbedSchema.model_validate(
+            {
+                "id": player.id,
+                "name": player.name,
+                "nickname": player.nickname,
+                "url": player.url,
+                "country_id": player.countrycode_id,
+                "pfp": player.pfp,
+                "gradients": extract_gradients(player),
+            },
+        )
         for player in game.moderators.all()  # type: ignore
     ]
 
@@ -307,6 +316,101 @@ def get_all_games(
                 details={"exception": str(e)},
             ),
         )
+
+
+@router.get(
+    "/{slug}/timings",
+    response={
+        200: ResolveTimingResponse,
+        404: ErrorResponse,
+        422: ErrorResponse,
+    },
+    summary="Resolve timing methods for an unsaved run",
+    description="""\
+Resolves which timing methods a run requires (and which is primary) for a given
+selection. Precedence: VariableValue > Variable > Category > Game. `null` at any level inherits
+from the parent; the first non-null override (variables walked in `variable_id` order)
+wins. Levels do not carry timing overrides; ILs fall back to the game's IL defaults.
+
+Parameters:
+- `category_id` (required): category the run is in.
+- `level_id` (optional): present for IL runs; its presence selects the game's IL defaults.
+- `value` (repeatable): selected variable *value* IDs (globally unique). Send one per
+  selected variable, e.g. `?value=21d40odq&value=9qj4npk1`.
+
+Examples:
+- `/games/thps4/timings?category_id=ndx8nq8d`
+- `/games/thps4/timings?category_id=zd3rdwd&level_id=rdqoo63w&value=21d40odq`
+""",
+    auth=public_read(),
+)
+def resolve_timing_methods(
+    request: HttpRequest,
+    slug: str,
+    category_id: str,
+    level_id: str | None = None,
+    value: Annotated[
+        list[str], Query(description="Selected variable value IDs (repeatable)")
+    ] = [],
+) -> Status:
+    game = Games.objects.filter(Q(id__iexact=slug) | Q(slug__iexact=slug)).first()
+    if not game:
+        return Status(
+            404,
+            ErrorResponse(
+                error="Game does not exist",
+                details=None,
+            ),
+        )
+
+    category = Categories.objects.filter(pk=category_id, game=game).first()
+    if not category:
+        return Status(
+            422,
+            ErrorResponse(
+                error="Category not found for this game",
+                details={"category_id": category_id},
+            ),
+        )
+
+    is_il = level_id is not None
+    if is_il and not Levels.objects.filter(pk=level_id, game=game).exists():
+        return Status(
+            422,
+            ErrorResponse(
+                error="Level not found for this game",
+                details={"level_id": level_id},
+            ),
+        )
+
+    values = list(
+        VariableValues.objects.filter(value__in=value, var__game=game)
+        .select_related("var")
+        .order_by("var_id", "value"),
+    )
+    missing = set(value) - {vv.pk for vv in values}
+    if missing:
+        return Status(
+            422,
+            ErrorResponse(
+                error="Unknown variable value(s) for this game",
+                details={"values": sorted(missing)},
+            ),
+        )
+
+    resolved = resolve_timing(
+        game=game,
+        category=category,
+        is_il=is_il,
+        variable_values=values,
+    )
+    return Status(
+        200,
+        ResolveTimingResponse(
+            resolved_required_methods=resolved.required_methods,
+            resolved_primary_method=resolved.primary_method,
+        ),
+    )
 
 
 @router.get(

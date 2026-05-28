@@ -1,4 +1,6 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+
+from notifications.channels import DEFAULT_CHANNELS
 
 
 @dataclass(frozen=True)
@@ -6,8 +8,10 @@ class NotificationKind:
     key: str
     label: str
     description: str
-    default_enabled: bool = True
     group: str | None = None
+    default_channels: dict[str, bool] = field(
+        default_factory=lambda: dict(DEFAULT_CHANNELS),
+    )
 
 
 @dataclass(frozen=True)
@@ -15,7 +19,9 @@ class NotificationGroup:
     key: str
     label: str
     description: str
-    default_enabled: bool = True
+    default_channels: dict[str, bool] = field(
+        default_factory=lambda: dict(DEFAULT_CHANNELS),
+    )
 
 
 _REGISTRY: dict[str, NotificationKind] = {}

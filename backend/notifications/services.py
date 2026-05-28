@@ -2,15 +2,16 @@ from typing import Any
 
 from django.db import transaction
 
-from notifications import registry
+from notifications import channels, registry
 from notifications.models import Notification, NotificationPreference
 
 
 def _is_enabled_for(
     user_id: int,
     kind_key: str,
+    channel: str,
 ) -> bool:
-    """Return True if the user has the kind (or its group) enabled."""
+    """Return True if the user has the kind (or its group) enabled for this channel."""
     kind = registry.get(kind_key)
     if kind is None:
         return False
@@ -19,13 +20,17 @@ def _is_enabled_for(
         pref_key = kind.group
         group = registry.get_group(kind.group)
         assert group is not None
-        default_enabled = group.default_enabled
+        default_enabled = group.default_channels.get(channel, False)
     else:
         pref_key = kind.key
-        default_enabled = kind.default_enabled
+        default_enabled = kind.default_channels.get(channel, False)
 
     pref = (
-        NotificationPreference.objects.filter(user_id=user_id, type=pref_key)
+        NotificationPreference.objects.filter(
+            user_id=user_id,
+            type=pref_key,
+            channel=channel,
+        )
         .values_list("enabled", flat=True)
         .first()
     )
@@ -50,21 +55,42 @@ def create_notification(
         return None
 
     user_id = user.pk
-    if not _is_enabled_for(user_id, kind):
-        return None
+    payload = payload or {}
 
-    pending = Notification(
-        user_id=user_id,
-        type=kind,
-        title=title[:255],
-        body=body,
-        target_type=target_type[:50],
-        target_id=target_id[:100],
-        payload=payload or {},
-    )
+    in_app_on = _is_enabled_for(user_id, kind, channels.IN_APP)
+    email_on = _is_enabled_for(user_id, kind, channels.EMAIL)
 
-    def _write() -> None:
-        pending.save()
+    pending: Notification | None = None
+    if in_app_on:
+        pending = Notification(
+            user_id=user_id,
+            type=kind,
+            title=title[:255],
+            body=body,
+            target_type=target_type[:50],
+            target_id=target_id[:100],
+            payload=payload,
+        )
 
-    transaction.on_commit(_write)
+        def _write() -> None:
+            pending.save()
+
+        transaction.on_commit(_write)
+
+    if email_on:
+        # Need this here to prevent circular imports, ugh.
+        from notifications.tasks import send_notification_email
+
+        transaction.on_commit(
+            lambda: send_notification_email.delay(
+                user_id=user_id,
+                kind=kind,
+                title=title,
+                body=body,
+                target_type=target_type,
+                target_id=target_id,
+                payload=payload,
+            ),
+        )
+
     return pending

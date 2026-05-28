@@ -94,7 +94,7 @@ class PreferenceOut(BaseModel):
                 "kind": "run_approved",
                 "label": "Run Approved",
                 "description": "One of your submitted runs was approved.",
-                "enabled": True,
+                "channels": {"in_app": True, "email": False},
             },
         },
     )
@@ -102,7 +102,7 @@ class PreferenceOut(BaseModel):
     kind: str
     label: str
     description: str
-    enabled: bool
+    channels: dict[str, bool]
 
 
 class PreferencesOut(BaseModel):
@@ -114,19 +114,13 @@ class PreferencesOut(BaseModel):
                         "kind": "run_approved",
                         "label": "Run Approved",
                         "description": "One of your submitted runs was approved.",
-                        "enabled": True,
-                    },
-                    {
-                        "kind": "run_denied",
-                        "label": "Run Denied",
-                        "description": "One of your submitted runs was denied.",
-                        "enabled": True,
+                        "channels": {"in_app": True, "email": False},
                     },
                     {
                         "kind": "user_data_export",
                         "label": "Data Export",
                         "description": "Notifications about your account data export.",
-                        "enabled": True,
+                        "channels": {"in_app": True, "email": False},
                     },
                 ],
             },
@@ -141,15 +135,15 @@ class PreferencesUpdateIn(BaseModel):
         json_schema_extra={
             "example": {
                 "preferences": {
-                    "run_denied": False,
-                    "api_key_expiring": False,
-                    "user_data_export": False,
+                    "run_approved": {"in_app": True, "email": True},
+                    "run_denied": {"email": True},
+                    "user_data_export": {"in_app": False, "email": False},
                 },
             },
         },
     )
 
-    preferences: dict[str, bool]
+    preferences: dict[str, dict[str, bool]]
 
 
 class NotificationKindOut(BaseModel):
@@ -159,7 +153,7 @@ class NotificationKindOut(BaseModel):
                 "kind": "run_approved",
                 "label": "Run Approved",
                 "description": "One of your submitted runs was approved.",
-                "default_enabled": True,
+                "default_channels": {"in_app": True, "email": False},
             },
         },
     )
@@ -167,7 +161,7 @@ class NotificationKindOut(BaseModel):
     kind: str
     label: str
     description: str
-    default_enabled: bool
+    default_channels: dict[str, bool]
 
 
 class NotificationKindsOut(BaseModel):
@@ -179,13 +173,13 @@ class NotificationKindsOut(BaseModel):
                         "kind": "run_approved",
                         "label": "Run Approved",
                         "description": "One of your submitted runs was approved.",
-                        "default_enabled": True,
+                        "default_channels": {"in_app": True, "email": False},
                     },
                     {
                         "kind": "user_data_export",
                         "label": "Data Export",
                         "description": "Notifications about your account data export.",
-                        "default_enabled": True,
+                        "default_channels": {"in_app": True, "email": False},
                     },
                 ],
             },

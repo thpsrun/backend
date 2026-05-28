@@ -2,16 +2,22 @@ import logging
 from datetime import timedelta
 from typing import Any
 
+from allauth.account.models import EmailAddress
 from api.models import APIKey
 from celery import shared_task
+from django.contrib.auth import get_user_model
+from django.core.mail import send_mail
+from django.template.loader import render_to_string
 from django.utils import timezone
 from srl.models import Runs
 from srl.models.games import Games
 from srl.models.players import Players
 
+from notifications import channels as channels_mod
+from notifications import email as email_helpers
 from notifications import kinds
 from notifications.models import Notification
-from notifications.services import create_notification
+from notifications.services import _is_enabled_for, create_notification
 
 logger = logging.getLogger(__name__)
 
@@ -176,3 +182,63 @@ def scan_expiring_api_keys() -> dict:
         emitted += 1
 
     return {"emitted": emitted, "skipped": skipped, "scanned": qs.count()}
+
+
+@shared_task(
+    name="notifications.send_notification_email",
+    autoretry_for=(Exception,),
+    max_retries=3,
+    retry_backoff=True,
+)
+def send_notification_email(
+    user_id: int,
+    kind: str,
+    title: str,
+    body: str = "",
+    target_type: str = "",
+    target_id: str = "",
+    payload: dict | None = None,
+) -> dict:
+    User = get_user_model()
+    user = User.objects.filter(pk=user_id).first()
+    if user is None:
+        return {"sent": 0, "skipped": "user_missing"}
+
+    address = (
+        EmailAddress.objects.filter(user=user, primary=True, verified=True)
+        .values_list("email", flat=True)
+        .first()
+    )
+    if not address:
+        return {"sent": 0, "skipped": "no_verified_email"}
+
+    if not _is_enabled_for(user_id, kind, channels_mod.EMAIL):
+        return {"sent": 0, "skipped": "pref_disabled"}
+
+    payload = payload or {}
+    subject = email_helpers.build_subject(kind, fallback_title=title)
+    cta_url = email_helpers.build_cta_url(
+        kind=kind,
+        target_type=target_type,
+        target_id=target_id,
+        payload=payload,
+    )
+    message = render_to_string(
+        "notifications/email/notification_message.txt",
+        {
+            "username": user.username,
+            "title": title,
+            "body": body,
+            "cta_url": cta_url,
+            "preferences_url": email_helpers.preferences_url(),
+        },
+    )
+
+    send_mail(
+        subject=subject,
+        message=message,
+        from_email=None,
+        recipient_list=[address],
+        fail_silently=False,
+    )
+    return {"sent": 1}

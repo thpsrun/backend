@@ -1,0 +1,16 @@
+{% autoescape off %}Greetings {{ username }},
+
+{{ title }}
+{% if body %}
+{{ body }}
+{% endif %}
+{% if cta_url %}
+View it here:
+{{ cta_url }}
+{% endif %}
+
+- thps.run
+
+To change which notifications you receive by email, visit:
+{{ preferences_url }}
+{% endautoescape %}

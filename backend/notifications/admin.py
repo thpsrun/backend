@@ -47,6 +47,6 @@ class NotificationAdmin(admin.ModelAdmin):
 
 @admin.register(NotificationPreference)
 class NotificationPreferenceAdmin(admin.ModelAdmin):
-    list_display = ("user", "type", "enabled")
-    list_filter = ("type", "enabled")
+    list_display = ("user", "type", "channel", "enabled")
+    list_filter = ("type", "channel", "enabled")
     search_fields = ("user__username", "type")

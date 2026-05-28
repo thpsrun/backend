@@ -55,6 +55,7 @@ _TURNSTILE_PROTECTED: frozenset[tuple[str, str]] = frozenset(
         ("POST", "/_allauth/browser/v1/auth/provider/signup"),
         ("GET", "/_allauth/browser/v1/auth/provider/redirect"),
         ("POST", "/_allauth/browser/v1/auth/provider/redirect"),
+        ("POST", "/api/v1/auth/register"),
     }
 )
 

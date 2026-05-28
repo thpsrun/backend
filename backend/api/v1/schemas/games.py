@@ -289,3 +289,31 @@ class GameUpdateSchema(BaseEmbedSchema):
 
 
 GameSchema.model_rebuild()
+
+
+class ResolveTimingResponse(BaseEmbedSchema):
+    """Resolved timing methods for a (game, category, level, variables) selection.
+
+    Attributes:
+        resolved_required_methods (list[TimingMethodType]): Timing methods the run must
+            provide values for. Resolved by walking VariableValue -> Variable -> Category
+            -> Game (`required_methods_il` for ILs, `required_methods_fg` otherwise).
+        resolved_primary_method (TimingMethodType): The primary method used for leaderboard
+            placement, resolved by the same chain against `defaulttime` / `idefaulttime`.
+    """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "resolved_required_methods": ["rta", "igt"],
+                "resolved_primary_method": "rta",
+            },
+        },
+    )
+
+    resolved_required_methods: list[TimingMethodType] = Field(
+        description="Timing methods required for the selection.",
+    )
+    resolved_primary_method: TimingMethodType = Field(
+        description="Primary timing method used for leaderboard placement.",
+    )

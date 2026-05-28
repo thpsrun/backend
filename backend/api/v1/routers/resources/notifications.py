@@ -5,6 +5,7 @@ from typing import Any
 from django.http import HttpRequest
 from django.utils import timezone
 from ninja import Query, Router, Status
+from notifications import channels as channels_mod
 from notifications import registry
 from notifications.models import Notification, NotificationPreference
 from notifications.registry import NotificationGroup, NotificationKind
@@ -160,20 +161,25 @@ def _is_valid_preference_key(
 def get_preferences(
     request: HttpRequest,
 ) -> Any:
-    stored = dict(
-        NotificationPreference.objects.filter(user=request.user).values_list(
-            "type", "enabled"
-        ),
+    stored = NotificationPreference.objects.filter(user=request.user).values_list(
+        "type",
+        "channel",
+        "enabled",
     )
+    overrides: dict[tuple[str, str], bool] = {(t, c): bool(e) for t, c, e in stored}
+
     out: list[PreferenceOut] = []
     for entry in _preference_entries():
-        enabled = stored.get(entry.key, entry.default_enabled)
+        channels_state: dict[str, bool] = {}
+        for channel in channels_mod.ALL_CHANNELS:
+            default = entry.default_channels.get(channel, False)
+            channels_state[channel] = overrides.get((entry.key, channel), default)
         out.append(
             PreferenceOut(
                 kind=entry.key,
                 label=entry.label,
                 description=entry.description,
-                enabled=enabled,
+                channels=channels_state,
             ),
         )
     return {"preferences": out}
@@ -194,22 +200,41 @@ def put_preferences(
     request: HttpRequest,
     payload: PreferencesUpdateIn,
 ) -> Any:
-    unknown = [k for k in payload.preferences.keys() if not _is_valid_preference_key(k)]
-    if unknown:
+    unknown_kinds = [
+        k for k in payload.preferences.keys() if not _is_valid_preference_key(k)
+    ]
+    if unknown_kinds:
         return Status(
             400,
             ErrorResponse(
                 error="unknown_notification_kind",
-                details={"kinds": sorted(unknown)},
+                details={"kinds": sorted(unknown_kinds)},
             ),
         )
 
-    for pref_key, enabled in payload.preferences.items():
-        NotificationPreference.objects.update_or_create(
-            user=request.user,
-            type=pref_key,
-            defaults={"enabled": bool(enabled)},
+    unknown_channels: set[str] = set()
+    for channels_map in payload.preferences.values():
+        for channel in channels_map.keys():
+            if channel not in channels_mod.ALL_CHANNELS:
+                unknown_channels.add(channel)
+    if unknown_channels:
+        return Status(
+            400,
+            ErrorResponse(
+                error="unknown_notification_channel",
+                details={"channels": sorted(unknown_channels)},
+            ),
         )
+
+    for pref_key, channels_map in payload.preferences.items():
+        for channel, enabled in channels_map.items():
+            NotificationPreference.objects.update_or_create(
+                user=request.user,
+                type=pref_key,
+                channel=channel,
+                defaults={"enabled": bool(enabled)},
+            )
+
     return get_preferences(request)
 
 
@@ -232,7 +257,7 @@ def list_kinds(
                 kind=entry.key,
                 label=entry.label,
                 description=entry.description,
-                default_enabled=entry.default_enabled,
+                default_channels=dict(entry.default_channels),
             )
             for entry in _preference_entries()
         ],
@@ -262,7 +287,10 @@ def mark_read(
     except Notification.DoesNotExist:
         return Status(
             404,
-            ErrorResponse(error="notification_not_found", details=None),
+            ErrorResponse(
+                error="notification_not_found",
+                details=None,
+            ),
         )
     if not notif.is_read:
         notif.is_read = True
@@ -294,7 +322,10 @@ def delete_notification(
     except Notification.DoesNotExist:
         return Status(
             404,
-            ErrorResponse(error="notification_not_found", details=None),
+            ErrorResponse(
+                error="notification_not_found",
+                details=None,
+            ),
         )
     notif.delete()
     return {"detail": "deleted"}

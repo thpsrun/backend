@@ -9,6 +9,7 @@ from srl.models.platforms import Platforms
 from srl.models.players import Players
 from srl.models.variable_values import VariableValues
 from srl.models.variables import Variables
+from srl.timing import ResolvedTiming, resolve_timing
 
 
 class Runs(models.Model):
@@ -254,40 +255,33 @@ class Runs(models.Model):
         for method, secs_field in METHOD_TO_TIME_FIELD.items()
     }
 
+    def _resolved_timing(
+        self,
+    ) -> ResolvedTiming:
+        rvvs = sorted(
+            self.runvariablevalues_set.all(),  # type: ignore
+            key=lambda r: r.variable_id,
+        )
+        values: list[VariableValues] = []
+        for rvv in rvvs:
+            rvv.value.var = rvv.variable
+            values.append(rvv.value)
+        return resolve_timing(
+            game=self.game,
+            category=self.category,
+            is_il=(self.runtype == "il"),
+            variable_values=values,
+        )
+
     def _primary_timing_method(
         self,
     ) -> str:
-        # Precedence: VariableValue > Variable > Category > Game (idefaulttime for IL).
-        # Callers should prefetch runvariablevalues_set__value and
-        # runvariablevalues_set__variable to avoid extra queries when iterating runs.
-        rvvs = list(self.runvariablevalues_set.all())  # type: ignore
-        for rvv in rvvs:
-            if rvv.value.defaulttime:
-                return rvv.value.defaulttime
-        for rvv in rvvs:
-            if rvv.variable.defaulttime:
-                return rvv.variable.defaulttime
-        if self.category and self.category.defaulttime:
-            return self.category.defaulttime
-        if self.runtype == "il":
-            return self.game.idefaulttime
-        return self.game.defaulttime
+        return self._resolved_timing().primary_method
 
     def _resolved_required_methods(
         self,
     ) -> list[str]:
-        rvvs = list(self.runvariablevalues_set.all())  # type: ignore
-        for rvv in rvvs:
-            if rvv.value.required_methods is not None:
-                return list(rvv.value.required_methods)
-        for rvv in rvvs:
-            if rvv.variable.required_methods is not None:
-                return list(rvv.variable.required_methods)
-        if self.category and self.category.required_methods is not None:
-            return list(self.category.required_methods)
-        if self.runtype == "il":
-            return list(self.game.required_methods_il)
-        return list(self.game.required_methods_fg)
+        return self._resolved_timing().required_methods
 
     def validate_allowed_method_data(
         self,
