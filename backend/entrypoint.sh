@@ -26,12 +26,12 @@ until postgres_ready; do
 done
 >&2 echo "PostgreSQL is available"
 
-python manage.py migrate
-python manage.py collectstatic --no-input
-
 if [ "$#" -gt 0 ]; then
     exec "$@"
 fi
+
+python manage.py migrate
+python manage.py collectstatic --no-input
 
 if [ "${DEBUG_MODE:-false}" = "True" ]; then
     echo "===============STARTING IN DEVELOPMENT MODE!===============" >&2

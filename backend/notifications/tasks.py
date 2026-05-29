@@ -119,7 +119,7 @@ def dispatch_mod_promoted_notification(
 def purge_old_notifications(
     retention_days: int = 90,
 ) -> dict:
-    """Deletes notifications after the ays provided."""
+    """Deletes notifications after the days provided."""
     cutoff = timezone.now() - timedelta(days=retention_days)
     deleted, _ = Notification.objects.filter(created_at__lt=cutoff).delete()
     return {"deleted": deleted, "cutoff": cutoff.isoformat()}

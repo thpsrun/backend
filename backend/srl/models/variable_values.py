@@ -131,4 +131,4 @@ class VariableValues(models.Model):
     def __str__(self):
         if self.var and self.var.game:
             return f"{self.var.game.name}: {self.var.name} - {self.name}"
-        return f"(orphaned runff) - {self.name}"
+        return f"(orphaned value) - {self.name}"

@@ -39,7 +39,7 @@ class SrcGamesBoxArtUri(BaseModel):
 
 
 class SrcGamesAssets(BaseModel):
-    """Embedded model to show a game's aseets."""
+    """Embedded model to show a game's assets."""
 
     model_config = ConfigDict(populate_by_name=True)
     cover_large: SrcGamesBoxArtUri = Field(..., alias="cover-large")

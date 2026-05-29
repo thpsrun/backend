@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 
@@ -46,15 +47,16 @@ class NavItem(models.Model):
     def clean(
         self,
     ) -> None:
-        """Enforce max depth of 4 by walking the parent chain."""
+        """Enforce the configured maximum nesting depth by walking the parent chain."""
         super().clean()
+        max_depth = settings.NAVBAR_MAX_DEPTH
         depth = 1
         current = self.parent
         while current is not None:
             depth += 1
-            if depth > 4:
+            if depth > max_depth:
                 raise ValidationError(
-                    "Navigation items cannot be nested more than 4 levels deep."
+                    f"Navigation items cannot be nested more than {max_depth} levels deep."
                 )
             current = current.parent
 

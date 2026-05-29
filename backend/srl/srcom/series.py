@@ -2,7 +2,7 @@ from typing import Iterator
 
 from srl.models import Series
 from srl.srcom.categories import sync_categories
-from srl.srcom.games import sync_game
+from srl.srcom.games import apply_game_record, sync_game
 from srl.srcom.leaderboards import sync_game_runs
 from srl.srcom.levels import sync_levels
 from srl.srcom.platforms import sync_platforms
@@ -16,6 +16,30 @@ from srl.srcom.variables import sync_variables
 from srl.utils import src_api, src_api_paginate
 
 SRC_API_BASE = "https://www.speedrun.com/api/v1"
+
+
+def import_game_metadata(
+    game_id: str,
+) -> SrcGamesModel:
+    """Synchronously import a single game's metadata in dependency order."""
+    raw = src_api(
+        f"{SRC_API_BASE}/games/{game_id}?embed=platforms,levels,categories,variables",
+    )
+    game_data = SrcGamesModel.model_validate(raw)
+
+    for platform in game_data.platforms:
+        sync_platforms(platform)
+
+    apply_game_record(game_data)
+
+    for category in game_data.categories or []:
+        sync_categories(category)
+    for level in game_data.levels or []:
+        sync_levels(level)
+    for variable in game_data.variables or []:
+        sync_variables(variable)
+
+    return game_data
 
 
 def iter_series_games(

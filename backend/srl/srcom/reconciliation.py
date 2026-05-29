@@ -225,7 +225,7 @@ def reconciliation_upsert_check(
     record_type: str,
     **lookup: Any,
 ) -> Any:
-    """Upserts a ReconciliaitonItem, recording changes if they exist and starts a new one if none
+    """Upserts a ReconciliationItem, recording changes if they exist and starts a new one if none
     exists."""
 
     job = current_job()
@@ -342,7 +342,7 @@ def decrement_pending(
 ) -> bool:
     """Atomically decrement pending_children.
 
-    Returns True if this caller drovethe counter to 0 while the job is still RUNNING (i.e. owns
+    Returns True if this caller drove the counter to 0 while the job is still RUNNING (i.e. owns
     the finalize). This is useful to ensuring the task actually ends."""
 
     with connection.cursor() as cur:

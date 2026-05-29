@@ -41,27 +41,15 @@ def save_boxart_locally(
     return f"{settings.MEDIA_URL}boxart/{game_id}{ext}"
 
 
-@shared_task
-def sync_game(
-    game_id: str,
-) -> None:
-    """Creates or updates a `Games` model object based on the `game_id` argument.
-
-    Arguments:
-        game_id (str): Unique ID for an SRC game.
-    """
-    src_data = src_api(f"https://speedrun.com/api/v1/games/{game_id}?embed=platforms")
-    assert isinstance(src_data, dict)
-
-    src_game = SrcGamesModel.model_validate(src_data)
-
+def apply_game_record(
+    src_game: SrcGamesModel,
+) -> Games:
     # Category Extensions games cap at a lower max (e.g. 50) vs standard FG/IL
     points_max = (
         settings.POINTS_MAX_FG
         if "category extensions" not in src_game.names.international.lower()
         else settings.POINTS_MAX_CE
     )
-
     ipoints_max = (
         settings.POINTS_MAX_IL
         if "category extensions" not in src_game.names.international.lower()
@@ -97,3 +85,33 @@ def sync_game(
         game.moderators.set(
             Players.objects.filter(id__in=src_game.moderators.keys()),
         )
+    return game
+
+
+@shared_task
+def sync_game(
+    game_id: str,
+) -> None:
+    """Creates or updates a `Games` model object based on the `game_id` argument.
+
+    Arguments:
+        game_id (str): Unique ID for an SRC game.
+    """
+    src_data = src_api(f"https://speedrun.com/api/v1/games/{game_id}?embed=platforms")
+    assert isinstance(src_data, dict)
+    apply_game_record(SrcGamesModel.model_validate(src_data))
+
+
+def backfill_moderators(
+    game_id: str,
+) -> None:
+    game = Games.objects.filter(id=game_id).first()
+    if game is None:
+        return
+
+    src_data = src_api(f"https://speedrun.com/api/v1/games/{game_id}?embed=platforms")
+    assert isinstance(src_data, dict)
+    src_game = SrcGamesModel.model_validate(src_data)
+    game.moderators.set(
+        Players.objects.filter(id__in=src_game.moderators.keys()),
+    )

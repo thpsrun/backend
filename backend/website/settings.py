@@ -280,6 +280,10 @@ STREAK_BONUS_FG = 125
 STREAK_BONUS_IL = 31.25
 STREAK_MAX_MONTHS = 4
 
+# NAVBAR
+# Maximum NavItem nesting depth (root counts as level 1).
+NAVBAR_MAX_DEPTH = 5
+
 # SITE
 SITE_ID = 1
 
@@ -289,7 +293,10 @@ ACCOUNT_EMAIL_CONFIRMATION_EXPIRE_DAYS = 1
 ACCOUNT_EMAIL_NOTIFICATIONS = True
 ACCOUNT_LOGIN_ON_EMAIL_CONFIRMATION = True
 ACCOUNT_CHANGE_EMAIL = True
-SOCIALACCOUNT_EMAIL_VERIFICATION = "none"
+# OAuth signups must confirm the email they supply. SRCSignupInput forces the address
+# verified=False, so allauth's verification stage always fires; mirrors
+# ACCOUNT_EMAIL_VERIFICATION above for the local registration path.
+SOCIALACCOUNT_EMAIL_VERIFICATION = "mandatory"
 SOCIALACCOUNT_EMAIL_AUTHENTICATION = True
 PASSWORD_RESET_TIMEOUT = 1800
 ACCOUNT_LOGIN_METHODS = {"username", "email"}

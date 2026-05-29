@@ -101,64 +101,6 @@ def post_nav_item(
     return Status(201, _nav_item_payload(item))
 
 
-@router.patch(
-    "/admin/navbar/items/{item_id}",
-    response={
-        200: NavbarAdminItem,
-        400: ErrorResponse,
-        401: ErrorResponse,
-        403: ErrorResponse,
-        404: ErrorResponse,
-    },
-    summary="Update Nav Item",
-    description=(
-        "Superuser Only: partially update a navigation item. Only fields present in the request "
-        "body are touched. Use this to rename, toggle visibility, change the URL, change parent, "
-        "or change the order index of a single item."
-    ),
-    auth=authed("navbar.admin"),
-)
-def patch_nav_item(
-    request: HttpRequest,
-    item_id: int,
-    body: NavItemUpdate,
-) -> Status:
-    item = get_object_or_404(NavItem, pk=item_id)
-    try:
-        item = update_nav_item(item, body.model_dump(exclude_unset=True))
-    except ValueError as exc:
-        raise HttpError(400, str(exc))
-    return Status(200, _nav_item_payload(item))
-
-
-@router.delete(
-    "/admin/navbar/items/{item_id}",
-    response={
-        204: None,
-        401: ErrorResponse,
-        403: ErrorResponse,
-        404: ErrorResponse,
-        409: ErrorResponse,
-    },
-    summary="Delete Nav Item",
-    description=(
-        "Superuser Only: delete a navigation item. Rejects with 409 if the item has children; "
-        "remove or reparent them first."
-    ),
-    auth=authed("navbar.admin"),
-)
-def delete_nav_item_endpoint(
-    request: HttpRequest,
-    item_id: int,
-) -> HttpResponse:
-    item = get_object_or_404(NavItem, pk=item_id)
-    try:
-        delete_nav_item(item)
-    except ValueError as exc:
-        raise HttpError(409, str(exc))
-    return HttpResponse(status=204)
-
-
 @router.post(
     "/admin/navbar/items/reorder",
     response={
@@ -191,6 +133,64 @@ def post_nav_reorder(
     return HttpResponse(status=204)
 
 
+@router.patch(
+    "/admin/navbar/items/{int:item_id}",
+    response={
+        200: NavbarAdminItem,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+    },
+    summary="Update Nav Item",
+    description=(
+        "Superuser Only: partially update a navigation item. Only fields present in the request "
+        "body are touched. Use this to rename, toggle visibility, change the URL, change parent, "
+        "or change the order index of a single item."
+    ),
+    auth=authed("navbar.admin"),
+)
+def patch_nav_item(
+    request: HttpRequest,
+    item_id: int,
+    body: NavItemUpdate,
+) -> Status:
+    item = get_object_or_404(NavItem, pk=item_id)
+    try:
+        item = update_nav_item(item, body.model_dump(exclude_unset=True))
+    except ValueError as exc:
+        raise HttpError(400, str(exc))
+    return Status(200, _nav_item_payload(item))
+
+
+@router.delete(
+    "/admin/navbar/items/{int:item_id}",
+    response={
+        204: None,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        409: ErrorResponse,
+    },
+    summary="Delete Nav Item",
+    description=(
+        "Superuser Only: delete a navigation item. Rejects with 409 if the item has children; "
+        "remove or reparent them first."
+    ),
+    auth=authed("navbar.admin"),
+)
+def delete_nav_item_endpoint(
+    request: HttpRequest,
+    item_id: int,
+) -> HttpResponse:
+    item = get_object_or_404(NavItem, pk=item_id)
+    try:
+        delete_nav_item(item)
+    except ValueError as exc:
+        raise HttpError(409, str(exc))
+    return HttpResponse(status=204)
+
+
 @router.post(
     "/admin/navbar/social",
     response={
@@ -212,56 +212,6 @@ def post_social(
     except ValueError as exc:
         raise HttpError(400, str(exc))
     return Status(201, _social_payload(link))
-
-
-@router.patch(
-    "/admin/navbar/social/{link_id}",
-    response={
-        200: NavbarAdminSocial,
-        400: ErrorResponse,
-        401: ErrorResponse,
-        403: ErrorResponse,
-        404: ErrorResponse,
-    },
-    summary="Update Social Link",
-    description=(
-        "Superuser Only: partially update a social link. Only fields present in the request "
-        "body are touched."
-    ),
-    auth=authed("navbar.admin"),
-)
-def patch_social(
-    request: HttpRequest,
-    link_id: int,
-    body: SocialLinkUpdate,
-) -> Status:
-    link = get_object_or_404(SocialLink, pk=link_id)
-    try:
-        link = update_social_link(link, body.model_dump(exclude_unset=True))
-    except ValueError as exc:
-        raise HttpError(400, str(exc))
-    return Status(200, _social_payload(link))
-
-
-@router.delete(
-    "/admin/navbar/social/{link_id}",
-    response={
-        204: None,
-        401: ErrorResponse,
-        403: ErrorResponse,
-        404: ErrorResponse,
-    },
-    summary="Delete Social Link",
-    description="Superuser Only: delete a social media link.",
-    auth=authed("navbar.admin"),
-)
-def delete_social(
-    request: HttpRequest,
-    link_id: int,
-) -> HttpResponse:
-    link = get_object_or_404(SocialLink, pk=link_id)
-    delete_social_link(link)
-    return HttpResponse(status=204)
 
 
 @router.post(
@@ -290,4 +240,54 @@ def post_social_reorder(
         )
     except ValueError as exc:
         raise HttpError(400, str(exc))
+    return HttpResponse(status=204)
+
+
+@router.patch(
+    "/admin/navbar/social/{int:link_id}",
+    response={
+        200: NavbarAdminSocial,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+    },
+    summary="Update Social Link",
+    description=(
+        "Superuser Only: partially update a social link. Only fields present in the request "
+        "body are touched."
+    ),
+    auth=authed("navbar.admin"),
+)
+def patch_social(
+    request: HttpRequest,
+    link_id: int,
+    body: SocialLinkUpdate,
+) -> Status:
+    link = get_object_or_404(SocialLink, pk=link_id)
+    try:
+        link = update_social_link(link, body.model_dump(exclude_unset=True))
+    except ValueError as exc:
+        raise HttpError(400, str(exc))
+    return Status(200, _social_payload(link))
+
+
+@router.delete(
+    "/admin/navbar/social/{int:link_id}",
+    response={
+        204: None,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+    },
+    summary="Delete Social Link",
+    description="Superuser Only: delete a social media link.",
+    auth=authed("navbar.admin"),
+)
+def delete_social(
+    request: HttpRequest,
+    link_id: int,
+) -> HttpResponse:
+    link = get_object_or_404(SocialLink, pk=link_id)
+    delete_social_link(link)
     return HttpResponse(status=204)

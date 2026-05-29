@@ -27,8 +27,13 @@ class SRCSignupInput(SignupInput):
     src_api_key = forms.CharField(max_length=64)
     save_key = forms.BooleanField(required=False)
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(
+        self,
+        *args,
+        **kwargs,
+    ) -> None:
         self._src_player_id: str | None = None
+        kwargs.setdefault("email_required", False)
         super().__init__(*args, **kwargs)
 
     def clean_username(
@@ -42,10 +47,9 @@ class SRCSignupInput(SignupInput):
     def clean_email(
         self,
     ) -> str:
-        email = self.cleaned_data["email"]
-        if User.objects.filter(email__iexact=email).exists():
-            raise ValidationError("email_taken", code="email_taken")
-        return email
+        # Email may be blank for OAuth signups; the provider address is resolved
+        # in clean(), where the uniqueness check now lives.
+        return self.cleaned_data.get("email", "")
 
     def clean_src_api_key(
         self,
@@ -69,12 +73,42 @@ class SRCSignupInput(SignupInput):
             raise ValidationError("src_invalid", code="src_invalid")
         return key
 
+    def _provider_email(
+        self,
+    ) -> str | None:
+        if self.sociallogin is None:
+            return None
+        addresses = self.sociallogin.email_addresses
+        if not addresses:
+            return None
+        primary = next(
+            (addr for addr in addresses if addr.primary),
+            None,
+        )
+        chosen = primary or addresses[0]
+        return chosen.email
+
+    def _resolve_email(
+        self,
+        typed_email: str,
+    ) -> str:
+        final_email = self._provider_email() or typed_email or ""
+        if not final_email:
+            raise ValidationError("email_required", code="email_required")
+        if User.objects.filter(email__iexact=final_email).exists():
+            raise ValidationError("email_taken", code="email_taken")
+        return final_email
+
     def clean(
         self,
     ) -> dict:
         cleaned = super().clean()
         if self.sociallogin is not None:
             _check_oauth_unique(self.sociallogin)
+        try:
+            cleaned["email"] = self._resolve_email(cleaned.get("email") or "")
+        except ValidationError as exc:
+            self.add_error("email", exc)
         return cleaned
 
     @transaction.atomic
@@ -104,6 +138,10 @@ class SRCSignupInput(SignupInput):
                 if addr is matching:
                     continue
                 addr.primary = False
+                # Strip any provider-verified flag (Discord supplies verified=True) so a
+                # non-matching address can't satisfy has_verified_email and skip our
+                # confirmation under SOCIALACCOUNT_EMAIL_VERIFICATION="mandatory".
+                addr.verified = False
             if matching is not None:
                 matching.primary = True
                 matching.verified = False

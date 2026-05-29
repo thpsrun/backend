@@ -39,7 +39,7 @@ class TagSchema(SlugMixin, BaseEmbedSchema):
 
 
 class GuideAuthorSchema(BaseEmbedSchema):
-    """Author identity for a guide, mirroing other parts of the codebase.
+    """Author identity for a guide, mirroring other parts of the codebase.
 
     Attributes:
         name (str): Author display name (Players.name, or User.username when unclaimed).

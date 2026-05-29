@@ -2,22 +2,25 @@ from __future__ import annotations
 
 from typing import Any
 
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
 from nav.models import NavItem, SocialLink
+
+MAX_DEPTH: int = settings.NAVBAR_MAX_DEPTH
 
 HAS_CHILDREN_MESSAGE: str = (
     "Cannot delete a NavItem with children. Remove or reparent them first."
 )
 SELF_PARENT_MESSAGE: str = "A NavItem cannot be its own parent."
 CYCLE_MESSAGE: str = "Cannot set parent to a descendant (would create a cycle)."
-MAX_DEPTH_MESSAGE: str = "Resulting subtree would exceed the 4-level nesting limit."
+MAX_DEPTH_MESSAGE: str = (
+    f"Resulting subtree would exceed the {MAX_DEPTH}-level nesting limit."
+)
 UNKNOWN_IDS_MESSAGE: str = (
     "ordered_ids do not match the siblings under the given parent."
 )
-
-MAX_DEPTH: int = 4
 
 
 def _sorted_for_display(
