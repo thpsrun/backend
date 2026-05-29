@@ -1,6 +1,6 @@
 import logging
 
-from allauth.account.signals import user_logged_in
+from allauth.account.signals import user_logged_in, user_signed_up
 from allauth.socialaccount.signals import (
     social_account_added,
     social_account_removed,
@@ -108,6 +108,18 @@ def on_social_account_removed(
     **kwargs,
 ) -> None:
     _clear_social_from_player(socialaccount.user, socialaccount.provider)
+
+
+@receiver(user_signed_up)
+def on_user_signed_up(
+    sender,
+    request,
+    user,
+    sociallogin=None,
+    **kwargs,
+) -> None:
+    if sociallogin is not None:
+        _sync_social_to_player(sociallogin)
 
 
 @receiver(user_logged_in)
