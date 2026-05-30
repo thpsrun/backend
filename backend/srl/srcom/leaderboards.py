@@ -113,8 +113,16 @@ def sync_game_runs(
                             dispatched += 1
         finally:
             if progress_key:
-                bump(progress_key, "lb_total", dispatched,)
-                bump(progress_key, "games_enumerated", 1,)
+                bump(
+                    progress_key,
+                    "lb_total",
+                    dispatched,
+                )
+                bump(
+                    progress_key,
+                    "games_enumerated",
+                    1,
+                )
 
 
 def _build_base_context(
@@ -181,7 +189,11 @@ def sync_leaderboards(
             if not src_lb.runs:
                 return
             if progress_key:
-                bump(progress_key, "runs_total", len(src_lb.runs),)
+                bump(
+                    progress_key,
+                    "runs_total",
+                    len(src_lb.runs),
+                )
             base_context = _build_base_context(src_lb)
             for lb_run in src_lb.runs:
                 check_cancelled()
@@ -586,7 +598,9 @@ def sync_run(
             default["obsoleted_at"] = None
 
             user_player_ids = [
-                p.id for p in run_data.players if p is not None and p.id and p.rel == "user"
+                p.id
+                for p in run_data.players
+                if p is not None and p.id and p.rel == "user"
             ]
 
             if run_data.level:
@@ -631,6 +645,8 @@ def sync_run(
                         variable_id=var_id,
                         value_id=val_id,
                     )
+
+            run_obj.refresh_import_issues()
 
             job = current_job()
             job_id = str(job.id) if job is not None else None

@@ -6,6 +6,7 @@ from pydantic import Field, field_validator, model_validator
 
 from api.v1.schemas.base import RunStatusType
 from api.v1.schemas.runs import PlayerRunEmbedSchema
+from srl.constants import is_youtube_url
 
 
 class SyncStatusSchema(Schema):
@@ -50,6 +51,14 @@ class SubmissionRunSchema(PlayerRunEmbedSchema):
             "vid_status == 'review' (and may remain set after resubmit as historical context for "
             "the next reviewer)."
         ),
+    )
+    import_issues: list[dict] = Field(
+        default_factory=list,
+        description="Import-time validation issues detected for this run (mod-only).",
+    )
+    has_import_issues: bool = Field(
+        default=False,
+        description="True when the run has one or more unresolved import issues.",
     )
 
 
@@ -265,16 +274,7 @@ class RunSubmitSchema(Schema):
         cls,
         v: str,
     ) -> str:
-        from urllib.parse import urlparse
-
-        parsed = urlparse(v)
-        allowed_hosts = {
-            "www.youtube.com",
-            "youtube.com",
-            "youtu.be",
-            "m.youtube.com",
-        }
-        if parsed.scheme not in ("http", "https") or parsed.netloc not in allowed_hosts:
+        if not is_youtube_url(v):
             raise ValueError("Video must be a YouTube URL")
         return v
 

@@ -220,7 +220,19 @@ def update_standings(
         level_id (str | None): Unique SRC ID of the level for IL leaderboards.
     """
     with check_reconciliation(recon_job_id):
-        time_col = METHOD_TO_TIME_FIELD[default_time_type]
+        # Rank by a specific game's timing method precedence, since our decided timing methods
+        # can be incompatible with SRC. Also, this from is to avoid a circular import issue lol
+        from srl.leaderboard.recalculation import get_leaderboard_time_column
+
+        time_col = get_leaderboard_time_column(
+            {
+                "game_id": game_id,
+                "category_id": category_id,
+                "level_id": level_id,
+                "runtype": run_type,
+                "variable_value_map": variable_value_map,
+            },
+        )
 
         base_qs = Runs.objects.only(
             "place",
@@ -315,7 +327,17 @@ def update_obsolete(
         level_id (str | None): Unique SRC ID of the level for IL leaderboards.
     """
     with check_reconciliation(recon_job_id):
-        time_col = METHOD_TO_TIME_FIELD[default_time_type]
+        from srl.leaderboard.recalculation import get_leaderboard_time_column
+
+        time_col = get_leaderboard_time_column(
+            {
+                "game_id": game_id,
+                "category_id": category_id,
+                "level_id": level_id,
+                "runtype": run_type,
+                "variable_value_map": variable_value_map,
+            },
+        )
 
         base_qs = Runs.objects.filter(
             runtype=run_type,

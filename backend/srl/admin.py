@@ -178,9 +178,10 @@ class SpeedrunAdmin(admin.ModelAdmin):
             each specific run.
     """
 
-    list_display = ["id"]
+    list_display = ["id", "has_import_issues"]
     search_fields = ["id"]
-    list_filter = ["runtype", "obsolete", "game", "platform"]
+    list_filter = ["runtype", "obsolete", "has_import_issues", "game", "platform"]
+    readonly_fields = ["import_issues"]
     inlines = [RunPlayersInline, RunVariableValuesInline]
 
     def formfield_for_foreignkey(

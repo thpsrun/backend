@@ -43,7 +43,12 @@ from api.v1.routers.utils.embeds import (
 )
 from api.v1.routers.utils.resolvers import game_from_body, run_from_path
 from api.v1.schemas.base import ErrorResponse, RunStatusType, RunTypeType
-from api.v1.schemas.runs import RunCreateSchema, RunSchema, RunUpdateSchema
+from api.v1.schemas.runs import (
+    RunCreateSchema,
+    RunModSchema,
+    RunSchema,
+    RunUpdateSchema,
+)
 from api.v1.utils import get_or_generate_id
 
 router = Router()
@@ -370,7 +375,7 @@ def get_run(
 @router.post(
     "/",
     response={
-        201: RunSchema,
+        201: RunModSchema,
         400: ErrorResponse,
         401: ErrorResponse,
         403: ErrorResponse,
@@ -602,7 +607,8 @@ def create_run(
                     details={"exception": "Failed to refetch created run"},
                 ),
             )
-        response = RunSchema.model_validate(refetched_run)
+        refetched_run.refresh_import_issues()
+        response = RunModSchema.model_validate(refetched_run)
         response.players = get_run_players(refetched_run)
         response.variables = get_run_variables(refetched_run)
 
@@ -637,7 +643,7 @@ def create_run(
 @router.put(
     "/{id}",
     response={
-        200: RunSchema,
+        200: RunModSchema,
         400: ErrorResponse,
         401: ErrorResponse,
         403: ErrorResponse,
@@ -923,7 +929,8 @@ def update_run(
                     details={"exception": "Failed to refetch updated run"},
                 ),
             )
-        response = RunSchema.model_validate(refetched_run)
+        refetched_run.refresh_import_issues()
+        response = RunModSchema.model_validate(refetched_run)
         response.players = get_run_players(refetched_run)
         response.variables = get_run_variables(refetched_run)
 

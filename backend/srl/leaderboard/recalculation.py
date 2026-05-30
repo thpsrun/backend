@@ -722,15 +722,46 @@ def process_leaderboard(
     return state.entries_created_count, len(runs), runs_to_fix
 
 
+def _assign_places(
+    state: _WalkerState,
+) -> dict[str, int]:
+    """Rank the current non-obsolete runs and assign competition placements.
+
+    Recalculations usually occur during reconciliation, point changes, or something else major;
+    because of this, this shouldn't run super often. The API has ways to handle this properly, but
+    when you are dealing with lot of data (e.g. schema conversion), this is needed to properly
+    wire and set things up."""
+    ranked = sorted(
+        state.active_pool.values(),
+        key=lambda item: (item[1], item[0].effective_date),
+    )
+
+    places: dict[str, int] = {}
+    current_place = 1
+    tied_placements = 0
+    previous_time: float | None = None
+
+    for run, run_time in ranked:
+        if previous_time is not None and run_time != previous_time:
+            current_place += tied_placements
+            tied_placements = 0
+        places[run.id] = current_place
+        tied_placements += 1
+        previous_time = run_time
+
+    return places
+
+
 def _sync_runs_points(
     state: _WalkerState,
     runs: list[Runs],
     dry_run: bool,
 ) -> int:
-    """Sync each Run's points/bonus to the final state."""
+    """Sync each Run's points/bonus/place to the final state."""
     points_map: dict[str, int] = {
         run_id: entry.points for run_id, (entry, _) in state.active_entries.items()
     }
+    places_map = _assign_places(state)
 
     runs_to_update: list[Runs] = []
     for run in runs:
@@ -738,16 +769,22 @@ def _sync_runs_points(
         expected_bonus = (
             state.runs_streak_updates.get(run.id, 0) if run.id in points_map else 0
         )
+        expected_place = places_map.get(run.id, 0)
 
-        if run.points != expected_points or run.bonus != expected_bonus:
+        if (
+            run.points != expected_points
+            or run.bonus != expected_bonus
+            or run.place != expected_place
+        ):
             run.points = expected_points
             run.bonus = expected_bonus
+            run.place = expected_place
             runs_to_update.append(run)
 
     if runs_to_update and not dry_run:
         Runs.objects.bulk_update(
             runs_to_update,
-            ["points", "bonus"],
+            ["points", "bonus", "place"],
             batch_size=500,
         )
 

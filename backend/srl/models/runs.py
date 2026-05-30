@@ -1,6 +1,7 @@
 from django.core.exceptions import ValidationError
 from django.db import models
 
+from srl.constants import is_youtube_url
 from srl.models.base import METHOD_TO_TIME_FIELD
 from srl.models.categories import Categories
 from srl.models.games import Games
@@ -249,6 +250,16 @@ class Runs(models.Model):
     updated_at = models.DateTimeField(
         auto_now=True,
     )
+    import_issues = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name="Import Issues",
+    )
+    has_import_issues = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name="Has Import Issues",
+    )
 
     _TIMING_FIELD_MAP: dict[str, tuple[str, str]] = {
         method: (secs_field.removesuffix("_secs"), secs_field)
@@ -304,6 +315,47 @@ class Runs(models.Model):
                 f"Run requires the following timing methods: {allowed}. "
                 f"Missing or zero: {missing}",
             )
+
+    def collect_import_issues(
+        self,
+    ) -> list[dict]:
+        """Return import-time validation issues for this run without raising."""
+        issues: list[dict] = []
+        missing: list[str] = []
+        for method in self._resolved_required_methods():
+            _, secs_field = self._TIMING_FIELD_MAP[method]
+            value = getattr(self, secs_field)
+            if not value or value <= 0:
+                missing.append(method)
+        if missing:
+            issues.append(
+                {
+                    "type": "missing_timing_methods",
+                    "methods": missing,
+                },
+            )
+        if self.video and not is_youtube_url(self.video):
+            issues.append(
+                {
+                    "type": "invalid_video_host",
+                    "url": self.video,
+                },
+            )
+        return issues
+
+    def refresh_import_issues(
+        self,
+    ) -> None:
+        """Recompute and persist `import_issues` / `has_import_issues` for this run."""
+        issues = self.collect_import_issues()
+        self.import_issues = issues
+        self.has_import_issues = bool(issues)
+        self.save(
+            update_fields=[
+                "import_issues",
+                "has_import_issues",
+            ],
+        )
 
     @property
     def p_time(

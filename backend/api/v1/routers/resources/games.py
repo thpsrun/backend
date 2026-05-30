@@ -159,6 +159,8 @@ def _build_cat_embed(
                 "slug": var.slug,
                 "scope": var.scope,
                 "archive": var.archive,
+                "defaulttime": var.defaulttime,
+                "required_methods": var.required_methods,
                 "values": values,
             }
         )
@@ -181,6 +183,8 @@ def _build_categories_embed(
                 "rules": cat.rules,
                 "appear_on_main": cat.appear_on_main,
                 "archive": cat.archive,
+                "defaulttime": cat.defaulttime,
+                "required_methods": cat.required_methods,
                 "variables": _build_cat_embed(
                     game,
                     cat.id,
