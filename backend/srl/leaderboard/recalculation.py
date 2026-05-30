@@ -732,7 +732,11 @@ def _assign_places(
     when you are dealing with lot of data (e.g. schema conversion), this is needed to properly
     wire and set things up."""
     ranked = sorted(
-        state.active_pool.values(),
+        (
+            (run, run_time)
+            for run, run_time in state.active_pool.values()
+            if not run.obsolete
+        ),
         key=lambda item: (item[1], item[0].effective_date),
     )
 

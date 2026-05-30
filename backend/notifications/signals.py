@@ -1,15 +1,19 @@
+from datetime import timedelta
 from typing import Any
 
 from auditlog.context import get_actor
+from django.conf import settings
 from django.db import transaction
 from django.db.models.signals import m2m_changed, post_save, pre_save
 from django.dispatch import receiver
+from django.utils import timezone
 from srl.models import Runs
 from srl.models.games import Games
 
 from notifications import kinds
 from notifications.tasks import (
     dispatch_mod_promoted_notification,
+    dispatch_run_awaiting_review_notification,
     dispatch_run_status_notification,
 )
 
@@ -47,9 +51,9 @@ def runs_capture_previous_status(
 @receiver(
     post_save,
     sender=Runs,
-    dispatch_uid="notifications.signals.runs_emit_status_notification",
+    dispatch_uid="notifications.signals.runs_trigger_status_notification",
 )
-def runs_emit_status_notification(
+def runs_trigger_status_notification(
     sender: Any,
     instance: Any,
     created: bool,
@@ -103,11 +107,48 @@ def runs_emit_status_notification(
 
 
 @receiver(
+    post_save,
+    sender=Runs,
+    dispatch_uid="notifications.signals.runs_trigger_review_notification",
+)
+def runs_trigger_review_notification(
+    sender: Any,
+    instance: Any,
+    created: bool,
+    raw: bool = False,
+    **kwargs: Any,
+) -> None:
+    if raw:
+        return
+
+    previous = getattr(instance, "_previous_vid_status", None)
+    current = instance.vid_status
+
+    entered_new = (created and current == "new") or (
+        previous != "new" and current == "new"
+    )
+    if not entered_new:
+        return
+
+    max_age_days = getattr(settings, "AWAITING_REVIEW_NOTIFY_MAX_AGE_DAYS", 7)
+    run_date = getattr(instance, "date", None)
+    if run_date is not None:
+        cutoff = timezone.now() - timedelta(days=max_age_days)
+        if run_date < cutoff:
+            return
+
+    run_id = str(instance.pk)
+    transaction.on_commit(
+        lambda: dispatch_run_awaiting_review_notification.delay(run_id=run_id),
+    )
+
+
+@receiver(
     m2m_changed,
     sender=Games.moderators.through,
-    dispatch_uid="notifications.signals.moderators_emit_promoted",
+    dispatch_uid="notifications.signals.mods_trigger_promoted_notification",
 )
-def moderators_emit_promoted(
+def mods_trigger_promoted_notification(
     sender: Any,
     instance: Any,
     action: str,

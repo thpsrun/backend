@@ -410,8 +410,10 @@ def create_run_default(
 
     run_rta, run_nl, run_igt = time_conversion(run_data["times"])
 
+    level_val = run_data["level"]
+
     default = {
-        "runtype": "main" if run_data["level"] is None else "il",
+        "runtype": "main" if level_val is None else "il",
         "game_id": run_data["game"],
         "category_id": run_data["category"],
         "place": place,
@@ -431,6 +433,12 @@ def create_run_default(
         "approver": approver,
         "description": run_data["comment"],
     }
+
+    # Populate the level FK for IL runs
+    if level_val:
+        default["level_id"] = (
+            level_val["id"] if isinstance(level_val, dict) else level_val
+        )
 
     if lrtfix:
         default = lrt_fix(default)

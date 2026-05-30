@@ -10,6 +10,7 @@ RUN_DENIED = "run_denied"
 MOD_PROMOTED = "mod_promoted"
 API_KEY_EXPIRING = "api_key_expiring"
 RUN_REVIEW = "run_review"
+RUN_AWAITING_REVIEW = "run_awaiting_review"
 USER_DATA_EXPORT_READY = "user_data_export_ready"
 USER_DATA_EXPORT_FAILED = "user_data_export_failed"
 USER_DATA_EXPORT_GROUP = "user_data_export"
@@ -56,6 +57,13 @@ register(
         key=RUN_REVIEW,
         label="Run Sent For Review",
         description="A moderator sent one of your runs back with notes to address!",
+    ),
+)
+register(
+    NotificationKind(
+        key=RUN_AWAITING_REVIEW,
+        label="Run Awaiting Review",
+        description="A run on a game you moderate is awaiting review.",
     ),
 )
 register(

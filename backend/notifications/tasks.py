@@ -74,6 +74,70 @@ def dispatch_run_status_notification(
     return {"emitted": emitted}
 
 
+@shared_task(name="notifications.dispatch_run_awaiting_review_notification")
+def dispatch_run_awaiting_review_notification(
+    run_id: str,
+) -> dict:
+    """Notify a game's moderators that a run is awaiting review."""
+
+    run = (
+        Runs.objects.filter(pk=run_id, vid_status="new")
+        .select_related("game", "category")
+        .prefetch_related("players", "game__moderators__user")
+        .first()
+    )
+    if run is None or run.game is None:
+        return {"emitted": 0, "skipped": "stale_or_missing"}
+
+    game_name = getattr(run.game, "name", "") or ""
+    category_name = getattr(run.category, "name", "") or ""
+    player_names = [
+        getattr(player, "name", "")
+        for player in run.players.all()
+        if getattr(player, "name", "")
+    ]
+    payload: dict[str, Any] = {
+        "run_id": str(run_id),
+        "game_id": getattr(run, "game_id", "") or "",
+        "game_name": game_name,
+        "category_name": category_name,
+        "player_names": player_names,
+    }
+
+    runner = ", ".join(player_names) or "someone"
+    title = "Run awaiting review"
+    body = f"{game_name} {category_name} by {runner} is awaiting review.".strip()
+
+    emitted = 0
+    for moderator in run.game.moderators.all():
+        user = getattr(moderator, "user", None)
+        if user is None or getattr(user, "pk", None) is None:
+            continue
+
+        already_unread = Notification.objects.filter(
+            user=user,
+            type=kinds.RUN_AWAITING_REVIEW,
+            target_id=str(run_id),
+            is_read=False,
+        ).exists()
+        if already_unread:
+            continue
+
+        result = create_notification(
+            user=user,
+            kind=kinds.RUN_AWAITING_REVIEW,
+            title=title,
+            body=body,
+            target_type="run",
+            target_id=str(run_id),
+            payload=dict(payload),
+        )
+        if result is not None:
+            emitted += 1
+
+    return {"emitted": emitted}
+
+
 @shared_task(name="notifications.dispatch_mod_promoted_notification")
 def dispatch_mod_promoted_notification(
     player_id: int,

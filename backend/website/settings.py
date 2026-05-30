@@ -351,6 +351,7 @@ RATE_LIMIT_DISABLED = os.getenv("RATE_LIMIT_DISABLED", "False").lower() == "true
 # Session life when `Remember Me` is not chosen (7 days) or, if set, 30 days.
 SESSION_COOKIE_AGE = 60 * 60 * 24 * 7
 REMEMBER_AGE = 60 * 60 * 24 * 30
+AWAITING_REVIEW_NOTIFY_MAX_AGE_DAYS = 7
 
 # SOCIAL AUTH (Discord + Twitch - apps registered externally, credentials in .env)
 SOCIALACCOUNT_PROVIDERS = {
