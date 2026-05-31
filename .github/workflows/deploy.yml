@@ -147,7 +147,7 @@ jobs:
           port: 22
           script: |
             set -e
-            cd ~/deploy
+            cd ~/backend
             git pull origin dev
 
             echo "Running database migrations..."
@@ -235,7 +235,7 @@ jobs:
           port: 22
           script: |
             set -e
-            cd ~/website
+            cd ~/backend
 
             mkdir -p ~/backups
             BACKUP_FILE="pre-deploy-$(date +'%Y%m%d-%H%M%S').sql.gz"
