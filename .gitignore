@@ -152,3 +152,4 @@ typescript
 npm/*
 pyproject.toml
 .pylintrc
+identity.txt
