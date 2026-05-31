@@ -24,12 +24,12 @@ RUN apk add --no-cache bash libpq \
     && install -d -m 0755 -o app_user -g app_user /app/static
 
 COPY --from=builder /venv /venv
-COPY docker/entrypoint.sh /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
 WORKDIR /app
 USER app_user:app_user
 
-COPY --chown=app_user:app_user . .
+COPY --chown=app_user:app_user backend/ .
 
-ENTRYPOINT ["/app/entrypoint.sh"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
