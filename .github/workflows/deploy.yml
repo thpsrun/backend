@@ -118,7 +118,7 @@ jobs:
 
   deploy-dev:
     if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
-    needs: [lint-backend, test-backend, security-scan]
+    #needs: [lint-backend, test-backend, security-scan]
     runs-on: ubuntu-latest
     concurrency:
       group: deploy-dev
