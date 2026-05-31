@@ -4,7 +4,12 @@ from typing import Any, Literal
 from ninja import Schema
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
-from api.v1.schemas.base import BaseEmbedSchema, RunTypeType, TimingMethodType
+from api.v1.schemas.base import (
+    BaseEmbedSchema,
+    RunStatusType,
+    RunTypeType,
+    TimingMethodType,
+)
 
 
 def compute_run_subcategory(
@@ -226,6 +231,7 @@ class RunSchema(RunBaseSchema):
     """Complete run schema with optional embedded data.
 
     Attributes:
+        vid_status (str): Verification state (verified, new, rejected, review).
         game (str | dict | None): Game ID (default) or full game info with ?embed=game.
         category (str | dict | None): Category ID (default) or full category info with
             ?embed=category.
@@ -244,6 +250,7 @@ class RunSchema(RunBaseSchema):
                 "place": 1,
                 "points": 1000,
                 "obsolete": False,
+                "vid_status": "verified",
                 "subcategory": "Any% (PC)",
                 "times": {
                     "time": "12:34.567",
@@ -274,6 +281,10 @@ class RunSchema(RunBaseSchema):
         },
     )
 
+    vid_status: RunStatusType = Field(
+        default="verified",
+        description="Verification state: verified, new, rejected, or review.",
+    )
     game: str | dict | None = Field(None, description="ID or embedded with ?embed=game")
     category: str | dict | None = Field(
         None, description="ID or embedded with ?embed=category"
@@ -350,6 +361,7 @@ class RunModSchema(RunSchema):
                 "place": 1,
                 "points": 1000,
                 "obsolete": False,
+                "vid_status": "verified",
                 "subcategory": "Any% (PC)",
                 "times": {
                     "time": "12:34.567",

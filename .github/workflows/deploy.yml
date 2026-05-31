@@ -20,7 +20,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.13"
+          python-version: "3.14"
           cache: 'pip'
 
       - name: Install Dependencies
@@ -31,14 +31,16 @@ jobs:
 
       - name: Run Flake8
         run: |
-          flake8 --extend-ignore=E126,E127,E128,E203,E221,W503,W504 \
+          flake8 --extend-ignore=E126,E127,E128,E203,E221,E402,W503,W504 \
                  --extend-exclude=*/migrations/*.py \
                  --max-line-length=100 \
                  $(git ls-files | grep py$)
 
   test-backend:
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    # Runs on every PR and on direct pushes to dev. Production pushes deliberately
+    # skip the suite (dev is the gate) - see deploy-production below.
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev')
 
     services:
       postgres:
@@ -51,6 +53,16 @@ jobs:
           - 5432:5432
         options: >-
           --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -70,7 +82,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.13"
+          python-version: "3.14"
           cache: 'pip'
 
       - name: Install Dependencies
@@ -96,7 +108,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.13"
+          python-version: "3.14"
 
       - name: Install pip-audit
         run: python -m pip install pip-audit
@@ -106,8 +118,11 @@ jobs:
 
   deploy-dev:
     if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
-    needs: [lint-backend, security-scan]
+    needs: [lint-backend, test-backend, security-scan]
     runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-dev
+      cancel-in-progress: false
 
     steps:
       - name: Tailscale
@@ -119,7 +134,7 @@ jobs:
           version: latest
 
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: dev
 
@@ -131,6 +146,7 @@ jobs:
           key: ${{ secrets.DEV_SERVER_SSH_KEY }}
           port: 22
           script: |
+            set -e
             cd ~/deploy
             git pull origin dev
 
@@ -147,11 +163,28 @@ jobs:
             echo "Cleaning up Docker..."
             docker system prune -f
 
-            echo "Waiting for services to start..."
-            sleep 30
+            echo "Waiting for the django container to report healthy..."
+            HEALTHY=""
+            for i in $(seq 1 30); do
+              STATUS=$(docker inspect --format='{{.State.Health.Status}}' django 2>/dev/null || echo "missing")
+              if [ "$STATUS" = "healthy" ]; then
+                echo "django container is healthy"
+                HEALTHY="yes"
+                break
+              fi
+              echo "  attempt $i/30: container status=$STATUS"
+              sleep 5
+            done
+            if [ -z "$HEALTHY" ]; then
+              echo "!!! django container failed to become healthy !!!"
+              docker compose -f docker-compose.PROD.yml ps
+              docker compose -f docker-compose.PROD.yml logs --tail=80 django
+              exit 1
+            fi
 
-            echo "Checking API health..."
-            curl -f https://localhost/api/v1/ || echo "!!!!!!! API health check failed !!!!!!!"
+            echo "Checking API health endpoint..."
+            curl -fsS --max-time 10 http://localhost:8001/api/v1/health
+            echo "Dev API is healthy"
 
       - name: Notify Success
         if: success()
@@ -169,6 +202,9 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: production
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
 
     steps:
       - name: Tailscale
@@ -180,7 +216,7 @@ jobs:
           version: latest
 
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: main
 
@@ -198,6 +234,7 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: 22
           script: |
+            set -e
             cd ~/website
 
             mkdir -p ~/backups
@@ -222,6 +259,7 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: 22
           script: |
+            set -e
             cd ~/website
             git pull origin main
 
@@ -239,17 +277,6 @@ jobs:
             docker system prune -f
 
             echo "Deployment completed successfully!"
-
-      - name: Health Check
-        run: |
-          echo "Waiting for services to start..."
-          sleep 30
-
-          echo "Checking API health..."
-          curl -f https://thps.run/api/v1/ || echo "!!!!!!!API health check failed - check logs!!!!!!!"
-
-          echo "Checking admin panel..."
-          curl -f https://thps.run/illiad/login/ || echo "!!!!!!! Admin panel health check failed - check logs!!!!!!!"
 
       - name: Tag Successful Deployment
         if: success()

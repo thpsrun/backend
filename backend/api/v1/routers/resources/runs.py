@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Literal
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
@@ -167,6 +167,8 @@ Supported Parameters:
 - `runtype` (str | None): Filter by run type (`main` or `il`)
 - `place` (int | None): Filter by leaderboard position
 - `status` (str | None): Filter by verification status (`verified`, `new`, `rejected`, or `review`)
+- `sort` (str): Ordering. `default` (leaderboard: -v_date, place) or `newest` (most recently
+  created first). Default `default`.
 - `search`: Search in category name, level name, or variable value names
 - `embed`: Comma-separated list of resources to embed
 - `limit`: Results per page (default 50, max 100)
@@ -178,6 +180,8 @@ Examples:
 - `/runs/all?player_id=v8lponvj&runtype=main` - Player's full-game runs
 - `/runs/all?search=normal&place=1&status=verified` - Verified WRs with "normal" in cat/level.
 - `/runs/all?game_id=thps4&level_id=alcatraz&embed=player,game` - Alcatraz ILs with embeds
+- `/runs/all?sort=newest&limit=20` - 20 most recently created runs (any status)
+- `/runs/all?sort=newest&status=review&limit=20` - recent runs awaiting review
 """,
     auth=public_read(),
 )
@@ -197,6 +201,15 @@ def get_all_runs(
         Query(description="Search category/level/variable value names"),
     ] = None,
     embed: Annotated[str | None, Query(description="Comma-separated embeds")] = None,
+    sort: Annotated[
+        Literal["default", "newest"],
+        Query(
+            description=(
+                "Result ordering: 'default' = leaderboard order (-v_date, place); "
+                "'newest' = most recently created first (-created_at)."
+            ),
+        ),
+    ] = "default",
     limit: Annotated[
         int,
         Query(
@@ -221,8 +234,12 @@ def get_all_runs(
                 "runvariablevalues_set__variable",
                 "runvariablevalues_set__value",
             )
-            .order_by("-v_date", "place")
         )
+
+        if sort == "newest":
+            queryset = queryset.order_by("-created_at", "-id")
+        else:
+            queryset = queryset.order_by("-v_date", "place")
 
         if game_id:
             queryset = queryset.filter(Q(game__id=game_id) | Q(game__slug=game_id))
