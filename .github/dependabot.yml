@@ -6,12 +6,12 @@
 version: 2
 updates:
   - package-ecosystem: "docker"
-    directory: "~/deploy/"
+    directory: "~/website/backend/"
     schedule:
       interval: "weekly"
       
   - package-ecosystem: "pip"
-    directory: "~/deploy/"
+    directory: "~/website/backend/"
     schedule:
       interval: "daily"
     groups:

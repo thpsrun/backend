@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM python:3.14.3-alpine AS builder
+FROM python:3.14.5-alpine AS builder
 
 RUN apk add --no-cache build-base libpq-dev
 
@@ -8,7 +8,7 @@ COPY requirements.txt /tmp/requirements.txt
 RUN python -m venv /venv \
     && /venv/bin/pip install --no-cache-dir -r /tmp/requirements.txt
 
-FROM python:3.14.3-alpine
+FROM python:3.14.5-alpine
 
 ARG UID=1002
 ARG GID=1002
@@ -24,14 +24,12 @@ RUN apk add --no-cache bash libpq \
     && install -d -m 0755 -o app_user -g app_user /app/static
 
 COPY --from=builder /venv /venv
-COPY docker/entrypoint.sh /app/entrypoint.sh
-COPY docker/start.sh /app/start.sh
-RUN chmod +x /app/entrypoint.sh /app/start.sh
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
 WORKDIR /app
 USER app_user:app_user
 
-COPY --chown=app_user:app_user . .
+COPY --chown=app_user:app_user backend/ .
 
-ENTRYPOINT ["/app/entrypoint.sh"]
-CMD ["/app/start.sh", "server"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

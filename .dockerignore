@@ -8,6 +8,12 @@ dist/
 build/
 *.log
 
+# Addiitonal development files and directories
+pyenv.cfg
+.flake8
+LICENSE
+README.md
+
 # Ignore database files
 *.sqlite3
 

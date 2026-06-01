@@ -1,0 +1,200 @@
+/* Shared styles for custom admin pages (manage_game_display, manage_nav_ordering). */
+
+.adm-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.adm-search {
+    padding: 6px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--body-bg);
+    color: var(--body-fg);
+    min-width: 240px;
+}
+
+.adm-section {
+    margin-top: 24px;
+}
+
+.adm-section h3 {
+    margin-bottom: 8px;
+}
+
+.adm-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--hairline-color);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.adm-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--hairline-color);
+    background: var(--body-bg);
+}
+
+.adm-row:last-child {
+    border-bottom: none;
+}
+
+.adm-row[data-unordered="1"] {
+    opacity: 0.6;
+}
+
+.adm-row[data-saving="1"] {
+    background: var(--darkened-bg);
+}
+
+.adm-row .adm-grip {
+    cursor: grab;
+    color: var(--body-quiet-color);
+    user-select: none;
+    font-size: 1.1em;
+}
+
+.adm-row[data-search-disabled="1"] .adm-grip {
+    cursor: not-allowed;
+    opacity: 0.4;
+}
+
+.adm-row .adm-name {
+    flex: 1;
+}
+
+.adm-row .adm-meta {
+    color: var(--body-quiet-color);
+    font-size: 0.85em;
+}
+
+.adm-row .adm-arrows {
+    display: flex;
+    gap: 4px;
+}
+
+.adm-row .adm-arrow {
+    padding: 2px 8px;
+    cursor: pointer;
+}
+
+.adm-row .adm-arrow:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
+}
+
+.adm-row .adm-checkbox {
+    transform: scale(1.2);
+}
+
+/* Toast stack */
+
+#admin-toast-stack {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 360px;
+}
+
+.adm-toast {
+    background: var(--body-bg);
+    color: var(--body-fg);
+    border: 1px solid var(--hairline-color);
+    border-left: 4px solid var(--primary);
+    border-radius: 4px;
+    padding: 10px 12px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    animation: adm-slide-in 0.2s ease-out;
+}
+
+.adm-toast.adm-toast-success { border-left-color: var(--message-success-bg, #4caf50); }
+.adm-toast.adm-toast-error   { border-left-color: var(--message-error-bg, #f44336); }
+.adm-toast.adm-toast-info    { border-left-color: var(--primary); }
+
+.adm-toast .adm-toast-message { flex: 1; }
+.adm-toast .adm-toast-undo,
+.adm-toast .adm-toast-retry,
+.adm-toast .adm-toast-close {
+    background: none;
+    border: 1px solid var(--hairline-color);
+    color: inherit;
+    padding: 2px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 0.85em;
+}
+
+@keyframes adm-slide-in {
+    from { transform: translateX(20px); opacity: 0; }
+    to   { transform: translateX(0); opacity: 1; }
+}
+
+/* Nav tree */
+
+.adm-tree, .adm-tree ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.adm-tree li {
+    border-left: 1px dashed var(--hairline-color);
+    margin-left: 12px;
+    padding-left: 8px;
+}
+
+.adm-tree li > .adm-row { margin: 4px 0; }
+
+.adm-tree-toggle {
+    cursor: pointer;
+    user-select: none;
+    width: 14px;
+    display: inline-block;
+    text-align: center;
+}
+
+/* Confirmation modal (cross-parent drag) */
+
+.adm-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+}
+
+.adm-modal-backdrop[data-open="1"] { display: flex; }
+
+.adm-modal {
+    background: var(--body-bg);
+    color: var(--body-fg);
+    padding: 20px;
+    border-radius: 6px;
+    min-width: 320px;
+    max-width: 480px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.adm-modal-actions {
+    margin-top: 16px;
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}

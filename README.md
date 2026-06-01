@@ -1,39 +1,41 @@
-# thps.run Website
-## Version 3.5
+# thps.run Website - Backend
+## Version 4.0
 
 ![Django](https://img.shields.io/badge/Django-5.2-green.svg?logo=django&logoColor=white)
-![DjangoREST](https://img.shields.io/badge/django--rest--framework-3.16-blue?labelColor=333333&logo=django&logoColor=white&color=green)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17.6-green?logo=postgresql&logoColor=white)
+![Django Ninja](https://img.shields.io/badge/1.6-blue?color=black&label=django-ninja&logo=fastapi&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17.4-green?logo=postgresql&logoColor=white)
 
 ### What the heck is this??
-This has been the pet project of [ThePackle](https://twitch.tv/thepackle) for a few years now. In short, it is a highly-customizable, easy-to-use, and curated website that mimics a lot of the leaderboard functionality seen from [HaloRuns](https://haloruns.com). Built entirely in Django (Python), this is the open-source files used for websites like [thps.run](https://thps.run).
+This has been the pet project of [ThePackle](https://twitch.tv/thepackle) for a few years now. In short, it is a highly-customizable, easy-to-use, and curated website that aims to mimic a lot of the leaderboard functionality seen from [HaloRuns](https://haloruns.com). Built entirely in Django (Python), this is the open-source files used for websites like [thps.run](https://thps.run).  
+  
+This repo, specifically, is for the backend portion. If you wish to help with the frontend (React/TypeScript), then you can find it here: [thps.run Frontend](https://github.com/thpsrun/frontend).
 
 ### How does this work?
-thps.run is essentially a 1:1 cache of the Speedrun.com leaderboards for the [Tony Hawk's Pro Skater speedrun community](https://speedrun.com/tonyhawk). Virtually all runs are imported into custom models that mimic the layout and feel of Speedrun.com's API. From here, we are able to perform limitless lookups, customize experiences and create new features, and introduce fun stuff like the [Points System](#note-on-points).  
+thps.run is essentially a 1:1 cache of the Speedrun.com leaderboards for the [Tony Hawk's Pro Skater speedrun community](https://speedrun.com/tonyhawk). All runs are imported into custom models that mimic the layout and feel of Speedrun.com's API. From here, we are able to perform limitless lookups, customize experiences and create new features, and introduce fun stuff like the [Points System](#note-on-points).  
   
 When you initially setup this project in your environment, you will need to import a `Series ID` into the `Series` model in the Admin Panel (easily gettable if you just take the series ID from any `https://speedrun.com/api/v1/series/<SERIES_SLUG>` request). While this means that ONLY communitys who have a Series for their game can use this project, it will allow you to have greater dynamic control of your community's speedruns.
 
 ### But why?
-While SRC has improved a little bit over the last few years, every community should be free to create a decentralized leaderboard of some kind. Very large communities (like Megaman) already have their own websites, and this project serves as a way to quickly build one for your community.  
+While SRC has improved a little bit over the last few years, every community should be free to create a decentralized leaderboard of some kind. Very large communities (like Megaman) already have their own websites, and this project serves as a way to quickly build one.
   
 Will this work for everyone? No. Can you curate it to fit your community? Yes!
 
 ### Can I fork this project?
-1.  This project assumes you are familar with Python and/or Django. A lot of processes and procedures are largely automated, but there may be some tweaks that you need to apply for your use case.
+1.  This project assumes you are familar with Python and/or Django, with some sort of frontend to support it (note: you can use Django's built-in template system for a basis). A lot of processes and procedures are largely automated, but there may be some tweaks that you need to apply for your use case.
     *   Example: Currently, this project doesn't support speedruns with more than two players. If you support a community with more than 2, you will need to take this and curate things.
         *   Later versions will fix this.
     * Another example: THPS doesn't have any game with more than two sub-categories (variables), so you will need to customize things a bit.
         *   Later versions will also fix this.
 2.  This project assumes you have permission to use the HaloRuns points system. [See below](#note-on-points).
-3.  Contributing to this project is encouraged, but definitely not necessary. Commits to this project are **primarily** meant to enhance the thps.run experience or fix security problems.
+3.  Contributing to this project is encouraged, but definitely not necessary. Commits to this project are **primarily** meant to enhance the thps.run experience or fix security problems. If you find something that can help, feel free to submit a PR!
 
 ### Requirements
 * [Docker](https://www.docker.com/products/docker-desktop/) (Desktop or Docker Compose is fine)
 
 ### Note on Points
-The points system utilized within this project was created by ibeechu and goatrope of the [HaloRuns](https://haloruns.com) speedrun community. For the use of thps.run, they are used with permission; if you wish to use this points system, then contact them on their official Discord for permission. This project assumes that you already have permission of some kind to use it, so please ask!
+The points system utilized within this project was created by ibeechu and goatrope of the [HaloRuns](https://haloruns.com) speedrun community. For the use of thps.run, they are used with permission; if you wish to use this points system, then contact them on their official Discord for permission.
 
-Points (referred to lovingly as Packle Points by the THPS community) is a score given to all speedruns. It incentivites players into trying out different speedruns or categories within the series.
+Points (lovingly referred to as Packle Points by the THPS community) is a score given to all speedruns. It incentivites players into trying out different speedruns or categories within the series.
 
 This is how points are distributed when you have a world record:
 *   Full-game (non-Category Extensions): 1000 points
@@ -73,6 +75,6 @@ As an example of how points are reduced, how is a sample based on if a category'
 ### Post-Installation Steps
 * Create Super User
   - Super users are required to do anything in the admin portal; think of it as your root account. To create one, you need to access the `django` docker image command-line in some way.
-    - `docker run -it srlc-django /bin/bash`
-    - `cd srlc && python manage.py createsuperuser`
+    - `docker run -it backend-django /bin/bash`
+    - `cd backend && python manage.py createsuperuser`
     - Follow on-screen instructions.

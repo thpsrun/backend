@@ -1,0 +1,12 @@
+{% autoescape off %}Greetings,
+
+A {{ provider }} account was just linked to your thps.run account. Going
+forward, you can sign in to thps.run by clicking "Sign in with {{ provider }}".
+
+If this was not you, your account may be compromised. Reset your password
+right away at https://thps.run/account/password/reset, unlink {{ provider }}
+from your account's security settings, and reach out to a moderator on our
+Discord so we can lock the account down.
+
+- thps.run's Admin Team
+{% endautoescape %}

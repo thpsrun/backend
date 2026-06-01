@@ -1,43 +1,132 @@
-name: thps.run CI/CD Pipeline
+name: Backend CI/CD Pipeline
 
 on:
   push:
     branches:
       - main
       - dev
+  pull_request:
+    branches:
+      - main
+      - dev
 
 jobs:
-  deploy-dev-flake8:
-    if: github.ref == 'refs/heads/dev'
+  lint-backend:
     runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install flake8 mypy
+          pip install -r requirements.txt
+
+      - name: Run Flake8
+        run: |
+          flake8 --extend-ignore=E126,E127,E128,E203,E221,E402,W503,W504 \
+                 --extend-exclude=*/migrations/*.py \
+                 --max-line-length=100 \
+                 $(git ls-files | grep py$)
+
+  test-backend:
+    runs-on: ubuntu-latest
+    # Runs on every PR and on direct pushes to dev. Production pushes deliberately
+    # skip the suite (dev is the gate) - see deploy-production below.
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/dev')
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      SECRET_KEY: "test-secret-key-for-ci-only"
+      ALLOWED_HOSTS: "localhost,127.0.0.1"
+      DEBUG_MODE: "True"
+      POSTGRES_DB: test_db
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_password
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
         with:
-          ref: dev
+          python-version: "3.14"
+          cache: 'pip'
 
-      - name: "Setup Python Environment"
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-      
-      - name: Install Flake8
+      - name: Install Dependencies
         run: |
-          python -m pip install --upgrade flake8
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-      - name: "Run Flake8 for Linting"
-        continue-on-error: true
+      - name: Run Django Tests
+        working-directory: ./backend
+        env:
+          # Override the host to use localhost since services run on the runner
+          DATABASE_HOST: localhost
         run: |
-          flake8 --extend-ignore=E126,E127,E128,E203,E221,W503,W504 --extend-exclude=*/migrations/*.py --max-line-length=100 `git ls-files | grep py$`
+          python manage.py migrate --noinput
+          python manage.py test --verbosity=2
 
-  deploy-dev-test:
-    if: github.ref == 'refs/heads/dev'
+  security-scan:
     runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Install pip-audit
+        run: python -m pip install pip-audit
+
+      - name: Run pip-audit
+        run: pip-audit -r requirements.txt --desc
+
+  deploy-dev:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    #needs: [lint-backend, test-backend, security-scan]
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-dev
+      cancel-in-progress: false
 
     steps:
       - name: Tailscale
-        uses: tailscale/github-action@v3
+        uses: tailscale/github-action@v4
         with:
           oauth-client-id: ${{ secrets.DEV_TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.DEV_TS_OAUTH_SECRET }}
@@ -45,41 +134,81 @@ jobs:
           version: latest
 
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: dev
-  
-      - name: SSH - Deploy - Restart Docker
-        uses: appleboy/ssh-action@v1.0.3
+
+      - name: SSH - Deploy to Dev
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.DEV_SERVER_IP }}
           username: ${{ secrets.DEV_SERVER_USER }}
           key: ${{ secrets.DEV_SERVER_SSH_KEY }}
           port: 22
           script: |
-            cd ~/deploy
+            set -e
+            cd ~/backend
             git pull origin dev
 
+            echo "Running database migrations..."
+            docker compose -f docker-compose.PROD.yml run --rm django python manage.py migrate --noinput
+
+            echo "Collecting static files..."
+            docker compose -f docker-compose.PROD.yml run --rm django python manage.py collectstatic --noinput
+
             echo "Restarting Docker containers..."
-            docker compose down
+            docker compose -f docker-compose.PROD.yml down
             docker compose -f docker-compose.PROD.yml up -d --build
 
-      - name: Cleanup Docker
+            echo "Cleaning up Docker..."
+            docker system prune -f
+
+            echo "Waiting for the django container to report healthy..."
+            HEALTHY=""
+            for i in $(seq 1 30); do
+              STATUS=$(docker inspect --format='{{.State.Health.Status}}' django 2>/dev/null || echo "missing")
+              if [ "$STATUS" = "healthy" ]; then
+                echo "django container is healthy"
+                HEALTHY="yes"
+                break
+              fi
+              echo "  attempt $i/30: container status=$STATUS"
+              sleep 5
+            done
+            if [ -z "$HEALTHY" ]; then
+              echo "!!! django container failed to become healthy !!!"
+              docker compose -f docker-compose.PROD.yml ps
+              docker compose -f docker-compose.PROD.yml logs --tail=80 django
+              exit 1
+            fi
+
+            echo "Checking API health endpoint..."
+            curl -fsS --max-time 10 http://localhost:8001/api/v1/health
+            echo "Dev API is healthy"
+
+      - name: Notify Success
+        if: success()
         run: |
-          echo "Cleaning up Docker system..."
-          docker system prune -f
+          echo "Dev deployment successful"
 
-      #- name: Run Docker Tests
-        #run: |
-          #docker exec -it django python3 manage.py test
+      - name: Notify Failure
+        if: failure()
+        run: |
+          echo "Dev deployment failed - check logs"
 
-  deploy-main:
-    if: github.ref == 'refs/heads/main'
+  deploy-production:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [lint-backend, security-scan]
     runs-on: ubuntu-latest
+    environment:
+      name: production
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
 
     steps:
       - name: Tailscale
-        uses: tailscale/github-action@v3
+        uses: tailscale/github-action@v4
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
@@ -87,26 +216,82 @@ jobs:
           version: latest
 
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: main
-  
-      - name: SSH - Deploy - Restart Docker
-        uses: appleboy/ssh-action@v1.0.3
+
+      - name: Create Deployment Tag
+        run: |
+          TAG="deploy-$(date +'%Y%m%d-%H%M%S')"
+          echo "DEPLOY_TAG=$TAG" >> $GITHUB_ENV
+          echo "Deployment tag: $TAG"
+
+      - name: SSH - Backup Database
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.SERVER_IP }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: 22
           script: |
+            set -e
+            cd ~/backend
+
+            mkdir -p ~/backups
+            BACKUP_FILE="pre-deploy-$(date +'%Y%m%d-%H%M%S').sql.gz"
+
+            echo "Creating pre-deployment backup: $BACKUP_FILE"
+            docker exec postgres sh -c 'pg_dump -U $POSTGRES_USER $POSTGRES_DB' | gzip > ~/backups/$BACKUP_FILE
+
+            if [ -f ~/backups/$BACKUP_FILE ]; then
+              SIZE=$(du -h ~/backups/$BACKUP_FILE | cut -f1)
+              echo "Backup created: $BACKUP_FILE ($SIZE)"
+            else
+              echo "Backup failed!"
+              exit 1
+            fi
+
+      - name: SSH - Deploy to Production
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          port: 22
+          script: |
+            set -e
             cd ~/website
             git pull origin main
 
+            echo "Running database migrations..."
+            docker compose -f docker-compose.PROD.yml run --rm django python manage.py migrate --noinput
+
+            echo "Collecting static files..."
+            docker compose -f docker-compose.PROD.yml run --rm django python manage.py collectstatic --noinput
+
             echo "Restarting Docker containers..."
-            docker compose down
+            docker compose -f docker-compose.PROD.yml down
             docker compose -f docker-compose.PROD.yml up -d --build
 
-      - name: Cleanup Docker
+            echo "Cleaning up Docker..."
+            docker system prune -f
+
+            echo "Deployment completed successfully!"
+
+      - name: Tag Successful Deployment
+        if: success()
         run: |
-          echo "Cleaning up Docker system..."
-          docker system prune -f
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git tag -a ${{ env.DEPLOY_TAG }} -m "Deployed to Production"
+          git push origin ${{ env.DEPLOY_TAG }}
+
+      - name: Notify Success
+        if: success()
+        run: |
+          echo "Production deployment successful: ${{ env.DEPLOY_TAG }}"
+
+      - name: Notify Failure
+        if: failure()
+        run: |
+          echo "Production deployment failed!"

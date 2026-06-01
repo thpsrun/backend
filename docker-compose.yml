@@ -1,13 +1,13 @@
 volumes:
-    static_files:
-      name: thpsrun_static_files
-    postgres_data:
-      name: thpsrun_postgres_data
+  postgres_data:
+    name: thpsrun_postgres_data
+  static_files:
+    name: thpsrun_static_files
 
 services:
   postgres:
     container_name: postgres
-    image: postgres:17.6-bookworm
+    image: postgres:17.10-bookworm
     restart: unless-stopped
     shm_size: 128mb
     environment:
@@ -27,7 +27,6 @@ services:
       args:
         UID: 1000
         GID: 1000
-    command: /app/start.sh server
     restart: unless-stopped
     ports:
       - "8001:8001"
@@ -37,11 +36,21 @@ services:
       - postgres
       - redis
     volumes:
-      - ./srlc:/app
+      - ./backend:/app
       - static_files:/app/static:rw
-      - ../guides:/app/docs
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
     networks:
       - thpsrun
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
 
   celery:
     container_name: celery
@@ -51,30 +60,58 @@ services:
       args:
         UID: 1000
         GID: 1000
-    command: /app/start.sh celery
     restart: unless-stopped
+    command: celery -A website worker --loglevel=info -E --max-tasks-per-child=100
     env_file:
       - .env
     depends_on:
       - postgres
       - redis
     volumes:
-      - ./srlc:/app
-      - static_files:/app/static:rw
-      - ../guides:/app/docs
+      - ./backend:/app
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - thpsrun
+
+  celery-beat:
+    container_name: celery-beat
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        UID: 1000
+        GID: 1000
+    restart: unless-stopped
+    command: celery -A website beat --loglevel=info -s /tmp/celerybeat-schedule
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./backend:/app
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
     networks:
       - thpsrun
 
   redis:
     container_name: redis
-    image: redis:alpine
+    image: redis:8.6.3-alpine
     restart: unless-stopped
-    ports:
-      - "6379:6379"
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    security_opt:
+      - no-new-privileges:true
     networks:
       - thpsrun
 
 networks:
   thpsrun:
     driver: bridge
-    external: true

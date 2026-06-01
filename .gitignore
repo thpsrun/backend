@@ -130,11 +130,17 @@ dmypy.json
 # Other shit to ignore
 */.DS_Store
 .DS_Store
-srlc/website/sqlite3.db
-srlc/srl/static/srl/imgs/awards/
-srlc/db.json
-srlc/srl/static/pfp/*
-srlc/website/static/*
+backend/website/sqlite3.db
+backend/srl/static/srl/imgs/awards/
+backend/db.json
+backend/srl/static/pfp/*
+backend/media/
+
+# collectstatic output (STATIC_ROOT). Source static files under backend/<app>/static
+# are tracked in git; only the collected output is ignored.
+/static/
+/backend/static/
+/backend/website/static/
 
 backups/
 bin/
@@ -146,6 +152,4 @@ typescript
 npm/*
 pyproject.toml
 .pylintrc
-static/
-backend/
-frontend/
+identity.txt

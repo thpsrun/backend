@@ -1,0 +1,11 @@
+{% autoescape off %}Greetings,
+
+The email address on your thps.run account was changed from
+{{ from_email }} to {{ to_email }}.
+
+If this was not you, reset your password right away at
+https://thps.run/account/password/reset and reach out to a moderator on our
+Discord so we can lock the account down.
+
+- thps.run's Admin Team
+{% endautoescape %}

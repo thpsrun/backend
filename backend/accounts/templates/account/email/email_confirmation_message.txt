@@ -1,0 +1,12 @@
+{% load account %}{% autoescape off %}{% user_display user as user_display %}Greetings {{ user_display }},
+
+We got a request to change the email associated to your thps.run account to this
+address. Confirm the change by following this link:
+
+{{ activate_url }}
+
+If you did not request this, you can ignore the email. Your account email will
+not change until the link above is clicked.
+
+- thps.run's Admin Team
+{% endautoescape %}

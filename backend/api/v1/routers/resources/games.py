@@ -1,0 +1,694 @@
+from typing import Annotated
+
+from django.core.exceptions import ValidationError
+from django.db.models import Case, F, IntegerField, Prefetch, Q, Value, When
+from django.http import HttpRequest
+from ninja import Query, Router, Status
+from srl.models import Categories, Games, Levels, Players, Variables, VariableValues
+from srl.timing import resolve_timing
+
+from api.permissions import authed, public_read
+from api.v1.routers.utils.embeds import parse_embeds
+from api.v1.routers.utils.resolvers import game_from_path
+from api.v1.schemas.base import ErrorResponse
+from api.v1.schemas.games import (
+    GameCreateSchema,
+    GameModeratorEmbedSchema,
+    GameSchema,
+    GameUpdateSchema,
+    ResolveTimingResponse,
+)
+from api.v1.schemas.players import extract_gradients
+from api.v1.utils import get_or_generate_id
+
+router = Router()
+
+
+def _value_prefetch() -> Prefetch:
+    return Prefetch(
+        "variablevalues_set",
+        queryset=VariableValues.objects.annotate(
+            vv_sort_key=Case(
+                When(order=0, then=Value(999999)),
+                default=F("order"),
+                output_field=IntegerField(),
+            )
+        ).order_by("vv_sort_key", "name"),
+    )
+
+
+def _game_variables_prefetch() -> Prefetch:
+    """Prefetch all variables for a game (both category-linked and global)."""
+    return Prefetch(
+        "variables_set",
+        queryset=Variables.objects.prefetch_related(
+            _value_prefetch(),
+        ),
+    )
+
+
+def game_embeds(
+    queryset,
+    embeds: str | None,
+):
+    """Add prefetches to a queryset based on embed parameter."""
+    if not embeds:
+        return queryset
+
+    embed_list = [e.strip() for e in embeds.split(",")]
+    needs_variables = False
+
+    if "categories" in embed_list:
+        queryset = queryset.prefetch_related(
+            Prefetch(
+                "categories_set",
+                queryset=Categories.objects.annotate(
+                    sort_key=Case(
+                        When(order=0, then=Value(999999)),
+                        default=F("order"),
+                        output_field=IntegerField(),
+                    )
+                ).order_by("sort_key", "name"),
+            ),
+        )
+        needs_variables = True
+
+    if "levels" in embed_list:
+        queryset = queryset.prefetch_related(
+            Prefetch(
+                "levels_set",
+                queryset=Levels.objects.annotate(
+                    sort_key=Case(
+                        When(order=0, then=Value(999999)),
+                        default=F("order"),
+                        output_field=IntegerField(),
+                    )
+                ).order_by("sort_key", "name"),
+            ),
+        )
+        needs_variables = True
+
+    if needs_variables:
+        queryset = queryset.prefetch_related(_game_variables_prefetch())
+
+    if "platforms" in embed_list:
+        queryset = queryset.prefetch_related("platforms")
+
+    if "moderators" in embed_list:
+        queryset = queryset.prefetch_related(
+            Prefetch(
+                "moderators",
+                queryset=Players.objects.select_related("user", "countrycode"),
+            ),
+        )
+
+    return queryset
+
+
+_SCOPE: dict[str, str] = {
+    "full-game": "per-game",
+    "all-levels": "per-level",
+}
+
+
+def _build_cat_embed(
+    game: Games,
+    entity_id: str | None = None,
+    entity_type: str = "cat",
+    entity_cat_type: str | None = None,
+) -> list[dict]:
+    """Build variable dicts for an entity, including global variables (cat/level=NULL).
+
+    Uses game.variables_set (prefetched) to avoid N+1 queries. Filters to variables
+    that are either linked to the specific entity or are global (entity FK is NULL).
+    Also filters by scope: full-game vars only appear on per-game categories, and
+    all-levels vars only appear on per-level categories.
+    """
+    variables = []
+    for var in game.variables_set.all():  # type: ignore
+        var_entity_id = getattr(var, f"{entity_type}_id", None)
+        if var_entity_id != entity_id and var_entity_id is not None:
+            continue
+
+        # Filter by scope when building for categories
+        if entity_type == "cat" and entity_cat_type:
+            allowed_cat_type = _SCOPE.get(var.scope)
+            if allowed_cat_type and allowed_cat_type != entity_cat_type:
+                continue
+            # single-level scoped vars don't belong on categories
+            if var.scope == "single-level":
+                continue
+        values = [
+            {
+                "value": val.value,
+                "name": val.name,
+                "slug": val.slug,
+                "appear_on_main": val.appear_on_main,
+                "order": val.order,
+                "archive": val.archive,
+                "rules": val.rules,
+                "defaulttime": val.defaulttime,
+                "required_methods": val.required_methods,
+            }
+            for val in var.variablevalues_set.all()  # type: ignore
+        ]
+        variables.append(
+            {
+                "id": var.id,
+                "name": var.name,
+                "slug": var.slug,
+                "scope": var.scope,
+                "archive": var.archive,
+                "defaulttime": var.defaulttime,
+                "required_methods": var.required_methods,
+                "values": values,
+            }
+        )
+    return variables
+
+
+def _build_categories_embed(
+    game: Games,
+) -> list[dict]:
+    result = []
+    for cat in game.categories_set.all():  # type: ignore
+        result.append(
+            {
+                "id": cat.id,
+                "name": cat.name,
+                "slug": cat.slug,
+                "type": cat.type,
+                "players": cat.players,
+                "url": cat.url,
+                "rules": cat.rules,
+                "appear_on_main": cat.appear_on_main,
+                "archive": cat.archive,
+                "defaulttime": cat.defaulttime,
+                "required_methods": cat.required_methods,
+                "variables": _build_cat_embed(
+                    game,
+                    cat.id,
+                    "cat",
+                    cat.type,
+                ),
+            }
+        )
+    return result
+
+
+def _build_levels_embed(
+    game: Games,
+) -> list[dict]:
+    result = []
+    for level in game.levels_set.all():  # type: ignore
+        result.append(
+            {
+                "id": level.id,
+                "name": level.name,
+                "slug": level.slug,
+                "url": level.url,
+                "rules": level.rules,
+                "variables": _build_cat_embed(game, level.id, "level"),
+            }
+        )
+    return result
+
+
+def _build_platforms_embed(
+    game: Games,
+) -> list[dict]:
+    return [
+        {
+            "id": platform.id,
+            "name": platform.name,
+            "slug": platform.slug,
+        }
+        for platform in game.platforms.all()  # type: ignore
+    ]
+
+
+def _build_moderators_embed(
+    game: Games,
+) -> list[GameModeratorEmbedSchema]:
+    return [
+        GameModeratorEmbedSchema.model_validate(
+            {
+                "id": player.id,
+                "name": player.name,
+                "nickname": player.nickname,
+                "url": player.url,
+                "country_id": player.countrycode_id,
+                "pfp": player.pfp,
+                "gradients": extract_gradients(player),
+            },
+        )
+        for player in game.moderators.all()  # type: ignore
+    ]
+
+
+@router.get(
+    "/all",
+    response={
+        200: list[GameSchema],
+        400: ErrorResponse,
+        500: ErrorResponse,
+    },
+    summary="Get All Games",
+    description="""\
+Retrieves all games within the `Games` object, including optional embedding and
+pagination.
+
+Supported Parameters:
+- `limit` (int | None): Results per page (default 50, max 100).
+- `offset` (int | None): Results to skip (default 0).
+- `embed` (list | None): Comma-separated list of resources to embed,
+
+Supported Embeds:
+- `categories`: Include metadata related to the game's categories.
+- `levels`: Include metadata related to the game's levels.
+- `platforms`: Include metadata related to the game's available platforms.
+- `moderators`: Include the list of players who moderate the game on thps.run.
+
+Examples:
+- `/games/all` - Get all games.
+- `/games/all?limit=20` - Get first 20 games.
+- `/games/all?embed=categories,platforms` - Get games with categories and platforms.
+""",
+    auth=public_read(),
+)
+def get_all_games(
+    request: HttpRequest,
+    embed: Annotated[str | None, Query(description="Comma-separated embeds")] = None,
+    limit: Annotated[
+        int,
+        Query(
+            ge=1,
+            le=100,
+            description="Maximum number of returned objects (default 50, less than 100)",
+        ),
+    ] = 50,
+    offset: Annotated[int, Query(ge=0, description="Offset from 0")] = 0,
+) -> Status:
+    embed_fields = parse_embeds(embed, "games")
+
+    try:
+        queryset = Games.objects.all().order_by("release")
+        queryset = game_embeds(queryset, embed)
+        games = queryset[offset : offset + limit]
+
+        # Simple model validate on the game date received before putting it into
+        # an array that is then sent back to the client.
+        game_schemas = []
+        for game in games:
+            game_data = GameSchema.model_validate(game)
+            if "categories" in embed_fields:
+                game_data.categories = _build_categories_embed(game)
+            if "levels" in embed_fields:
+                game_data.levels = _build_levels_embed(game)
+            if "platforms" in embed_fields:
+                game_data.platforms = _build_platforms_embed(game)
+            if "moderators" in embed_fields:
+                game_data.moderators = _build_moderators_embed(game)
+            game_schemas.append(game_data)
+
+        return Status(200, game_schemas)
+    except Exception as e:
+        return Status(
+            500,
+            ErrorResponse(
+                error="Failed to retrieve games",
+                details={"exception": str(e)},
+            ),
+        )
+
+
+@router.get(
+    "/{slug}/timings",
+    response={
+        200: ResolveTimingResponse,
+        404: ErrorResponse,
+        422: ErrorResponse,
+    },
+    summary="Resolve timing methods for an unsaved run",
+    description="""\
+Resolves which timing methods a run requires (and which is primary) for a given
+selection. Precedence: VariableValue > Variable > Category > Game. `null` at any level inherits
+from the parent; the first non-null override (variables walked in `variable_id` order)
+wins. Levels do not carry timing overrides; ILs fall back to the game's IL defaults.
+
+Parameters:
+- `category_id` (required): category the run is in.
+- `level_id` (optional): present for IL runs; its presence selects the game's IL defaults.
+- `value` (repeatable): selected variable *value* IDs (globally unique). Send one per
+  selected variable, e.g. `?value=21d40odq&value=9qj4npk1`.
+
+Examples:
+- `/games/thps4/timings?category_id=ndx8nq8d`
+- `/games/thps4/timings?category_id=zd3rdwd&level_id=rdqoo63w&value=21d40odq`
+""",
+    auth=public_read(),
+)
+def resolve_timing_methods(
+    request: HttpRequest,
+    slug: str,
+    category_id: str,
+    level_id: str | None = None,
+    value: Annotated[
+        list[str], Query(description="Selected variable value IDs (repeatable)")
+    ] = [],
+) -> Status:
+    game = Games.objects.filter(Q(id__iexact=slug) | Q(slug__iexact=slug)).first()
+    if not game:
+        return Status(
+            404,
+            ErrorResponse(
+                error="Game does not exist",
+                details=None,
+            ),
+        )
+
+    category = Categories.objects.filter(pk=category_id, game=game).first()
+    if not category:
+        return Status(
+            422,
+            ErrorResponse(
+                error="Category not found for this game",
+                details={"category_id": category_id},
+            ),
+        )
+
+    is_il = level_id is not None
+    if is_il and not Levels.objects.filter(pk=level_id, game=game).exists():
+        return Status(
+            422,
+            ErrorResponse(
+                error="Level not found for this game",
+                details={"level_id": level_id},
+            ),
+        )
+
+    values = list(
+        VariableValues.objects.filter(value__in=value, var__game=game)
+        .select_related("var")
+        .order_by("var_id", "value"),
+    )
+    missing = set(value) - {vv.pk for vv in values}
+    if missing:
+        return Status(
+            422,
+            ErrorResponse(
+                error="Unknown variable value(s) for this game",
+                details={"values": sorted(missing)},
+            ),
+        )
+
+    resolved = resolve_timing(
+        game=game,
+        category=category,
+        is_il=is_il,
+        variable_values=values,
+    )
+    return Status(
+        200,
+        ResolveTimingResponse(
+            resolved_required_methods=resolved.required_methods,
+            resolved_primary_method=resolved.primary_method,
+        ),
+    )
+
+
+@router.get(
+    "/{id}",
+    response={
+        200: GameSchema,
+        400: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
+    summary="Get Game by ID",
+    description="""\
+Retrieves a single game by its ID or its slug, including optional embedding.
+
+Supported Embeds:
+- `categories`: Include metadata related to the game's categories
+- `levels`: Include metadata related to the game's levels
+- `platforms`: Include metadata related to the game's available platforms
+- `moderators`: Include the list of players who moderate the game on thps.run
+
+Examples:
+- `/games/thps4` - Get game by slug
+- `/games/n2680o1p` - Get game by ID
+- `/games/thps4?embed=categories,levels` - Get game with categories and levels
+- `/games/thps4?embed=moderators` - Get game with the moderators list
+""",
+    auth=public_read(),
+)
+def get_game(
+    request: HttpRequest,
+    id: str,
+    embed: Annotated[str | None, Query(description="Comma-separated embeds")] = None,
+) -> Status:
+    if len(id) > 15:
+        return Status(
+            400,
+            ErrorResponse(
+                error="ID must be 15 characters or less",
+                details=None,
+            ),
+        )
+
+    embed_fields = parse_embeds(embed, "games")
+
+    try:
+        queryset = Games.objects.all()
+        queryset = game_embeds(queryset, embed)
+
+        game = queryset.filter(Q(id__iexact=id) | Q(slug__iexact=id)).first()
+        if not game:
+            return Status(
+                404,
+                ErrorResponse(
+                    error="Game does not exist",
+                    details=None,
+                ),
+            )
+
+        game_data = GameSchema.model_validate(game)
+        if "categories" in embed_fields:
+            game_data.categories = _build_categories_embed(game)
+        if "levels" in embed_fields:
+            game_data.levels = _build_levels_embed(game)
+        if "platforms" in embed_fields:
+            game_data.platforms = _build_platforms_embed(game)
+        if "moderators" in embed_fields:
+            game_data.moderators = _build_moderators_embed(game)
+        return Status(200, game_data)
+    except Exception as e:
+        return Status(
+            500,
+            ErrorResponse(
+                error="Failed to retrieve game",
+                details={"exception": str(e)},
+            ),
+        )
+
+
+@router.post(
+    "/",
+    response={
+        201: GameSchema,
+        400: ErrorResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        422: ErrorResponse,
+        500: ErrorResponse,
+    },
+    summary="Create Game",
+    description="""\
+Creates a brand new game.
+
+Request Body:
+- `id` (str | None): The game ID; if one is not given, it will auto-generate.
+- `name` (str): Game name.
+- `slug` (str): URL-friendly game abbreviation.
+- `twitch` (str | None): Game name as it appears on Twitch.
+- `release` (date): Game release date (ISO format).
+- `boxart` (str): URL to game box art/cover image.
+- `defaulttime` (str): Default timing method for full-game runs.
+- `idefaulttime` (str): Default timing method for individual level runs.
+- `pointsmax` (int): Maximum points for world record full-game runs.
+- `ipointsmax` (int): Maximum points for world record individual level runs.
+""",
+    auth=authed("users.admin"),
+)
+def create_game(
+    request: HttpRequest,
+    game_data: GameCreateSchema,
+) -> Status:
+    try:
+        game_check = Games.objects.filter(
+            Q(name__iexact=game_data.name) | Q(slug__iexact=game_data.slug)
+        ).first()
+        if game_check:
+            return Status(
+                400,
+                ErrorResponse(
+                    error="Game Already Exists",
+                    details={
+                        "exception": "Either the name of the game or its slug already exists."
+                    },
+                ),
+            )
+
+        try:
+            game_id = get_or_generate_id(
+                game_data.id,
+                lambda id: Games.objects.filter(id=id).exists(),
+            )
+        except ValueError as e:
+            return Status(
+                400,
+                ErrorResponse(
+                    error="ID Already Exists",
+                    details={"exception": str(e)},
+                ),
+            )
+
+        create_data = game_data.model_dump(exclude_unset=True)
+        create_data["id"] = game_id
+        game = Games(**create_data)
+        try:
+            game.full_clean()
+        except ValidationError as e:
+            return Status(
+                422,
+                ErrorResponse(
+                    error="Validation failed",
+                    details={"errors": e.message_dict},
+                ),
+            )
+        game.save()
+
+        return Status(201, GameSchema.model_validate(game))
+    except Exception as e:
+        return Status(
+            500,
+            ErrorResponse(
+                error="Game Creation Failed",
+                details={"exception": str(e)},
+            ),
+        )
+
+
+@router.put(
+    "/{id}",
+    response={
+        200: GameSchema,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        422: ErrorResponse,
+        500: ErrorResponse,
+    },
+    summary="Update Game",
+    description="""\
+Updates the game based on its unique ID or slug.
+
+Request Body:
+- `name` (str | None): Game name.
+- `slug` (str | None): URL-friendly game abbreviation.
+- `twitch` (str | None): Game name as it appears on Twitch.
+- `release` (date | None): Game release date (ISO format).
+- `boxart` (str | None): URL to game box art/cover image.
+- `defaulttime` (str | None): Default timing method for full-game runs.
+- `idefaulttime` (str | None): Default timing method for individual level runs.
+- `pointsmax` (int | None): Maximum points for world record full-game runs.
+- `ipointsmax` (int | None): Maximum points for world record individual level runs.
+""",
+    auth=authed("games.manage", target_resolver=game_from_path),
+)
+def update_game(
+    request: HttpRequest,
+    id: str,
+    game_data: GameUpdateSchema,
+) -> Status:
+    try:
+        game = Games.objects.filter(Q(id__iexact=id) | Q(slug__iexact=id)).first()
+        if not game:
+            return Status(
+                404,
+                ErrorResponse(
+                    error="Game does not exist",
+                    details=None,
+                ),
+            )
+
+        for attr, value in game_data.model_dump(exclude_unset=True).items():
+            setattr(game, attr, value)
+
+        try:
+            game.full_clean()
+        except ValidationError as e:
+            return Status(
+                422,
+                ErrorResponse(
+                    error="Validation failed",
+                    details={"errors": e.message_dict},
+                ),
+            )
+        game.save()
+        return Status(200, GameSchema.model_validate(game))
+    except Exception as e:
+        return Status(
+            500,
+            ErrorResponse(
+                error="Failed to update game",
+                details={"exception": str(e)},
+            ),
+        )
+
+
+@router.delete(
+    "/{id}",
+    response={
+        200: dict[str, str],
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
+    summary="Delete Game",
+    description="""\
+Deletes the selected game.
+
+Supported Parameters:
+- id (str): Unique ID or slug of the specified game
+""",
+    auth=authed("users.admin"),
+)
+def delete_game(
+    request: HttpRequest,
+    id: str,
+) -> Status:
+    try:
+        game = Games.objects.filter(Q(id__iexact=id) | Q(slug__iexact=id)).first()
+        if not game:
+            return Status(
+                404,
+                ErrorResponse(
+                    error="Game does not exist",
+                    details=None,
+                ),
+            )
+
+        name = game.name
+        game.delete()
+        return Status(200, {"message": f"Game '{name}' deleted successfully"})
+    except Exception as e:
+        return Status(
+            500,
+            ErrorResponse(
+                error="Failed to delete game",
+                details={"exception": str(e)},
+            ),
+        )
