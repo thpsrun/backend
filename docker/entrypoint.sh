@@ -24,7 +24,7 @@ until postgres_ready; do
     >&2 echo "Waiting for PostgreSQL to become available..."
     sleep 5
 done
->&2 echo "PostgreSQL is available"
+>&2 echo "PostgreSQL is online!"
 
 if [ "$#" -gt 0 ]; then
     exec "$@"

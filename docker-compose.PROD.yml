@@ -24,7 +24,13 @@ services:
   django:
     container_name: v2-django
     restart: unless-stopped
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        UID: 1000
+        GID: 1000
+    command: /app/start.sh server
     ports:
       - "8002:8001"
     env_file:
@@ -84,6 +90,27 @@ services:
       - no-new-privileges:true
     networks:
       - v2_thpsrun
+
+  celery:
+    container_name: celery
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        UID: 1000
+        GID: 1000
+    command: /app/start.sh celery
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./srlc:/app
+      - ../guides:/app/docs
+    networks:
+      - thpsrun
 
   redis:
     container_name: v2-redis
