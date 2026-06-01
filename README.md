@@ -1,7 +1,7 @@
 # thps.run Website - Backend
 ## Version 4.0
 
-![Django](https://img.shields.io/badge/Django-5.2-green.svg?logo=django&logoColor=white)
+![Django](https://img.shields.io/badge/Django-6.0-green.svg?logo=django&logoColor=white)
 ![Django Ninja](https://img.shields.io/badge/1.6-blue?color=black&label=django-ninja&logo=fastapi&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17.4-green?logo=postgresql&logoColor=white)
 
@@ -11,7 +11,7 @@ This has been the pet project of [ThePackle](https://twitch.tv/thepackle) for a 
 This repo, specifically, is for the backend portion. If you wish to help with the frontend (React/TypeScript), then you can find it here: [thps.run Frontend](https://github.com/thpsrun/frontend).
 
 ### How does this work?
-thps.run is essentially a 1:1 cache of the Speedrun.com leaderboards for the [Tony Hawk's Pro Skater speedrun community](https://speedrun.com/tonyhawk). All runs are imported into custom models that mimic the layout and feel of Speedrun.com's API. From here, we are able to perform limitless lookups, customize experiences and create new features, and introduce fun stuff like the [Points System](#note-on-points).  
+thps.run is essentially a 1:1 mirror of the Speedrun.com leaderboards for the [Tony Hawk's Pro Skater speedrun community](https://speedrun.com/tonyhawk). All runs are imported into custom models that mimic the layout and feel of Speedrun.com's API. From here, we are able to perform limitless lookups, customize experiences and create new features, and introduce fun stuff like the [Points System](#note-on-points).  
   
 When you initially setup this project in your environment, you will need to import a `Series ID` into the `Series` model in the Admin Panel (easily gettable if you just take the series ID from any `https://speedrun.com/api/v1/series/<SERIES_SLUG>` request). While this means that ONLY communitys who have a Series for their game can use this project, it will allow you to have greater dynamic control of your community's speedruns.
 
@@ -60,6 +60,7 @@ As an example of how points are reduced, how is a sample based on if a category'
 *   5:00:00 = 28 points
   
 ### Installation
+### This is from the old version of the repo. Later, I'll fix it lol
 1.  Install the requirements above to your computer or server.
 2.  Git clone this repo or download a copy with the .ZIP.
 3.  Open the new folder in a code editor and make whatever changes are needed to `.env.example`, then rename it to JUST `.env`.
@@ -71,10 +72,3 @@ As an example of how points are reduced, how is a sample based on if a category'
 9.  Select your new `Series` object, go to the "Action" drop-down, and select "Initialze Series Data".
   
 **NOTE: Depending on the size of your community, this may take a while! You should only have to do this once, but this will begin to crawl your community to gather the metadata for EVERY game, category, subcategory, platform, player, and speedrun and import them into your database. You will be heavily rate limited by Speedrun.com. BE PATIENT!!!!!!!! If in doubt, check the Django logs to see if there are any workers reporting issues or updates in the last ~5 minutes.**
-
-### Post-Installation Steps
-* Create Super User
-  - Super users are required to do anything in the admin portal; think of it as your root account. To create one, you need to access the `django` docker image command-line in some way.
-    - `docker run -it backend-django /bin/bash`
-    - `cd backend && python manage.py createsuperuser`
-    - Follow on-screen instructions.

@@ -19,7 +19,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
-      - v2_thpsrun
+      - thpsrun
 
   django:
     container_name: django
@@ -47,7 +47,7 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - v2_thpsrun
+      - thpsrun
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/api/v1/health"]
       interval: 30s
@@ -71,7 +71,7 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - v2_thpsrun
+      - thpsrun
 
   celery-beat:
     container_name: celery-beat
@@ -89,7 +89,7 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - v2_thpsrun
+      - thpsrun
 
   redis:
     container_name: v2-redis
@@ -99,10 +99,10 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - v2_thpsrun
+      - thpsrun
 
 networks:
-  v2_thpsrun:
-    name: v2_thpsrun
+  thpsrun:
+    name: thpsrun
     driver: bridge
     external: true
