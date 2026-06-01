@@ -1,12 +1,14 @@
 volumes:
   postgres_data:
-    name: thpsrun_prod_postgres_data
+    name: v2_thpsrun_prod_postgres_data
   static_files:
-    name: thpsrun_static_files
+    name: v2_thpsrun_static_files
+  media_files:
+    name: v2_thpsrun_media_files
 
 services:
   postgres:
-    container_name: postgres
+    container_name: v2-postgres
     image: postgres:17.10-bookworm
     restart: unless-stopped
     shm_size: 128mb
@@ -15,16 +17,16 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - v2_postgres_data:/var/lib/postgresql/data
     networks:
-      - thpsrun
+      - v2_thpsrun
 
   django:
-    container_name: django
+    container_name: v2-django
     restart: unless-stopped
     build: .
     ports:
-      - "8001:8001"
+      - "8002:8001"
     env_file:
       - .env
     depends_on:
@@ -32,13 +34,14 @@ services:
       - redis
     volumes:
       - static_files:/app/static:rw
+      - media_files:/app/media:rw 
     read_only: true
     tmpfs:
       - /tmp
     security_opt:
       - no-new-privileges:true
     networks:
-      - thpsrun
+      - v2_thpsrun
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/api/v1/health"]
       interval: 30s
@@ -47,7 +50,7 @@ services:
       start_period: 45s
 
   celery:
-    container_name: celery
+    container_name: v2-celery
     restart: unless-stopped
     build: .
     command: celery -A website worker --loglevel=info -E --max-tasks-per-child=100
@@ -62,13 +65,13 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - thpsrun
+      - v2_thpsrun
 
   celery-beat:
-    container_name: celery-beat
+    container_name: v2-celery-beat
     restart: unless-stopped
     build: .
-    command: celery -A website beat --loglevel=info
+    command: celery -A website beat --loglevel=info -s /tmp/celerybeat-schedule
     env_file:
       - .env
     depends_on:
@@ -80,7 +83,7 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - thpsrun
+      - v2_thpsrun
 
   redis:
     container_name: redis
@@ -90,9 +93,10 @@ services:
     security_opt:
       - no-new-privileges:true
     networks:
-      - thpsrun
+      - v2_thpsrun
 
 networks:
-  thpsrun:
+  v2_thpsrun:
+    name: v2_thpsrun
     driver: bridge
     external: true
