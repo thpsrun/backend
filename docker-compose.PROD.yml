@@ -1,14 +1,14 @@
 volumes:
   postgres_data:
-    name: v2_thpsrun_prod_postgres_data
+    name: thpsrun_prod_postgres_data
   static_files:
-    name: v2_thpsrun_static_files
+    name: thpsrun_static_files
   media_files:
-    name: v2_thpsrun_media_files
+    name: thpsrun_media_files
 
 services:
   postgres:
-    container_name: v2-postgres
+    container_name: postgres
     image: postgres:17.10-bookworm
     restart: unless-stopped
     shm_size: 128mb
@@ -22,7 +22,7 @@ services:
       - v2_thpsrun
 
   django:
-    container_name: v2-django
+    container_name: django
     restart: unless-stopped
     build:
       context: .
@@ -32,7 +32,7 @@ services:
         GID: 1000
     command: /app/start.sh server
     ports:
-      - "8002:8001"
+      - "8001:8001"
     env_file:
       - .env
     depends_on:
@@ -56,7 +56,7 @@ services:
       start_period: 45s
 
   celery:
-    container_name: v2-celery
+    container_name: celery
     restart: unless-stopped
     build: .
     command: celery -A website worker --loglevel=info -E --max-tasks-per-child=100
@@ -74,7 +74,7 @@ services:
       - v2_thpsrun
 
   celery-beat:
-    container_name: v2-celery-beat
+    container_name: celery-beat
     restart: unless-stopped
     build: .
     command: celery -A website beat --loglevel=info -s /tmp/celerybeat-schedule
@@ -90,27 +90,6 @@ services:
       - no-new-privileges:true
     networks:
       - v2_thpsrun
-
-  celery:
-    container_name: celery
-    restart: unless-stopped
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        UID: 1000
-        GID: 1000
-    command: /app/start.sh celery
-    env_file:
-      - .env
-    depends_on:
-      - postgres
-      - redis
-    volumes:
-      - ./srlc:/app
-      - ../guides:/app/docs
-    networks:
-      - thpsrun
 
   redis:
     container_name: v2-redis
