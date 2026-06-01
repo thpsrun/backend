@@ -38,7 +38,7 @@ if [ "${DEBUG_MODE:-false}" = "True" ]; then
     python manage.py runserver 0.0.0.0:${PORT:-8001} &
 else
     echo "===============STARTING IN PRODUCTION MODE!===============" >&2
-    gunicorn --bind 0.0.0.0:${PORT:-8001} --workers 8 website.wsgi:application &
+    gunicorn --bind 0.0.0.0:${PORT:-8001} --workers 8 --no-control-socket website.wsgi:application &
 fi
 
 WEB_PID=$!
