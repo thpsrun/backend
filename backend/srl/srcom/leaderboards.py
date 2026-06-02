@@ -549,6 +549,8 @@ def sync_run(
                 base_wr_query = filter_by_variable_map(
                     Runs.objects.filter(
                         game=context_data.game_id,
+                        category_id=context_data.category_id,
+                        level_id=context_data.level_id,
                         obsolete=False,
                         place=1,
                     ),

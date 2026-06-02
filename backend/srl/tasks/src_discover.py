@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import timezone as dt_timezone
 from typing import Any
 
 from celery import shared_task
@@ -12,6 +13,7 @@ from srl.models import (
     Categories,
     Games,
     Levels,
+    Platforms,
     Players,
     RunPlayers,
     Runs,
@@ -27,7 +29,7 @@ from srl.srcom.reconciliation import reconciliation_upsert_check
 from srl.srcom.schema.src import SrcRunsModel
 from srl.srcom.utils import create_run_default
 from srl.srcom.variables import sync_variables
-from srl.utils import src_api
+from srl.utils import src_api, src_api_probe
 
 log = logging.getLogger(__name__)
 
@@ -201,6 +203,85 @@ def _call_lightweight_upsert(
     return success_reason
 
 
+# This batch of code is mainly to help identify if an SRC run's metadata is unchanged versus what
+# we have in the local DB. The reason for this is, if we import runs and they are verified, then it
+# would kick off recalculations of points and standings. The current code is kinda bad in that it
+# will blindly ingest those runs, but these functions will help verify local vs SRC; if there is a
+# change then it is ingested and recalculation can happen, and if not then we can ignore it.
+def _norm_dt(
+    value: Any,
+) -> Any:
+    """Normalize a datetime to UTC at second precision for stable comparison."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=dt_timezone.utc)
+    return value.astimezone(dt_timezone.utc).replace(microsecond=0)
+
+
+def _ne_secs(
+    src_val: Any,
+    local_val: Any,
+) -> bool:
+    """True when two second-values differ at millisecond precision (None treated as 0)."""
+    return round(float(src_val or 0.0), 3) != round(float(local_val or 0.0), 3)
+
+
+def _ne_platform(
+    src_platform: str | None,
+    local_platform_id: str | None,
+) -> bool:
+    """True when the SRC platform differs from the stored platform."""
+    src_platform = src_platform or None
+    if src_platform == local_platform_id:
+        return False
+    if (
+        src_platform is not None
+        and not Platforms.objects.filter(id=src_platform).exists()
+    ):
+        src_platform = None
+    return src_platform != local_platform_id
+
+
+def _src_run_unchanged(
+    payload: dict[str, Any],
+    local: Runs,
+) -> bool:
+    """True when the SRC payload matches the stored run on every sync-sourced field.
+
+    Compares only the fields create_run_default writes from SRC. Derived fields and the
+    player/value tables are not compared. If a validation error occurs or another hicup comes up,
+    then we will just assume the run needs to be re-applied to the local DB."""
+    try:
+        model = SrcRunsModel.model_validate(payload)
+    except Exception:
+        return False
+    try:
+        if model.status.status != local.vid_status:
+            return False
+        if _ne_secs(model.times.realtime_t, local.time_secs):
+            return False
+        if _ne_secs(model.times.realtime_noloads_t, local.timenl_secs):
+            return False
+        if _ne_secs(model.times.ingame_t, local.timeigt_secs):
+            return False
+        if (model.video_uri or None) != (local.video or None):
+            return False
+        if (model.comment or None) != (local.description or None):
+            return False
+        if bool(model.system.emulated) != bool(local.emulated):
+            return False
+        if _ne_platform(model.system.platform, local.platform_id):
+            return False
+        if _norm_dt(model.date) != _norm_dt(local.date):
+            return False
+        if _norm_dt(model.status.verify_date) != _norm_dt(local.v_date):
+            return False
+    except Exception:
+        return False
+    return True
+
+
 def _process_run_payload(
     payload: dict[str, Any],
     src_status: str,
@@ -214,7 +295,23 @@ def _process_run_payload(
     if target_status is None:
         return "unknown_status"
 
-    local = Runs.objects.filter(id=run_id).only("id", "vid_status").first()
+    local = (
+        Runs.objects.filter(id=run_id)
+        .only(
+            "id",
+            "vid_status",
+            "time_secs",
+            "timenl_secs",
+            "timeigt_secs",
+            "video",
+            "description",
+            "date",
+            "v_date",
+            "platform",
+            "emulated",
+        )
+        .first()
+    )
 
     if local is None:
         if not _ensure_dependencies(payload):
@@ -231,6 +328,9 @@ def _process_run_payload(
     if target_status == Runs.VidStatus.NEW:
         return "skip_still_new"
 
+    if _src_run_unchanged(payload, local):
+        return "skipped_unchanged"
+
     if not _ensure_dependencies(payload):
         return "deps_missing"
 
@@ -241,6 +341,85 @@ def _process_run_payload(
         payload,
         Runs.VidStatus.REJECTED,
         "rejected_refreshed",
+    )
+
+
+def _reconcile_deleted_unverified_runs(
+    game_id: str,
+    src_new_ids: set[str],
+    counts: dict[str, int],
+) -> None:
+    """Remove local unverified runs that SRC no longer reports as existing."""
+    local_unverified = list(
+        Runs.objects.filter(
+            game=game_id,
+            vid_status__in=(Runs.VidStatus.NEW, Runs.VidStatus.REVIEW),
+        ).values_list("id", flat=True),
+    )
+
+    for run_id in local_unverified:
+        if run_id in src_new_ids:
+            continue
+
+        status_code, envelope = src_api_probe(f"{_V1_RUNS_URL}/{run_id}")
+
+        if status_code == 404:
+            _remove_deleted_run(run_id)
+            counts["deleted_on_src"] = counts.get("deleted_on_src", 0) + 1
+            continue
+
+        if status_code != 200 or not isinstance(envelope, dict):
+            log.warning(
+                "src_discover: probe for run=%s game=%s returned %s; skipping",
+                run_id,
+                game_id,
+                status_code,
+            )
+            counts["probe_failed"] = counts.get("probe_failed", 0) + 1
+            continue
+
+        run_payload = envelope.get("data")
+        current_status = (
+            (run_payload.get("status") or {}).get("status")
+            if isinstance(run_payload, dict)
+            else None
+        )
+        if (
+            not isinstance(run_payload, dict)
+            or current_status not in _SRC_TO_LOCAL_STATUS
+        ):
+            counts["probe_unknown"] = counts.get("probe_unknown", 0) + 1
+            continue
+
+        try:
+            reason = _process_run_payload(run_payload, current_status)
+        except Exception as exc:
+            log.warning(
+                "src_discover: reconcile of run=%s game=%s failed: %s",
+                run_id,
+                game_id,
+                exc,
+            )
+            reason = "reconcile_failed"
+        counts[reason] = counts.get(reason, 0) + 1
+
+
+def _remove_deleted_run(
+    run_id: str,
+) -> None:
+    """Hard-delete a local run confirmed deleted on SRC, plus its notifications."""
+    from notifications.models import Notification
+
+    with transaction.atomic():
+        Notification.objects.filter(
+            target_type="run",
+            target_id=str(run_id),
+        ).delete()
+        Runs.objects.filter(id=run_id).delete()
+
+    log.info(
+        "src_discover: removed run=%s deleted on SRC",
+        run_id,
     )
 
 
@@ -257,6 +436,11 @@ def discover_runs(
         ("verified", "verify-date"),
         ("rejected", "verify-date"),
     ]
+
+    # Tracks SRC Run IDs that report as `new` so we can detect if the local database has different
+    # runs known. If SRC is dead, just returns none and nothing happens.
+    src_new_ids: set[str] | None = None
+    new_truncated = False
 
     for src_status, orderby in statuses:
         url = (
@@ -275,6 +459,13 @@ def discover_runs(
             continue
 
         runs = data if isinstance(data, list) else []
+        if src_status == "new":
+            src_new_ids = {
+                run_id
+                for run_id in (r.get("id") for r in runs if isinstance(r, dict))
+                if run_id
+            }
+            new_truncated = len(runs) >= limit
         for v1_run in runs:
             try:
                 reason = _process_run_payload(v1_run, src_status)
@@ -288,6 +479,13 @@ def discover_runs(
                 )
                 reason = "exception"
             counts[reason] = counts.get(reason, 0) + 1
+
+    if src_new_ids is not None and not new_truncated:
+        _reconcile_deleted_unverified_runs(
+            game_id,
+            src_new_ids,
+            counts,
+        )
 
     log.info(
         "src_discover: game=%s outcomes=%s",

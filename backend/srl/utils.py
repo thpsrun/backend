@@ -108,6 +108,45 @@ def src_api(
     return payload if raw else payload["data"]
 
 
+def src_api_probe(
+    url: str,
+) -> tuple[int, dict | None]:
+    """Probes a Speedrun.com API v1 GET, returning (status_code, payload) without raising.
+
+    Mirrors src_api's retry-on-420/503 behavior, but instead of raising on a non-200 it
+    returns the final HTTP status code so callers can tell a 404 (resource deleted on SRC)
+    apart from a transient failure. The payload is the parsed JSON envelope when the final
+    status is 200, otherwise None.
+
+    Arguments:
+        url (str): The complete URL of the API endpoint being called.
+
+    Returns:
+        tuple[int, dict | None]: The final HTTP status code and, on a 200, the JSON
+            envelope (otherwise None).
+    """
+    response = None
+    for attempt in range(1, SRC_MAX_RETRIES + 1):
+        response = requests.get(url, headers=SRC_HEADERS, timeout=30)
+        if response.status_code not in (420, 503):
+            break
+
+        logger.warning(
+            "SRC rate limit (%s) on attempt %d/%d, sleeping %ds: %s",
+            response.status_code,
+            attempt,
+            SRC_MAX_RETRIES,
+            SRC_BACKOFF_SECS,
+            url,
+        )
+        time.sleep(SRC_BACKOFF_SECS)
+
+    if response.status_code != 200:
+        return response.status_code, None
+
+    return response.status_code, response.json()
+
+
 def src_api_paginate(
     base_url: str,
     page_size: int = 200,
@@ -145,11 +184,16 @@ def points_formula(
     Returns:
         int: Points awarded to the speedrun in comparison to world record.
     """
+    if run <= 0:
+        return 0
     log = 4.8284
     if short:
         log = log * math.sqrt(wr / 60)
-
-    return math.floor(math.pow(math.e, log * ((wr / run) - 1)) * max_points)
+    try:
+        result = math.floor(math.pow(math.e, log * ((wr / run) - 1)) * max_points)
+    except OverflowError:
+        return max_points
+    return min(result, max_points)
 
 
 class TimeDict(TypedDict):

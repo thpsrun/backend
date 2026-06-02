@@ -842,6 +842,11 @@ def update_run(
         old_timeigt_secs = run.timeigt_secs
         pre_edit_snapshot = snapshot_run(run)
 
+        # Timing gaps that already exist before this edit. A required method missing here is a
+        # pre-existing condition (recorded as a non-blocking import issue post-save), not
+        # something this update introduced, so it must not block an unrelated write.
+        preexisting_missing = set(run.missing_required_methods())
+
         update_data = run_data.model_dump(exclude_unset=True)
 
         time_error = normalize_time_fields(update_data)
@@ -1004,7 +1009,7 @@ def update_run(
                 )
 
             try:
-                run.validate_allowed_method_data()
+                run.validate_allowed_method_data(ignore=preexisting_missing)
             except ValidationError:
                 raise
 

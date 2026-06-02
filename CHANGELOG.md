@@ -1,3 +1,18 @@
+### v4.1.0
+###### June 2, 2026
+*   Added
+    *   Added a new query option to `/players/search?` that allows you to search for specific Twitch names.
+    *   Added a new `/{id}/import-issues` endpoint that allows mods to see what invalidation were raised when the run was imported from SRC.
+    *   Added additional logic to remove speedruns that were deleted from SRC.
+    *   Added additional checks to Celery tasks so it doesn't re-iterate the same runs over and over and over and over and over and over and over and over and over and over and over and over...
+
+*   Fixed
+    *   Fixed an issue where uploading runs from thps.run would fail when converting DateTimeFields.
+    *   Fixed an issue where `vid_status` was missing from POST `/runs`
+    *   Fixed an issue where POST `/runs` did not ingest `*_secs` and self-create the human-friendly form of times.
+    *   Fixed an issue where Celery tasks, in some situations, would call the wrong world record from the wrong category, calculate off of that, and report a point total that was insanely high (one example had a run get 408 MILLION HOLY).
+    *   Fixed an issue where PUT'ing variables to `/runs` would cause issues with validation if the run was a legacy run.
+
 ### v4 - The Definitive Update
 ###### June 1, 2026
 
