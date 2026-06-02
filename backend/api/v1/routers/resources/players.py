@@ -1,3 +1,4 @@
+import re
 from typing import Annotated
 
 from django.db.models import Count, Q, QuerySet, Sum
@@ -28,6 +29,23 @@ from api.v1.schemas.runs import compute_run_subcategory
 from api.v1.utils import get_or_generate_id
 
 router = Router()
+
+
+_TWITCH_URL_PREFIX_RE = re.compile(
+    r"^(?:https?://)?(?:www\.)?twitch\.tv/", re.IGNORECASE
+)
+
+
+def _sanitize_twitch_username(
+    value: str,
+) -> str:
+    """Reduce a Twitch input (bare handle or full URL) to a bare handle."""
+    value = value.strip()
+    value = _TWITCH_URL_PREFIX_RE.sub("", value)
+    value = value.split("?", 1)[0]
+    value = value.split("/", 1)[0]
+    value = value.lstrip("@").strip()
+    return value
 
 
 def apply_player_embeds(
@@ -158,32 +176,54 @@ def apply_player_embeds(
     response={200: list[PlayerSearchResultSchema]},
     summary="Search Players",
     description="""\
-Search for players by name or nickname. Returns lightweight results
-suitable for autocomplete/typeahead.
+Search for players by name/nickname, or look up a player by exact Twitch handle.
+Returns lightweight results suitable for autocomplete/typeahead.
 
 Supported Parameters:
-- `q` (str): Search query (min 2 characters). Matches against name and nickname.
+- `q` (str): Name/nickname search query (min 2 characters). Substring match.
+- `twitch` (str): Exact Twitch handle lookup. Accepts a bare handle or a full
+  Twitch URL (e.g. `Bob` or `https://twitch.tv/Bob`). Match
+  is case-insensitive. Takes precedence over `q` if both are supplied.
 - `limit` (int): Max results to return (default 10, max 25).
+
+At least one of `q` or `twitch` must be supplied; otherwise an empty list is
+returned. An empty list also means "no player matches".
 
 Examples:
 - `/players/search?q=hawk` - Search for players matching "hawk".
-- `/players/search?q=spe&limit=5` - Search with a custom limit.
+- `/players/search?twitch=Bob` - Find the player using that Twitch handle.
 """,
     auth=public_read(),
 )
 def search_players(
     request: HttpRequest,
     q: Annotated[
-        str,
-        Query(min_length=2, max_length=30, description="Search query"),
-    ],
+        str | None,
+        Query(min_length=2, max_length=30, description="Name/nickname search query"),
+    ] = None,
+    twitch: Annotated[
+        str | None,
+        Query(min_length=2, max_length=100, description="Exact Twitch handle or URL"),
+    ] = None,
     limit: Annotated[
         int,
         Query(default=10, ge=1, le=25, description="Max results"),
     ] = 10,
 ) -> Status:
+    if twitch:
+        username = _sanitize_twitch_username(twitch)
+        if not username:
+            return Status(200, [])
+        player_filter = Q(twitch__iendswith=f"/{username}") | Q(
+            twitch__iendswith=f"/{username}/",
+        )
+    elif q:
+        player_filter = Q(name__icontains=q) | Q(nickname__icontains=q)
+    else:
+        return Status(200, [])
+
     players = (
-        Players.objects.filter(Q(name__icontains=q) | Q(nickname__icontains=q))
+        Players.objects.filter(player_filter)
         .select_related("countrycode", "user")
         .order_by("name")[:limit]
     )

@@ -1,6 +1,7 @@
 from srl.models.categories import Categories
 from srl.models.games import Games
 from srl.models.levels import Levels
+from srl.models.platforms import Platforms
 
 from api.v1.schemas.base import VALID_EMBEDS, validate_embeds
 
@@ -79,4 +80,15 @@ def serialize_level_embed(
         "slug": level.slug,
         "url": level.url,
         "rules": level.rules,
+    }
+
+
+def serialize_platform_embed(
+    platform: Platforms,
+) -> dict:
+    """Standard embed payload for a `Platforms` instance."""
+    return {
+        "id": platform.id,
+        "name": platform.name,
+        "slug": platform.slug,
     }

@@ -121,6 +121,17 @@ def game_from_level_path(
     return level.game if level else None
 
 
+def game_from_run_path(
+    request: HttpRequest,
+) -> Games | None:
+    kwargs = _path_kwargs(request)
+    run_id = kwargs.get("run_id") or kwargs.get("id")
+    if run_id is None:
+        return None
+    run = Runs.objects.filter(pk=run_id).select_related("game").first()
+    return run.game if run else None
+
+
 def game_from_variable_path(
     request: HttpRequest,
 ) -> Games | None:
