@@ -119,7 +119,8 @@ class RunBaseSchema(BaseEmbedSchema):
         place (int): Leaderboard position.
         subcategory (str | None): Human-readable subcategory description.
         times (RunTimesSchema): Nested timing data (RTA, LRT, IGT, primary).
-        platform (str | None): SRC platform ID; null if no platform recorded.
+        platform (str | dict | None): SRC platform ID (default) or full platform info with
+            ?embed=platform; null if no platform recorded.
         emulated (bool): Whether the run was played on an emulator.
         description (str | None): Run notes/description.
         video (str | None): YouTube/Twitch URL.
@@ -150,10 +151,9 @@ class RunBaseSchema(BaseEmbedSchema):
         description="Human-readable subcategory combo",
     )
     times: RunTimesSchema = Field(description="Nested timing data")
-    platform: str | None = Field(
+    platform: str | dict | None = Field(
         default=None,
-        max_length=10,
-        description="SRC platform ID; null if none recorded",
+        description="SRC platform ID (default) or full platform info with ?embed=platform",
     )
     emulated: bool = Field(
         default=False,
@@ -188,9 +188,11 @@ class RunBaseSchema(BaseEmbedSchema):
     def convert_platform_to_id(
         cls,
         v: Any,
-    ) -> str | None:
+    ) -> str | dict | None:
         if v is None:
             return None
+        if isinstance(v, dict):
+            return v
         if isinstance(v, str):
             return v
         if hasattr(v, "id"):
@@ -406,6 +408,34 @@ class RunModSchema(RunSchema):
     )
 
 
+class RunImportIssuesSchema(Schema):
+    """Minimal payload exposing a single run's import validation flags (authed audit)."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "id": "y8dwozoj",
+                "has_import_issues": True,
+                "import_issues": [
+                    {"type": "missing_timing_methods", "methods": ["rta"]},
+                ],
+            },
+        },
+    )
+
+    id: str = Field(
+        description="Run ID.",
+    )
+    has_import_issues: bool = Field(
+        default=False,
+        description="True when the run has one or more unresolved import issues.",
+    )
+    import_issues: list[dict] = Field(
+        default_factory=list,
+        description="Import-time validation issues detected for this run.",
+    )
+
+
 class PlayerRunEmbedSchema(RunBaseSchema):
     """Schema for embedding run data in player profile responses.
 
@@ -476,6 +506,7 @@ class RunCreateSchema(BaseEmbedSchema):
         player_ids (list[str] | None): List of player IDs in order of participation.
         runtype (str): Run type (main or il).
         place (int): Leaderboard position.
+        vid_status (str): SRC verification state (verified, new, rejected); defaults to verified.
         time (str | None): Formatted time string.
         time_secs (float | None): Time in seconds.
         video (str | None): Video URL.
@@ -494,6 +525,10 @@ class RunCreateSchema(BaseEmbedSchema):
     player_ids: list[str] | None = Field(None, description="In order of participation")
     runtype: RunTypeType = Field(...)
     place: int = Field(..., ge=1)
+    vid_status: RunStatusType = Field(
+        default="verified",
+        description="SRC verification state: verified, new, or rejected. Can be review from site.",
+    )
     time: str | None = Field(default=None, max_length=25)
     time_secs: float | None = Field(default=None, ge=0)
     timenl: str | None = Field(default=None, max_length=25)

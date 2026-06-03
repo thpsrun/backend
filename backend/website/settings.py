@@ -92,6 +92,7 @@ MIDDLEWARE = [
     "accounts.middleware.PathRateLimitMiddleware",
     "accounts.middleware.TurnstileMiddleware",
     "allauth.account.middleware.AccountMiddleware",
+    "accounts.middleware.MFASetupRequiredMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "auditlog.middleware.AuditActorMiddleware",
@@ -314,6 +315,10 @@ MFA_SUPPORTED_TYPES = ["totp", "webauthn", "recovery_codes"]
 MFA_PASSKEY_LOGIN_ENABLED = True
 MFA_PASSKEY_SIGNUP_ENABLED = False
 MFA_WEBAUTHN_ALLOW_INSECURE_ORIGIN = DEBUG  # WebAuthn refuses HTTP except on localhost
+
+# Require superusers and game moderators to have a TOTP authenticator or a WebAuthn passkey
+# before they can use the API (enforced by accounts.middleware.MFASetupRequiredMiddleware).
+MFA_ENFORCE_FOR_PRIVILEGED = os.getenv("MFA_ENFORCE_FOR_PRIVILEGED", "True") == "True"
 OAUTH_REAUTH_INTENT_TTL_SECONDS = int(
     os.getenv("OAUTH_REAUTH_INTENT_TTL_SECONDS", "600")
 )

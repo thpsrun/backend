@@ -1,8 +1,12 @@
 import logging
+from datetime import datetime
 
 import requests as http_requests
+from django.conf import settings
 from django.db import transaction
 from django.http import HttpRequest
+from django.utils import timezone
+from django.utils.dateparse import parse_date, parse_datetime
 from ninja import Router, Status
 from srl.encryption import decrypt_src_key
 from srl.leaderboard.trigger import recalculate_run
@@ -153,6 +157,26 @@ def _build_src_run_payload(
         }
 
     return {"run": run_data}
+
+
+def _parse_submission_date(
+    raw_date: str | None,
+) -> datetime | None:
+    """Parse an SRC submission date (YYYY-MM-DD or ISO 8601) into an aware datetime
+
+    SRC keeps the raw string, but the Runs.date DateTimeField needs a real datetime so the
+    post_save notification signal can compare it against a cutoff."""
+    if not raw_date:
+        return None
+    parsed = parse_datetime(raw_date)
+    if parsed is None:
+        parsed_date = parse_date(raw_date)
+        if parsed_date is None:
+            return None
+        parsed = datetime.combine(parsed_date, datetime.min.time())
+    if settings.USE_TZ and timezone.is_naive(parsed):
+        parsed = timezone.make_aware(parsed)
+    return parsed
 
 
 @router.get(
@@ -790,6 +814,7 @@ def submit_run(
 
     runtype = "il" if level else "main"
     src_run_url = f"https://www.speedrun.com/run/{src_run_id}"
+    run_date = _parse_submission_date(body.date)
 
     with transaction.atomic():
         run = Runs.objects.create(
@@ -804,7 +829,7 @@ def submit_run(
             url=src_run_url,
             video=body.video,
             vid_status="new",
-            date=body.date,
+            date=run_date,
             description=body.comment,
             time=time_display.get("time"),
             time_secs=time_seconds.get("time_secs"),

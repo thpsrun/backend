@@ -595,6 +595,78 @@ class RunsTimingSubmission(AuthTestBase):
         data = response.json()
         self.assertIsNotNone(data.get("id"))
 
+    def test_put_non_timing_field_not_blocked_by_preexisting_gap(
+        self,
+    ) -> None:
+        # A run already exists missing IGT (game2 requires both REALTIME and INGAME). An
+        # archiver-style PUT that only touches a non-timing field (arch_video) must not be
+        # rejected by the pre-existing timing gap it did not introduce - expect 200.
+        Runs.objects.create(
+            id="rsublegacy",
+            game=self.game2,
+            category=self.cat2,
+            runtype="main",
+            place=1,
+            url="https://example.com/run/legacy",
+            time="1:00.000",
+            time_secs=60.0,
+            timeigt_secs=None,
+        )
+
+        response = self.client.put(
+            "/rsublegacy",
+            json={
+                "arch_video": "https://www.youtube.com/watch?v=archived1",
+            },  # type: ignore
+            headers={"X-API-Key": self.api_key},
+        )
+        self.assertEqual(response.status_code, 200)
+
+        run = Runs.objects.get(id="rsublegacy")
+        self.assertEqual(
+            run.arch_video,
+            "https://www.youtube.com/watch?v=archived1",
+        )
+        # The pre-existing gap is still recorded (non-blocking), not silently dropped.
+        self.assertTrue(run.has_import_issues)
+        self.assertTrue(
+            any(
+                issue["type"] == "missing_timing_methods"
+                and "igt" in issue["methods"]
+                for issue in run.import_issues
+            ),
+        )
+
+    def test_put_introducing_new_gap_still_rejected(
+        self,
+    ) -> None:
+        # A run with both required methods present; an edit that zeroes IGT introduces a new
+        # gap and must still be rejected - the delta-aware check only forgives PRE-existing
+        # gaps, not regressions caused by this edit. Expect 422.
+        Runs.objects.create(
+            id="rsubcomplete",
+            game=self.game2,
+            category=self.cat2,
+            runtype="main",
+            place=1,
+            url="https://example.com/run/complete",
+            time="1:00.000",
+            time_secs=60.0,
+            timeigt="0:58.000",
+            timeigt_secs=58.0,
+        )
+
+        response = self.client.put(
+            "/rsubcomplete",
+            json={
+                "timeigt_secs": 0.0,
+            },  # type: ignore
+            headers={"X-API-Key": self.api_key},
+        )
+        self.assertEqual(response.status_code, 422)
+        data = response.json()
+        self.assertEqual(data["error"], "Run timing validation failed")
+
 
 class RunSchemaTimingFields(TestCase):
 

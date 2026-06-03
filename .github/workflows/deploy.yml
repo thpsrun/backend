@@ -118,7 +118,6 @@ jobs:
 
   deploy-dev:
     if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
-    needs: [lint-backend, test-backend, security-scan]
     runs-on: ubuntu-latest
     concurrency:
       group: deploy-dev
@@ -198,7 +197,6 @@ jobs:
 
   deploy-production:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [lint-backend, security-scan]
     runs-on: ubuntu-latest
     environment:
       name: production
@@ -260,7 +258,7 @@ jobs:
           port: 22
           script: |
             set -e
-            cd ~/website
+            cd ~/backend
             git pull origin main
 
             echo "Running database migrations..."

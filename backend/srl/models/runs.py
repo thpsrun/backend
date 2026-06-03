@@ -295,18 +295,37 @@ class Runs(models.Model):
     ) -> list[str]:
         return self._resolved_timing().required_methods
 
+    def missing_required_methods(
+        self,
+    ) -> list[str]:
+        """Return resolved required timing methods that are missing or zero on this run."""
+        missing: list[str] = []
+        for method in self._resolved_required_methods():
+            _, secs_field = self._TIMING_FIELD_MAP[method]
+            value = getattr(self, secs_field)
+            if not value or value <= 0:
+                missing.append(method)
+        return missing
+
     def validate_allowed_method_data(
         self,
+        *,
+        ignore: set[str] | None = None,
     ) -> None:
         """Enforce that the run has data for every resolved "allowed" timing method.
 
         Resolves the `Game` -> `Category` -> `Variable` -> `VariableValue` chain to resolve if
         the run has the `required_methods`. Missing or zero values on any resolved method
-        will raise a ValidationError.
+        will raise a ValidationError. Methods in `ignore` (gaps that already existed before an
+        edit) are not enforced, so an unrelated update is not blocked by a pre-existing timing
+        gap it did not introduce.
         """
+        ignore = ignore or set()
         allowed = self._resolved_required_methods()
         missing: list[str] = []
         for method in allowed:
+            if method in ignore:
+                continue
             _, secs_field = self._TIMING_FIELD_MAP[method]
             value = getattr(self, secs_field)
             if not value or value <= 0:
@@ -322,12 +341,7 @@ class Runs(models.Model):
     ) -> list[dict]:
         """Return import-time validation issues for this run without raising."""
         issues: list[dict] = []
-        missing: list[str] = []
-        for method in self._resolved_required_methods():
-            _, secs_field = self._TIMING_FIELD_MAP[method]
-            value = getattr(self, secs_field)
-            if not value or value <= 0:
-                missing.append(method)
+        missing = self.missing_required_methods()
         if missing:
             issues.append(
                 {
