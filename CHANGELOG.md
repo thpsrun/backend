@@ -1,6 +1,10 @@
 ### v4.1.0
 ###### June 2, 2026
 *   Added
+    *   Added time-based one-time passwords (TOTP) to the Security panel.
+        *   TOTPs are required for moderators of games and super users.
+            *   Using a Passkey exempts you from needing TOTP.
+        *   Also added recovery code support.
     *   Added a new query option to `/players/search?` that allows you to search for specific Twitch names.
     *   Added a new `/{id}/import-issues` endpoint that allows mods to see what invalidation were raised when the run was imported from SRC.
     *   Added additional logic to remove speedruns that were deleted from SRC.

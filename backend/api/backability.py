@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from srl.models.games import Games
-
 from api.models import APIKey
 from api.permissions import CAPABILITY_SCOPED, MOD_SCOPES, PLAYER_SCOPES, SU_ONLY_SCOPES
 
@@ -52,9 +50,5 @@ def is_key_backable(
 def _user_moderates_any_game(
     user: Any,
 ) -> bool:
-    if getattr(user, "is_superuser", False):
-        return True
-    player = getattr(user, "player", None)
-    if player is None:
-        return False
-    return Games.objects.filter(moderators=player).exists()
+    from accounts.privileges import compute_privileged
+    return compute_privileged(user)
