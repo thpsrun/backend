@@ -40,11 +40,17 @@ from api.v1.routers.utils.embeds import (
     serialize_category_embed,
     serialize_game_embed,
     serialize_level_embed,
+    serialize_platform_embed,
 )
-from api.v1.routers.utils.resolvers import game_from_body, run_from_path
+from api.v1.routers.utils.resolvers import (
+    game_from_body,
+    game_from_run_path,
+    run_from_path,
+)
 from api.v1.schemas.base import ErrorResponse, RunStatusType, RunTypeType
 from api.v1.schemas.runs import (
     RunCreateSchema,
+    RunImportIssuesSchema,
     RunModSchema,
     RunSchema,
     RunUpdateSchema,
@@ -120,6 +126,9 @@ def apply_run_embeds(
     if "level" in embed_fields and run.level:
         embeds["level"] = serialize_level_embed(run.level)
 
+    if "platform" in embed_fields and run.platform:
+        embeds["platform"] = serialize_platform_embed(run.platform)
+
     if "variables" in embed_fields:
         try:
             variables_data = []
@@ -146,6 +155,57 @@ def apply_run_embeds(
             embeds["variables"] = []
 
     return embeds
+
+
+def normalize_time_fields(
+    data: dict,
+) -> Status | None:
+    """Normalize RTA/LRT/IGT display strings from their `*_secs` source of truth.
+
+    Consolidates logic that transforms the `_*secs` times into display strings that can be properly
+    digested on the frontend or through the API."""
+    time_pairs = (
+        ("time", "time_secs"),
+        ("timenl", "timenl_secs"),
+        ("timeigt", "timeigt_secs"),
+    )
+    for str_field, secs_field in time_pairs:
+        has_str = str_field in data
+        has_secs = secs_field in data
+        if not has_str and not has_secs:
+            continue
+
+        if has_secs and data[secs_field] is not None:
+            secs = data[secs_field]
+        elif has_str:
+            raw = data[str_field]
+            if raw in (None, "", "0"):
+                secs = None if raw is None else 0.0
+            else:
+                try:
+                    secs = parse_time(raw)
+                except ValueError:
+                    return Status(
+                        422,
+                        ErrorResponse(
+                            error=f"Invalid time format for {str_field}: {raw!r}",
+                            details=None,
+                        ),
+                    )
+        else:
+            secs = None
+
+        if secs is None:
+            data[str_field] = None
+            data[secs_field] = None
+        elif secs == 0:
+            data[str_field] = "0"
+            data[secs_field] = 0.0
+        else:
+            data[str_field] = convert_time(secs)
+            data[secs_field] = secs
+
+    return None
 
 
 @router.get(
@@ -313,12 +373,13 @@ Supported Embeds:
 - `game`: Includes the metadata of the game related to the run queried.
 - `category`: Includes the metadata of the category related to the run queried.
 - `level`: Include the metadata of the level related to the run queried (if an IL run).
+- `platform`: Include the metadata of the platform the run was played on.
 - `variables`: Include the metadata of the variables and values related to the run.
 
 Examples:
 - `/runs/y8dwozoj` - Basic run data with players.
 - `/runs/y8dwozoj?embed=game` - Include game metadata.
-- `/runs/y8dwozoj?embed=game,category,variables` - Full run details with embeds.
+- `/runs/y8dwozoj?embed=game,category,platform,variables` - Full run details with embeds.
 """,
     auth=public_read(),
 )
@@ -389,6 +450,56 @@ def get_run(
         )
 
 
+@router.get(
+    "/{id}/import-issues",
+    response={
+        200: RunImportIssuesSchema,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        404: ErrorResponse,
+        500: ErrorResponse,
+    },
+    summary="Get Run Import Issues",
+    description="""\
+Retrieve the import validation flags for a single run.
+
+Requires an API key (or session) with the `games.audit.view` capability scoped to the run's
+game. Returns only the run id and its import issue flags; fetch `GET /runs/{id}` separately
+for game, category, and player context.
+""",
+    auth=authed("games.audit.view", target_resolver=game_from_run_path),
+)
+def get_run_import_issues(
+    request: HttpRequest,
+    id: str,
+) -> Status:
+    try:
+        run = (
+            Runs.objects.filter(id__iexact=id)
+            .only("id", "has_import_issues", "import_issues")
+            .first()
+        )
+        if not run:
+            return Status(
+                404,
+                ErrorResponse(
+                    error="Run ID does not exist",
+                    details=None,
+                ),
+            )
+
+        return Status(200, RunImportIssuesSchema.model_validate(run))
+
+    except Exception as e:
+        return Status(
+            500,
+            ErrorResponse(
+                error="Failed to retrieve run import issues",
+                details={"exception": str(e)},
+            ),
+        )
+
+
 @router.post(
     "/",
     response={
@@ -416,6 +527,8 @@ Request Body:
 - `player_ids` (list[str] | None): List of player IDs in order of participation.
 - `runtype` (str): Run type (`main` or `il`).
 - `place` (int): Leaderboard position.
+- `vid_status` (str): Verification state (`verified`, `new`, `rejected`, or `review`);
+  defaults to `verified`.
 - `time` (str | None): Formatted time string (e.g., "1:23.456").
 - `time_secs` (float | None): Time in seconds (for sorting/calculations).
 - `video` (str | None): Video URL.
@@ -563,6 +676,10 @@ def create_run(
             }
         )
         create_data["id"] = run_id
+
+        time_error = normalize_time_fields(create_data)
+        if time_error:
+            return time_error
 
         with transaction.atomic():
             run = Runs.objects.create(
@@ -725,46 +842,16 @@ def update_run(
         old_timeigt_secs = run.timeigt_secs
         pre_edit_snapshot = snapshot_run(run)
 
+        # Timing gaps that already exist before this edit. A required method missing here is a
+        # pre-existing condition (recorded as a non-blocking import issue post-save), not
+        # something this update introduced, so it must not block an unrelated write.
+        preexisting_missing = set(run.missing_required_methods())
+
         update_data = run_data.model_dump(exclude_unset=True)
 
-        time_pairs = (
-            ("time", "time_secs"),
-            ("timenl", "timenl_secs"),
-            ("timeigt", "timeigt_secs"),
-        )
-        for str_field, secs_field in time_pairs:
-            has_str = str_field in update_data
-            has_secs = secs_field in update_data
-            if not has_str and not has_secs:
-                continue
-
-            if has_secs:
-                secs = update_data[secs_field]
-            else:
-                raw = update_data[str_field]
-                if raw in (None, "", "0"):
-                    secs = None if raw is None else 0.0
-                else:
-                    try:
-                        secs = parse_time(raw)
-                    except ValueError:
-                        return Status(
-                            422,
-                            ErrorResponse(
-                                error=f"Invalid time format for {str_field}: {raw!r}",
-                                details=None,
-                            ),
-                        )
-
-            if secs is None:
-                update_data[str_field] = None
-                update_data[secs_field] = None
-            elif secs == 0:
-                update_data[str_field] = "0"
-                update_data[secs_field] = 0.0
-            else:
-                update_data[str_field] = convert_time(secs)
-                update_data[secs_field] = secs
+        time_error = normalize_time_fields(update_data)
+        if time_error:
+            return time_error
 
         if "game_id" in update_data:
             game = Games.objects.filter(id=update_data["game_id"]).first()
@@ -922,7 +1009,7 @@ def update_run(
                 )
 
             try:
-                run.validate_allowed_method_data()
+                run.validate_allowed_method_data(ignore=preexisting_missing)
             except ValidationError:
                 raise
 

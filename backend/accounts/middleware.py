@@ -8,6 +8,7 @@ from django.conf import settings
 from django.core.cache import cache
 from django.http import HttpRequest, HttpResponse, JsonResponse
 
+from accounts.privileges import is_gated
 from accounts.turnstile import TurnstileUnavailable, verify_turnstile
 
 logger = logging.getLogger("accounts.turnstile")
@@ -205,4 +206,53 @@ class PathRateLimitMiddleware:
             )
             return _rate_limit_error(ttl)
 
+        return self.get_response(request)
+
+
+class MFASetupRequiredMiddleware:
+    """Block privileged users (superusers, game moderators) until they have a TOTP or passkey."""
+
+    ALLOWLISTED_PREFIXES = (
+        "/_allauth/",
+        "/accounts/",
+        "/illiad/",
+    )
+
+    def __init__(
+        self,
+        get_response: Callable[[HttpRequest], HttpResponse],
+    ) -> None:
+        self.get_response = get_response
+
+    def _is_allowlisted(
+        self,
+        path: str,
+    ) -> bool:
+        prefixes = self.ALLOWLISTED_PREFIXES + (
+            settings.STATIC_URL,
+            settings.MEDIA_URL,
+        )
+        return any(prefix and path.startswith(prefix) for prefix in prefixes)
+
+    def __call__(
+        self,
+        request: HttpRequest,
+    ) -> HttpResponse:
+        if (
+            getattr(settings, "MFA_ENFORCE_FOR_PRIVILEGED", True)
+            and request.user.is_authenticated
+            and not self._is_allowlisted(request.path)
+            and is_gated(request.user)
+        ):
+            return JsonResponse(
+                {
+                    "status": 403,
+                    "data": {
+                        "flows": [{"id": "mfa_setup_required"}],
+                        "accepted_types": ["totp", "webauthn"],
+                    },
+                    "meta": {"is_authenticated": True},
+                },
+                status=403,
+            )
         return self.get_response(request)

@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from auditlog.context import get_actor
@@ -132,8 +132,12 @@ def runs_trigger_review_notification(
 
     max_age_days = getattr(settings, "AWAITING_REVIEW_NOTIFY_MAX_AGE_DAYS", 7)
     run_date = getattr(instance, "date", None)
-    if run_date is not None:
+    if isinstance(run_date, datetime):
         cutoff = timezone.now() - timedelta(days=max_age_days)
+        if timezone.is_aware(cutoff) and timezone.is_naive(run_date):
+            run_date = timezone.make_aware(run_date)
+        elif timezone.is_naive(cutoff) and timezone.is_aware(run_date):
+            run_date = timezone.make_naive(run_date)
         if run_date < cutoff:
             return
 

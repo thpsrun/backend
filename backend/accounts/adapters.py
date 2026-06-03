@@ -30,6 +30,7 @@ from accounts.oauth_reauth import handle_reauth
 from accounts.oauth_reauth import peek_intent as peek_reauth_intent
 from accounts.oauth_signup import handle_signup
 from accounts.oauth_signup import peek_intent as peek_signup_intent
+from accounts.privileges import social_login_requires_mfa
 
 TWITCH_LOGIN_RE: re.Pattern[str] = re.compile(r"^[A-Za-z0-9_]{1,25}$")
 
@@ -169,7 +170,9 @@ class MFAAdapter(DefaultMFAAdapter):
         if request is not None:
             methods = request.session.get(AUTHENTICATION_METHODS_SESSION_KEY, [])
             if methods and methods[-1].get("method") == "socialaccount":
-                return False
+                if not social_login_requires_mfa(user):
+                    return False
+                return super().is_mfa_enabled(user, types=types)
 
         return super().is_mfa_enabled(user, types=types)
 
