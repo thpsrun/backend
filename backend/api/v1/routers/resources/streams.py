@@ -39,8 +39,10 @@ def get_live_streams(
     limit: Annotated[int, Query(ge=1, le=50, description="Max results")] = 20,
 ) -> Status:
     try:
-        queryset = NowStreaming.objects.select_related("streamer", "game").order_by(
-            "-stream_time",
+        queryset = (
+            NowStreaming.objects.select_related("streamer", "game")
+            .exclude(streamer__ex_stream=True)
+            .order_by("-stream_time")
         )
 
         if game_id:
@@ -81,6 +83,7 @@ def get_stream(
         stream = (
             NowStreaming.objects.select_related("streamer", "game")
             .filter(streamer_id=player_id)
+            .exclude(streamer__ex_stream=True)
             .first()
         )
         if not stream:

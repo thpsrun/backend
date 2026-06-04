@@ -25,6 +25,10 @@ SRC_MAX_RETRIES = 10
 SRC_BACKOFF_SECS = 60
 
 
+class SrcRateLimited(ValueError):
+    """Raised when SRC keeps returning 420/503 until retries are exhausted."""
+
+
 def convert_time(
     secs: float,
 ) -> str:
@@ -64,23 +68,37 @@ def convert_time(
 def src_api(
     url: str,
     raw: bool = False,
+    max_retries: int | None = None,
+    backoff_secs: int | None = None,
 ) -> dict | list:
     """Processes a Speedrun.com API v1 GET request to return values from any of its endpoints.
 
-    Retries on 420 (Enhance Your Calm) and 503 (Service Unavailable) up to SRC_MAX_RETRIES
-    times with a fixed SRC_BACKOFF_SECS sleep between attempts.
+    Retries on 420 (Enhance Your Calm) and 503 (Service Unavailable) up to `max_retries`
+    times with a fixed `backoff_secs` sleep between attempts. Both default to the module
+    constants SRC_MAX_RETRIES / SRC_BACKOFF_SECS when not provided, so existing callers are
+    unaffected; request-path callers can pass small values to avoid stalling.
 
     Arguments:
         url (str): The complete URL of the API endpoint being called.
         raw (bool): If True, return the full JSON envelope (e.g., when pagination links or
             sibling fields are needed). Default unwraps and returns the "data" field.
+        max_retries (int | None): Override for the retry count. Defaults to SRC_MAX_RETRIES.
+        backoff_secs (int | None): Override for the per-attempt sleep. Defaults to
+            SRC_BACKOFF_SECS.
 
     Returns:
         dict | list: The "data" field (dict or list depending on the endpoint), or the
             full envelope when raw=True.
+
+    Raises:
+        SrcRateLimited: When 420/503 persists until retries are exhausted.
+        ValueError: When the response is otherwise non-200.
     """
+    retries: int = SRC_MAX_RETRIES if max_retries is None else max_retries
+    backoff: int = SRC_BACKOFF_SECS if backoff_secs is None else backoff_secs
+
     response = None
-    for attempt in range(1, SRC_MAX_RETRIES + 1):
+    for attempt in range(1, retries + 1):
         response = requests.get(url, headers=SRC_HEADERS, timeout=30)
         if response.status_code not in (420, 503):
             break
@@ -89,14 +107,14 @@ def src_api(
             "SRC rate limit (%s) on attempt %d/%d, sleeping %ds: %s",
             response.status_code,
             attempt,
-            SRC_MAX_RETRIES,
-            SRC_BACKOFF_SECS,
+            retries,
+            backoff,
             url,
         )
-        time.sleep(SRC_BACKOFF_SECS)
+        time.sleep(backoff)
     else:
-        raise ValueError(
-            f"SRC API rate limit exceeded after {SRC_MAX_RETRIES} retries ({url})"
+        raise SrcRateLimited(
+            f"SRC API rate limit exceeded after {retries} retries ({url})"
         )
 
     if response.status_code != 200:
