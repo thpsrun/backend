@@ -2,6 +2,7 @@ from datetime import date as date_type
 from typing import Any
 
 from django.core.cache import caches
+from django.core.files.storage import default_storage
 from django.db.models import (
     Case,
     Count,
@@ -170,6 +171,11 @@ def _export_players(
                 {
                     "id": rp.player.countrycode.id,
                     "name": rp.player.countrycode.name,
+                    "flag": (
+                        rp.player.countrycode.flag.url
+                        if rp.player.countrycode.flag
+                        else None
+                    ),
                 }
                 if rp.player.countrycode
                 else None
@@ -258,8 +264,13 @@ def _build_leaderboard_rows(
 
         country_id = row.get("player__countrycode__id")
         country_name = row.get("player__countrycode__name")
+        country_flag = row.get("player__countrycode__flag")
         country = (
-            {"id": country_id, "name": country_name, "flag": None}
+            {
+                "id": country_id,
+                "name": country_name,
+                "flag": default_storage.url(country_flag) if country_flag else None,
+            }
             if country_id
             else None
         )
@@ -296,6 +307,11 @@ def main_player_data_export(
                 {
                     "id": rp.player.countrycode.id,
                     "name": rp.player.countrycode.name,
+                    "flag": (
+                        rp.player.countrycode.flag.url
+                        if rp.player.countrycode.flag
+                        else None
+                    ),
                 }
                 if rp.player.countrycode
                 else None
@@ -522,6 +538,7 @@ def query_overall_leaderboard() -> list[dict[str, Any]]:
             "player__pfp",
             "player__countrycode__id",
             "player__countrycode__name",
+            "player__countrycode__flag",
             "player__user__gradient_1",
             "player__user__gradient_2",
             "player__user__gradient_3",
@@ -563,6 +580,7 @@ def query_game_leaderboard(
             "player__pfp",
             "player__countrycode__id",
             "player__countrycode__name",
+            "player__countrycode__flag",
             "player__user__gradient_1",
             "player__user__gradient_2",
             "player__user__gradient_3",

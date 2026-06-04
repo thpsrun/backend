@@ -167,6 +167,8 @@ def _lightweight_upsert_run(
                 value_id=val_id,
             )
 
+        run_obj.refresh_import_issues()
+
 
 def _call_sync_single_run(
     run_id: str,

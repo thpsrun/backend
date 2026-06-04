@@ -10,7 +10,8 @@ from django.utils.dateparse import parse_date, parse_datetime
 from ninja import Router, Status
 from srl.encryption import decrypt_src_key
 from srl.leaderboard.trigger import recalculate_run
-from srl.models import Players, Runs, RunVariableValues, SRCSyncTask
+from srl.models import BotSession, Players, Runs, RunVariableValues, SRCSyncTask
+from srl.models.base import METHOD_TO_TIME_FIELD
 from srl.models.categories import Categories
 from srl.models.games import Games
 from srl.models.levels import Levels
@@ -18,8 +19,12 @@ from srl.models.platforms import Platforms
 from srl.models.run_players import RunPlayers
 from srl.models.variable_values import VariableValues
 from srl.models.variables import Variables
+from srl.srcom.v2 import is_v2_enabled
+from srl.srcom.v2.client import SrcV2Client, SrcV2Error
+from srl.srcom.v2.runs import build_submit_payload
 from srl.tasks import sync_src_action
 from srl.time_parser import parse_time
+from srl.timing import resolve_timing
 from srl.utils import convert_time
 
 from api.permissions import authed, session_only
@@ -544,6 +549,34 @@ def update_run_players(
     )
 
 
+def _try_v2_fallback(
+    snapshot: dict,
+) -> tuple[str | None, str | None]:
+    """Attempt a v2 bot-session run submission.
+
+    Returns:
+        (src_run_id, None) on success, or (None, reason) when the fallbacl is unavailable or fails.
+    """
+    if not is_v2_enabled():
+        return None, "unavailable (v2 disabled)"
+
+    bot_session = BotSession.load()
+    if bot_session.status != BotSession.Status.ACTIVE:
+        return None, "unavailable (bot session not active)"
+
+    try:
+        payload = build_submit_payload(snapshot)
+        response = SrcV2Client().put_run_settings(payload)
+        return response.runId, None
+    except SrcV2Error as exc:
+        logger.warning(
+            "v2 submission fallback failed: %s (category=%s)",
+            exc,
+            getattr(exc, "category", None),
+        )
+        return None, "also failed"
+
+
 @router.post(
     "/submissions/submit",
     response={
@@ -667,6 +700,7 @@ def submit_run(
                     ),
                 )
 
+    vv_objs: list[VariableValues] = []
     if body.variable_values:
         for var_id, val_id in body.variable_values.items():
             try:
@@ -680,9 +714,11 @@ def submit_run(
                     ),
                 )
             try:
-                VariableValues.objects.get(
-                    value=val_id,
-                    var_id=var_id,
+                vv_objs.append(
+                    VariableValues.objects.get(
+                        value=val_id,
+                        var_id=var_id,
+                    ),
                 )
             except VariableValues.DoesNotExist:
                 return Status(
@@ -722,6 +758,29 @@ def submit_run(
             time_display[str_field] = convert_time(parsed)
             time_seconds[secs_field] = parsed
 
+    resolved_timing = resolve_timing(
+        game,
+        category,
+        bool(level),
+        vv_objs,
+    )
+    missing_methods = [
+        method
+        for method in resolved_timing.required_methods
+        if not time_seconds.get(METHOD_TO_TIME_FIELD[method])
+    ]
+    if missing_methods:
+        return Status(
+            422,
+            ErrorResponse(
+                error=(
+                    f"Run is missing required timing method(s): {missing_methods}. "
+                    f"This run's rules require: {resolved_timing.required_methods}."
+                ),
+                details=None,
+            ),
+        )
+
     src_payload = _build_src_run_payload(body, time_secs)
 
     try:
@@ -748,7 +807,77 @@ def submit_run(
             ),
         )
 
-    if src_response.status_code == 401:
+    src_run_id: str | None = None
+    via: str = "v1"
+
+    if src_response.status_code in (200, 201):
+        try:
+            src_data = src_response.json()
+            src_run_id = src_data["data"]["id"]
+        except (KeyError, TypeError, ValueError) as e:
+            logger.error(
+                "Unexpected SRC response format: %s (error: %s)",
+                src_response.text[:500],
+                str(e),
+            )
+            return Status(
+                400,
+                ErrorResponse(
+                    error=(
+                        "SRC accepted the run but returned "
+                        "an unexpected response format."
+                    ),
+                    details=None,
+                ),
+            )
+    elif src_response.status_code in (400, 403):
+        player_names: list[str] = []
+        for entry in body.players:
+            if entry.rel == "user":
+                player_names.append(user_player_map[entry.id].name)
+            else:
+                player_names.append(entry.name or "")
+
+        snapshot = {
+            "game_id": body.game_id,
+            "category_id": body.category_id,
+            "level_id": body.level_id,
+            "platform_id": body.platform_id,
+            "emulated": body.emulated,
+            "video": body.video,
+            "description": body.comment,
+            "date": _parse_submission_date(body.date),
+            "player_names": player_names,
+            "variables": (
+                list(body.variable_values.items()) if body.variable_values else []
+            ),
+            "time_secs": time_seconds.get("time_secs"),
+            "timenl_secs": time_seconds.get("timenl_secs"),
+            "timeigt_secs": time_seconds.get("timeigt_secs"),
+            "primary_method": resolve_timing(
+                game,
+                category,
+                bool(level),
+                vv_objs,
+            ).primary_method,
+        }
+
+        fallback_run_id, reason = _try_v2_fallback(snapshot)
+        if fallback_run_id is None:
+            return Status(
+                src_response.status_code,
+                ErrorResponse(
+                    error=(
+                        f"Speedrun.com rejected the submission "
+                        f"({src_response.status_code}); bot-session "
+                        f"fallback {reason}."
+                    ),
+                    details=None,
+                ),
+            )
+        src_run_id = fallback_run_id
+        via = "v2_fallback"
+    elif src_response.status_code == 401:
         return Status(
             401,
             ErrorResponse(
@@ -756,14 +885,6 @@ def submit_run(
                     "SRC API key is invalid or expired. "
                     "Update it in profile settings."
                 ),
-                details=None,
-            ),
-        )
-    elif src_response.status_code == 400:
-        return Status(
-            400,
-            ErrorResponse(
-                error="Speedrun.com rejected the submission",
                 details=None,
             ),
         )
@@ -783,31 +904,11 @@ def submit_run(
                 details=None,
             ),
         )
-    elif src_response.status_code not in (200, 201):
+    else:
         return Status(
             400,
             ErrorResponse(
                 error=("Unexpected SRC response " f"({src_response.status_code})."),
-                details=None,
-            ),
-        )
-
-    try:
-        src_data = src_response.json()
-        src_run_id = src_data["data"]["id"]
-    except (KeyError, TypeError, ValueError) as e:
-        logger.error(
-            "Unexpected SRC response format: %s (error: %s)",
-            src_response.text[:500],
-            str(e),
-        )
-        return Status(
-            400,
-            ErrorResponse(
-                error=(
-                    "SRC accepted the run but returned "
-                    "an unexpected response format."
-                ),
                 details=None,
             ),
         )
@@ -854,6 +955,12 @@ def submit_run(
                     variable_id=var_id,
                     value_id=val_id,
                 )
+
+    logger.info(
+        "Run %s submitted to SRC via %s",
+        src_run_id,
+        via,
+    )
 
     return Status(
         201,

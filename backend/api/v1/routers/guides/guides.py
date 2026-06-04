@@ -46,6 +46,7 @@ def _author_for_user(
         country = CountrySchema(
             id=player.countrycode.id,
             name=player.countrycode.name,
+            flag=player.countrycode.flag.url if player.countrycode.flag else None,
         )
 
     g1: str | None = getattr(user, "gradient_1", None)
