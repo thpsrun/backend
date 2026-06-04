@@ -8,7 +8,10 @@ from django.db import transaction
 from django.http import HttpRequest
 from django.utils import timezone
 from ninja import Router, Status
+from pydantic import ValidationError
 from srl.models import CountryCodes, Players
+from srl.srcom.schema.src import SrcPlayersModel
+from srl.utils import SrcRateLimited, src_api
 
 from api.permissions import session_only
 from api.v1.schemas.auth import (
@@ -22,6 +25,7 @@ from api.v1.schemas.auth import (
     SocialsEmbed,
 )
 from api.v1.schemas.base import ErrorResponse
+from api.v1.schemas.common import sanitize_speedrun_url
 
 logger = logging.getLogger(__name__)
 
@@ -171,7 +175,7 @@ def update_me(
 
     if body.player is not None:
         player_fields = body.player.model_fields_set
-        for field in ("name", "nickname", "pronouns", "ex_stream"):
+        for field in ("nickname", "pronouns", "ex_stream"):
             if field in player_fields:
                 setattr(player, field, getattr(body.player, field))
                 player_update_fields.append(field)
@@ -349,3 +353,88 @@ def delete_me(
     )
 
     return Status(204, None)
+
+
+@router.post(
+    "/me/resync",
+    response={
+        200: PlayerProfileResponse,
+        401: ErrorResponse,
+        403: ErrorResponse,
+        502: ErrorResponse,
+        503: ErrorResponse,
+    },
+    summary="Resync Username and URL from Speedrun.com",
+    description="""\
+Re-pulls the authenticated player's name and profile URL from Speedrun.com using their player
+ID (which is their Speedrun.com user ID). No request body. Other profile fields are left
+untouched. Returns the same shape as GET /me.
+""",
+    auth=session_only("profile.edit_own"),
+)
+def resync_me(
+    request: HttpRequest,
+) -> Status:
+    player: Players = request.auth.player  # type: ignore
+
+    try:
+        src_data = src_api(
+            f"https://speedrun.com/api/v1/users/{player.id}",
+            max_retries=2,
+            backoff_secs=2,
+        )
+    except SrcRateLimited:
+        return Status(
+            503,
+            ErrorResponse(
+                error="Speedrun.com is rate-limiting requests. Please try again shortly.",
+                details=None,
+            ),
+        )
+    except ValueError:
+        return Status(
+            502,
+            ErrorResponse(
+                error="Could not fetch your profile from Speedrun.com.",
+                details=None,
+            ),
+        )
+
+    if not isinstance(src_data, dict):
+        return Status(
+            502,
+            ErrorResponse(
+                error="Unexpected response from Speedrun.com.",
+                details=None,
+            ),
+        )
+
+    try:
+        src_player = SrcPlayersModel.model_validate(src_data)
+    except ValidationError:
+        return Status(
+            502,
+            ErrorResponse(
+                error="Could not read your profile from Speedrun.com.",
+                details=None,
+            ),
+        )
+
+    new_url: str | None = sanitize_speedrun_url(src_player.weblink)
+
+    player.name = src_player.names.international
+    update_fields: list[str] = ["name"]
+
+    if new_url is not None:
+        player.url = new_url
+        update_fields.append("url")
+    else:
+        logger.warning(
+            "SRC weblink for player %s did not sanitize; keeping existing URL: %r",
+            player.id,
+            src_player.weblink,
+        )
+
+    player.save(update_fields=update_fields)
+
+    return Status(200, _build_profile_response(player))

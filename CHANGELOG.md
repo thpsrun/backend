@@ -1,3 +1,21 @@
+### v4.1.2
+###### June 4, 2026
+*   Added
+    *   Added a new `Resync` button in the `Danger Zone` of a user's profile settings that resyncs their username and URL from SRC.
+        *   Your unique ID never changes; but, if you change your SRC username, this will let us resync you to avoid errors.
+    *   Added the `Exclude from Streams` button to the General section of profile settings (was in Social Media).
+
+*   Changed
+    *   Changed the General profile settings around and described the different username types better (hopefully).
+    *   Changed the behavior of the gradient name selection panel to where it shows your nickname (if you have one) OR your username (was just your username).
+    *   Changed the behavior of the navbar to where it shows your nickname (if you have one) OR yoru username (was just your username) in the top-right.
+    *   Changed the filtering for `GET /streams` to where it will never show a player who has exempted themselves from streams.
+
+*   Removed
+    *   Removed the ability for users to modify their `SRC Username` (was `Display Name`).
+
+***
+
 ### v4.1.1
 ###### June 3, 2026
 *   Added

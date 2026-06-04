@@ -183,7 +183,6 @@ HEX_COLOR_PATTERN = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
 
 class PlayerUpdateEmbed(Schema):
-    name: str | None = Field(None, min_length=1, max_length=30)
     nickname: str | None = Field(None, max_length=30)
     pronouns: str | None = Field(None, max_length=50)
     country: str | None = None

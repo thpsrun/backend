@@ -138,6 +138,7 @@ _PATH_RATE_LIMITS: dict[tuple[str, str], tuple[int, int]] = {
     ("POST", "/api/v1/auth/me/email/change"): (3, 3600),
     ("POST", "/api/v1/auth/me/email/resend"): (3, 3600),
     ("POST", "/api/v1/auth/register/correct-email"): (3, 3600),
+    ("POST", "/api/v1/auth/me/resync"): (5, 3600),
 }
 
 
