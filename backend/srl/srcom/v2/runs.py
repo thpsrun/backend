@@ -81,10 +81,11 @@ def compute_v2_eligible_diff(
     return {f for f in V2_ELIGIBLE_FIELDS if old.get(f) != new.get(f)}
 
 
-def build_settings_payload(
-    run: Runs,
+def _build_run_settings(
     snapshot: dict[str, Any],
+    run_id: str | None = None,
 ) -> dict[str, Any]:
+    """Builds a V2 API RunSettings dict from a snapshot."""
     method = src_method_to_internal(snapshot.get("primary_method")) or "rta"
 
     rta_secs = snapshot.get("time_secs")
@@ -109,7 +110,6 @@ def build_settings_payload(
     date_int = int(date_val.timestamp()) if date_val else 0
 
     payload: dict[str, Any] = {
-        "runId": run.id,
         "gameId": snapshot.get("game_id"),
         "categoryId": snapshot.get("category_id"),
         "platformId": snapshot.get("platform_id"),
@@ -122,9 +122,26 @@ def build_settings_payload(
         "time": time_field,
         "igt": igt_field,
     }
+    if run_id is not None:
+        payload["runId"] = run_id
     level_id = snapshot.get("level_id")
     if level_id is not None:
         payload["levelId"] = level_id
     if time_with_loads_field is not None:
         payload["timeWithLoads"] = time_with_loads_field
     return payload
+
+
+def build_settings_payload(
+    run: Runs,
+    snapshot: dict[str, Any],
+) -> dict[str, Any]:
+    """Builds a V2 API RunSettings object for editing an existing run."""
+    return _build_run_settings(snapshot, run_id=run.id)
+
+
+def build_submit_payload(
+    snapshot: dict[str, Any],
+) -> dict[str, Any]:
+    """Builds a V2 API RunSettings object for submitting a NEW run."""
+    return _build_run_settings(snapshot, run_id=None)

@@ -1,3 +1,21 @@
+### v4.1.1
+###### June 3, 2026
+*   Added
+    *   Added the ability to use the SRC v2 API for submissions, if the original method fails.
+        *   Theoretically, you SHOULD be able to use your v1 API Key. However, if it fails (right now, this is due to an SRC bug where only mods for a game can submit a run), it will use the SRC v2 API.
+        *   Runners will still be credited with the run. THPSBot will be credited as the "Submitter".
+    *   Added a cookie consent banner that appears once.
+
+*   Fixed
+    *   Fixed an issue where the IL leaderboard grid would silently fail if no runs existed within the category.
+        *   Now, going forward, if a level is missing runs, it will display that error.
+    *   Fixed an issue where runners could submit runs without proper validation.
+    *   Fixed an issue where run submission fields would fail to clear its contents on successful submission.
+    *   Fixed an issue where SRC-submitted speedruns failed to go through validation.
+        *   Forgot to add it to the Celery agents when they performed sweeps. >_>
+
+***
+
 ### v4.1.0
 ###### June 2, 2026
 *   Added
@@ -16,6 +34,8 @@
     *   Fixed an issue where POST `/runs` did not ingest `*_secs` and self-create the human-friendly form of times.
     *   Fixed an issue where Celery tasks, in some situations, would call the wrong world record from the wrong category, calculate off of that, and report a point total that was insanely high (one example had a run get 408 MILLION HOLY).
     *   Fixed an issue where PUT'ing variables to `/runs` would cause issues with validation if the run was a legacy run.
+
+***
 
 ### v4 - The Definitive Update
 ###### June 1, 2026

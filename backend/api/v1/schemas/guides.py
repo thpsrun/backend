@@ -53,7 +53,7 @@ class GuideAuthorSchema(BaseEmbedSchema):
             "example": {
                 "name": "TheAnastasia",
                 "nickname": "Anastasia",
-                "country": {"id": "us", "name": "United States"},
+                "country": {"id": "us", "name": "United States", "flag": None},
                 "gradients": {
                     "gradient_1": "#5BCEFA",
                     "gradient_2": "#F5A9B8",
@@ -131,7 +131,7 @@ class GuideSchema(GuideListSchema):
                 "author": {
                     "name": "TheAnastasia",
                     "nickname": "Anastasia",
-                    "country": {"id": "us", "name": "United States"},
+                    "country": {"id": "us", "name": "United States", "flag": None},
                     "gradients": {
                         "gradient_1": "#5BCEFA",
                         "gradient_2": "#F5A9B8",
