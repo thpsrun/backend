@@ -1,3 +1,10 @@
+### v4.1.3
+###### June 5, 2026
+*   Added some additional docker-compose stuff for Fedora/RHEL environments.
+*   Fixed an issue where approving a run on thps.run would, in some cases, would fail to propogate `place` and points. 
+
+***
+
 ### v4.1.2
 ###### June 4, 2026
 *   Added

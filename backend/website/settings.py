@@ -136,6 +136,7 @@ AUTHENTICATION_BACKENDS = [
 WSGI_APPLICATION = "website.wsgi.application"
 
 if DEBUG:
+    CORS_ALLOWED_ORIGINS = ["http://localhost:3000", "http://127.0.0.1:3000"]
     CSRF_TRUSTED_ORIGINS = ["http://localhost:8001", "http://localhost:3000"]
     INSTALLED_APPS.append("debug_toolbar")
     MIDDLEWARE.insert(0, "debug_toolbar.middleware.DebugToolbarMiddleware")
@@ -234,6 +235,9 @@ CELERY_RESULT_EXTENDED = True
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 30 * 60
+CELERY_TASK_SOFT_TIME_LIMIT = 20 * 60  # catchable SoftTimeLimitExceeded before the hard SIGKILL
+CELERY_WORKER_MAX_MEMORY_PER_CHILD = 350000  # KB (~350 MB); recycle child gracefully before OOM
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1  # a crash drops at most one message, not a prefetched batch
 
 # CELERY BEAT SCHEDULE
 CELERY_BEAT_SCHEDULE = {
