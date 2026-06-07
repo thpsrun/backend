@@ -86,3 +86,36 @@ def recalculate_run(
         ).delay()
     else:
         recalc.delay()
+
+
+def recalculate_run_sync(
+    run: Runs,
+    actor_user_id: int | None = None,
+) -> None:
+    """Recompute a run's leaderboard variant inline so points exist before the caller returns."""
+    from srl.leaderboard.recompute import recompute_variant_locked
+
+    leaderboard = resolve_leaderboard(run)
+    ran = recompute_variant_locked(leaderboard)
+    if not ran:
+        recalculate_run(
+            run, cause="verify_sync_lock_contended", actor_user_id=actor_user_id
+        )
+        return
+
+    with_streaks = _wr_check(run, leaderboard)
+
+    record_event(
+        game=run.game.id,
+        event_type=GameAuditEvent.EventType.RUN_RECALC,
+        summary=f"Run recalc: {run.pk}",
+        target=run,
+        payload={
+            "run_id": run.pk,
+            "cause": "verify_sync",
+            "with_streaks": with_streaks,
+        },
+    )
+
+    if with_streaks:
+        recalculate_streaks_task.si(leaderboard, actor_user_id=actor_user_id).delay()

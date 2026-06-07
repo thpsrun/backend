@@ -5,6 +5,7 @@ import requests as http_requests
 import sentry_sdk
 from celery import shared_task
 from django.conf import settings as cfg
+from django.db.models import F
 
 from srl.encryption import decrypt_src_key
 from srl.models import SRCSyncTask
@@ -21,12 +22,8 @@ from srl.srcom.v2.client import (
     SrcV2ValidationError,
 )
 from srl.srcom.v2.errors import ErrorCategory
-from srl.srcom.v2.session import (
-    refresh_bot_session as _refresh_bot_session,
-)
-from srl.srcom.v2.session import (
-    trip_circuit_breaker as _trip_circuit_breaker,
-)
+from srl.srcom.v2.session import refresh_bot_session as _refresh_bot_session
+from srl.srcom.v2.session import trip_circuit_breaker as _trip_circuit_breaker
 
 from ._common import (
     actor_from_user_id,
@@ -38,6 +35,7 @@ V2_RETRY_BACKOFF = [30, 60, 120, 300, 600]
 SRC_API_BASE = "https://www.speedrun.com/api/v1"
 SRC_TIMEOUT = 15
 RETRY_BACKOFF = [30, 60, 120, 300, 600]
+PENDING_SYNC_STALE_MINUTES = 10
 
 
 # Re-export so tests can patch them on this module.
@@ -45,7 +43,11 @@ refresh_bot_session = _refresh_bot_session
 trip_circuit_breaker = _trip_circuit_breaker
 
 
-@shared_task(name="srl.tasks.sync_src_action")
+@shared_task(
+    name="srl.tasks.sync_src_action",
+    acks_late=True,
+    reject_on_worker_lost=True,
+)
 def sync_src_action(
     sync_task_id: int,
     *,
@@ -206,7 +208,11 @@ def _handle_retryable_failure(
     )
 
 
-@shared_task(name="srl.tasks.sync_src_settings")
+@shared_task(
+    name="srl.tasks.sync_src_settings",
+    acks_late=True,
+    reject_on_worker_lost=True,
+)
 def sync_src_settings(
     sync_task_id: int,
     *,
@@ -384,5 +390,28 @@ def replay_failed_edits() -> int:
             ],
         )
         sync_src_settings.delay(task.id)  # type: ignore
+        count += 1
+    return count
+
+
+@shared_task(name="srl.tasks.sweep_pending_src_sync")
+def sweep_pending_src_sync() -> int:
+    """Re-dispatch SRCSyncTasks stuck PENDING past the stale threshold."""
+
+    cutoff = datetime.now(dt_timezone.utc) - timedelta(
+        minutes=PENDING_SYNC_STALE_MINUTES
+    )
+    stale = SRCSyncTask.objects.filter(
+        status=SRCSyncTask.Status.PENDING,
+        updated_at__lt=cutoff,
+        attempts__lt=F("max_attempts"),
+    ).values_list("id", "action")
+
+    count = 0
+    for task_id, action in stale:
+        if action == SRCSyncTask.ActionType.EDIT_RUN:
+            sync_src_settings.delay(task_id)
+        else:
+            sync_src_action.delay(task_id)
         count += 1
     return count

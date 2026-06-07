@@ -65,6 +65,11 @@ def _apply_moderation(
         run.vid_status = new_status
         run.approver = actor_player
 
+        # Recalculation will occur after the run is approved, so this is mostly placeholders
+        # so the backend is happy with the run's state.
+        run.place = 0
+        run.obsolete = False
+
         src_payload: dict = {"status": {"status": new_status}}
         if action == "reject" and action_in.reason:
             src_payload["status"]["reason"] = action_in.reason

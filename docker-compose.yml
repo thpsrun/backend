@@ -3,6 +3,8 @@ volumes:
     name: thpsrun_postgres_data
   static_files:
     name: thpsrun_static_files
+  media_files:
+    name: thpsrun_media_files
 
 services:
   postgres:
@@ -36,8 +38,9 @@ services:
       - postgres
       - redis
     volumes:
-      - ./backend:/app
-      - static_files:/app/static:rw
+      - ./backend:/app:z
+      - static_files:/app/static
+      - media_files:/app/media
     read_only: true
     tmpfs:
       - /tmp
@@ -46,7 +49,7 @@ services:
     networks:
       - thpsrun
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/api/v1/health"]
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8001/api/v1/health').status==200 else 1)"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -68,7 +71,8 @@ services:
       - postgres
       - redis
     volumes:
-      - ./backend:/app
+      - ./backend:/app:z
+      - media_files:/app/media
     read_only: true
     tmpfs:
       - /tmp
@@ -93,7 +97,8 @@ services:
       - postgres
       - redis
     volumes:
-      - ./backend:/app
+      - ./backend:/app:z
+      - media_files:/app/media
     read_only: true
     tmpfs:
       - /tmp

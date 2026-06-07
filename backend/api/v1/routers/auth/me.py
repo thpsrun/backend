@@ -239,9 +239,9 @@ def update_me(
             )
 
     if player_update_fields:
-        player.save(update_fields=player_update_fields)
+        player.save(update_fields=[*player_update_fields, "updated_at"])
     if user_update_fields and player.user:
-        player.user.save(update_fields=user_update_fields)
+        player.user.save(update_fields=[*user_update_fields, "updated_at"])
 
     return Status(200, _build_profile_response(player))
 

@@ -6,11 +6,7 @@ from srl.srcom.games import apply_game_record, sync_game
 from srl.srcom.leaderboards import sync_game_runs
 from srl.srcom.levels import sync_levels
 from srl.srcom.platforms import sync_platforms
-from srl.srcom.reconciliation import (
-    current_job,
-    dispatch_with_recon,
-    reconciliation_upsert_check,
-)
+from srl.srcom.reconciliation import reconciliation_upsert_check
 from srl.srcom.schema.src import SrcGamesModel
 from srl.srcom.variables import sync_variables
 from srl.utils import src_api, src_api_paginate
@@ -98,10 +94,7 @@ def import_new_game(
             sync_variables.delay(variable.model_dump())
 
     if not skip_runs:
-        if current_job() is not None:
-            dispatch_with_recon(sync_game_runs, game_data.id, 0)
-        else:
-            sync_game_runs.delay(game_data.id, 0)
+        sync_game_runs.delay(game_data.id, 0)
 
     return {
         "name": game_data.names.international,

@@ -21,7 +21,8 @@ RUN apk add --no-cache bash libpq \
     && addgroup -g ${GID} app_user \
     && adduser -u ${UID} -G app_user -D app_user \
     && install -d -m 0755 -o app_user -g app_user /app \
-    && install -d -m 0755 -o app_user -g app_user /app/static
+    && install -d -m 0755 -o app_user -g app_user /app/static \
+    && install -d -m 0755 -o app_user -g app_user /app/media
 
 COPY --from=builder /venv /venv
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh

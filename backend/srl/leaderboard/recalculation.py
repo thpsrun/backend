@@ -35,12 +35,10 @@ def get_time_column(
     game_id: str,
     runtype: str = "main",
 ) -> str:
-    """Get the game-level time column for a game.
-
-    This is a game-only fallback. To honor the full precedence chain
-    (Variable > Category > Game), use `get_leaderboard_time_column`.
-    """
-    game = Games.objects.only("defaulttime", "idefaulttime").get(id=game_id)
+    """Get the game-level time column for a game."""
+    game = Games.objects.only("defaulttime", "idefaulttime").filter(id=game_id).first()
+    if game is None:
+        return "time_secs"
     if runtype == "main":
         return TIME_COLUMN_MAP.get(game.defaulttime, "time_secs")
     else:

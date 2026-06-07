@@ -70,6 +70,10 @@ class CustomUser(AbstractUser):
         blank=True,
         help_text="Profile background image. Max 2560x1440. Max 10MB.",
     )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        help_text=("Last time this user row changed."),
+    )
 
 
 class UserDataExport(models.Model):

@@ -1,15 +1,14 @@
 from datetime import datetime
 from typing import Any, Literal
 
-from ninja import Schema
-from pydantic import ConfigDict, Field, field_validator, model_validator
-
 from api.v1.schemas.base import (
     BaseEmbedSchema,
     RunStatusType,
     RunTypeType,
     TimingMethodType,
 )
+from ninja import Schema
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
 
 def compute_run_subcategory(
@@ -589,12 +588,10 @@ class RunUpdateSchema(BaseEmbedSchema):
         level_id (str | None): Updated level ID.
         player_ids (list[str] | None): Updated list of player IDs.
         runtype (str | None): Updated run type.
-        place (int | None): Updated leaderboard position.
         time (str | None): Updated formatted time string.
         time_secs (float | None): Updated time in seconds.
         video (str | None): Updated video URL.
         date (datetime | None): Updated submission date.
-        v_date (datetime | None): Updated verification date.
         url (str | None): Updated Speedrun.com URL.
         variable_values (dict[str, str] | None): Updated variable selections.
     """
@@ -604,7 +601,6 @@ class RunUpdateSchema(BaseEmbedSchema):
     level_id: str | None = None
     player_ids: list[str] | None = Field(None, description="In order of participation")
     runtype: RunTypeType | None = None
-    place: int | None = Field(default=None, ge=1)
     time: str | None = Field(default=None, max_length=25)
     time_secs: float | None = Field(default=None, ge=0)
     timenl: str | None = Field(default=None, max_length=25)
@@ -615,13 +611,10 @@ class RunUpdateSchema(BaseEmbedSchema):
     arch_video: str | None = Field(
         default=None, description="Archived/mirrored video URL"
     )
-    obsolete: bool | None = Field(default=None, description="Mark the run as obsolete")
     platform_id: str | None = None
-    approver_id: str | None = None
     description: str | None = Field(default=None, max_length=5000)
     emulated: bool | None = None
     date: datetime | None = None
-    v_date: datetime | None = Field(default=None, description="Verification date")
     url: str | None = None
     variable_values: dict[str, str] | None = None
     moderator_action: ModeratorActionIn | None = Field(
@@ -638,12 +631,10 @@ class RunUpdateSchema(BaseEmbedSchema):
         "json_schema_extra": {
             "examples": [
                 {
-                    "place": 1,
                     "time": "5m 00s",
                     "time_secs": 300.0,
                 },
                 {
-                    "place": 1,
                     "time": "5m 00s",
                     "time_secs": 300.0,
                     "moderator_action": {"action": "verify"},

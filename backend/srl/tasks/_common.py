@@ -6,15 +6,7 @@ from auditlog.context import clear_actor, set_actor
 from auditlog.models import GameAuditEvent
 from auditlog.recorders import record_event
 from django.contrib.auth import get_user_model
-from django.utils import timezone
-
-from srl.models import ReconciliationJob, SRCSyncTask
-from srl.models.reconciliation import ReconPhase, ReconStatus
-from srl.srcom.reconciliation import (
-    decrement_pending,
-    finalize_after_drain,
-    flush_counts,
-)
+from srl.models import SRCSyncTask
 from srl.srcom.utils import variables_hash
 
 logger = logging.getLogger(__name__)
@@ -137,51 +129,3 @@ def recalc_lock_key(
     var_map = leaderboard_dict.get("variable_value_map") or {}
     vh = variables_hash(var_map) if var_map else ""
     return f"recalc:lock:{game_id}:{category_id}:{level_id}:{vh}:{runtype}"
-
-
-def init_recon_job(
-    job: "ReconciliationJob",
-    celery_task_id: str,
-) -> None:
-    """Mark a reconciliation job RUNNING in phase 1 with one pending child (self)."""
-    job.celery_task_id = celery_task_id or ""
-    job.status = ReconStatus.RUNNING.value
-    job.phase = ReconPhase.P1.value
-    job.started_at = timezone.now()
-    job.pending_children = 1
-    job.save(
-        update_fields=[
-            "celery_task_id",
-            "status",
-            "phase",
-            "started_at",
-            "pending_children",
-        ],
-    )
-
-
-@contextmanager
-def recon_job_finalize(
-    job_id: str,
-) -> Iterator[None]:
-    """Drain phase counters and finalize on exit. Logs helper failures rather than
-    silently swallowing them (the old `except Exception: pass` blocks made stalled
-    jobs invisible)."""
-    try:
-        yield
-    finally:
-        try:
-            flush_counts()
-        except Exception:
-            logger.exception(
-                "recon_flush_counts_failed",
-                extra={"job_id": job_id},
-            )
-        try:
-            if decrement_pending(job_id):
-                finalize_after_drain(job_id)
-        except Exception:
-            logger.exception(
-                "recon_finalize_failed",
-                extra={"job_id": job_id},
-            )
