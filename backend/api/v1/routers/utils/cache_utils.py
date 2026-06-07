@@ -1,6 +1,7 @@
 import hashlib
 from typing import Any, Callable
 
+from accounts.models import CustomUser
 from django.core.cache import caches
 from django.db.models import Max, Min, Q, QuerySet
 from django.utils import timezone
@@ -58,6 +59,43 @@ def _timing_config_querysets(
     ]
 
 
+def _player_display_querysets(
+    *,
+    game_id: str | None = None,
+    player_id: str | None = None,
+    run_id: str | None = None,
+) -> list[QuerySet]:
+    """Player + linked-user rows whose `updated_at` must bust caches that embed player display data.
+
+    Scope to the players a given cache can embed; pass nothing for global boards
+    that may show any player. Scoping is a safe superset (it never excludes a
+    player a board shows), so over-invalidation is acceptable but staleness is
+    not.
+
+    Arguments:
+        game_id (str | None): Restrict to players who have a run in this game.
+        player_id (str | None): Restrict to a single player.
+        run_id (str | None): Restrict to players who appear on this run.
+
+    Returns:
+        list[QuerySet]: ``[players_qs, users_qs]`` for `_cached_timestamp`.
+    """
+    players = Players.objects.all()
+    users = CustomUser.objects.filter(player__isnull=False)
+
+    if game_id is not None:
+        players = players.filter(player_runs__run__game_id=game_id)
+        users = users.filter(player__player_runs__run__game_id=game_id)
+    if player_id is not None:
+        players = players.filter(id=player_id)
+        users = users.filter(player__id=player_id)
+    if run_id is not None:
+        players = players.filter(player_runs__run_id=run_id)
+        users = users.filter(player__player_runs__run_id=run_id)
+
+    return [players, users]
+
+
 def leaderboard_cache_key(
     game_id: str,
     category_id: str,
@@ -78,6 +116,7 @@ def leaderboard_cache_key(
         [
             Runs.objects.filter(**filters),
             *_timing_config_querysets(game_id, category_id=category_id),
+            *_player_display_querysets(game_id=game_id),
         ],
     )
 
@@ -98,7 +137,10 @@ def leaderboard_cache_key(
 def overall_leaderboard_cache_key() -> str:
     timestamp = _cached_timestamp(
         "ts:lb:overall",
-        Runs.objects.filter(obsolete=False, vid_status="verified"),
+        [
+            Runs.objects.filter(obsolete=False, vid_status="verified"),
+            *_player_display_querysets(),
+        ],
     )
 
     return f"leaderboard:overall:{timestamp}"
@@ -116,6 +158,7 @@ def game_leaderboard_cache_key(
                 vid_status="verified",
             ),
             *_timing_config_querysets(game_id),
+            *_player_display_querysets(game_id=game_id),
         ],
     )
 
@@ -127,7 +170,10 @@ def player_cache_key(
 ) -> str:
     timestamp = _cached_timestamp(
         f"ts:player:{user_id}",
-        Runs.objects.filter(run_players__player__id=user_id),
+        [
+            Runs.objects.filter(run_players__player__id=user_id),
+            *_player_display_querysets(player_id=user_id),
+        ],
     )
 
     return f"player_stats:{user_id}:{timestamp}"
@@ -150,7 +196,10 @@ def wr_cache_key(
 
     timestamp = _cached_timestamp(
         f"ts:wr:{game_id}:{category_id}:{level_id}",
-        Runs.objects.filter(**filters),
+        [
+            Runs.objects.filter(**filters),
+            *_player_display_querysets(game_id=game_id),
+        ],
     )
 
     return f"wr:game:{game_id}:cat:{category_id}:level{level_id}:{timestamp}"
@@ -159,7 +208,10 @@ def wr_cache_key(
 def main_wrs_cache_key() -> str:
     timestamp = _cached_timestamp(
         "ts:main:wrs",
-        Runs.objects.filter(place=1, obsolete=False, vid_status="verified"),
+        [
+            Runs.objects.filter(place=1, obsolete=False, vid_status="verified"),
+            *_player_display_querysets(),
+        ],
     )
 
     return f"main:wrs:{timestamp}"
@@ -168,7 +220,10 @@ def main_wrs_cache_key() -> str:
 def main_pbs_cache_key() -> str:
     timestamp = _cached_timestamp(
         "ts:main:pbs",
-        Runs.objects.filter(place__gt=1, obsolete=False, vid_status="verified"),
+        [
+            Runs.objects.filter(place__gt=1, obsolete=False, vid_status="verified"),
+            *_player_display_querysets(),
+        ],
     )
 
     return f"main:pbs:{timestamp}"
@@ -177,13 +232,16 @@ def main_pbs_cache_key() -> str:
 def main_records_cache_key() -> str:
     run_ts = _cached_timestamp(
         "ts:main:records:runs",
-        Runs.objects.filter(
-            place=1,
-            obsolete=False,
-            runtype="main",
-            category__appear_on_main=True,
-            vid_status="verified",
-        ),
+        [
+            Runs.objects.filter(
+                place=1,
+                obsolete=False,
+                runtype="main",
+                category__appear_on_main=True,
+                vid_status="verified",
+            ),
+            *_player_display_querysets(),
+        ],
     )
 
     cat_ts = _cached_timestamp(
@@ -221,10 +279,13 @@ def main_players_runs_cache_key(
 
     timestamp = _cached_timestamp(
         f"ts:player:runs:{player_data}",
-        Runs.objects.filter(
-            run_players__player=player_data,
-            vid_status="verified",
-        ),
+        [
+            Runs.objects.filter(
+                run_players__player=player_data,
+                vid_status="verified",
+            ),
+            *_player_display_querysets(player_id=player_data),
+        ],
     )
 
     return f"player:runs:{player_data}:{timestamp}"
@@ -275,7 +336,10 @@ def run_cache_key(
 ) -> str:
     timestamp = _cached_timestamp(
         f"ts:run:{run_id}",
-        Runs.objects.filter(id=run_id),
+        [
+            Runs.objects.filter(id=run_id),
+            *_player_display_querysets(run_id=run_id),
+        ],
     )
 
     return f"run:{run_id}:{timestamp}"
@@ -307,6 +371,7 @@ def lbs_runs_cache_key(
                 vid_status="verified",
             ),
             *_timing_config_querysets(game_id, category_id=category_id),
+            *_player_display_querysets(game_id=game_id),
         ],
     )
 
@@ -347,6 +412,7 @@ def lbs_game_recent_cache_key(
                 vid_status="verified",
             ),
             *_timing_config_querysets(game_id),
+            *_player_display_querysets(game_id=game_id),
         ],
     )
 
@@ -367,6 +433,7 @@ def lbs_il_summary_cache_key(
                 vid_status="verified",
             ),
             *_timing_config_querysets(game_id),
+            *_player_display_querysets(game_id=game_id),
         ],
     )
 
@@ -392,6 +459,7 @@ def lbs_il_runs_cache_key(
                 vid_status="verified",
             ),
             *_timing_config_querysets(game_id, category_id=category_id),
+            *_player_display_querysets(game_id=game_id),
         ],
     )
 
@@ -458,7 +526,10 @@ def history_cache_key(
 
     timestamp = _cached_timestamp(
         f"ts:history:{game_id}:{category_id}:{level_id}",
-        Runs.objects.filter(**filters),
+        [
+            Runs.objects.filter(**filters),
+            *_player_display_querysets(game_id=game_id),
+        ],
     )
 
     values_str = ",".join(sorted(value_slugs)) if value_slugs else "all"

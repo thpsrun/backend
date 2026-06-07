@@ -294,8 +294,135 @@ class RunsWriteTest(AuthTestBase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["id"], "toupdate")
-        self.assertEqual(data["place"], 1)
+        self.assertEqual(data["place"], 5)
         self.assertEqual(data["times"]["time"], "5m 00s")
+
+    def test_create_slower_run_is_obsoleted(
+        self,
+    ) -> None:
+        """POST /runs marks a player's newly added slower run obsolete (keep-best)."""
+        fast = Runs.objects.create(
+            id="pbfast",
+            game=self.game,
+            category=self.category,
+            runtype="main",
+            place=1,
+            url="https://speedrun.com/test-game/run/pbfast",
+            time="5m 00s",
+            time_secs=300.0,
+            vid_status="verified",
+            date=timezone.make_aware(datetime.datetime(2024, 1, 1)),
+            v_date=timezone.make_aware(datetime.datetime(2024, 1, 2)),
+        )
+        RunPlayers.objects.create(run=fast, player=self.player, order=1)
+
+        response = self.client.post(
+            "/",
+            json={
+                "id": "pbslow",
+                "game_id": "game1",
+                "category_id": "cat1",
+                "runtype": "main",
+                "place": 2,
+                "url": "https://speedrun.com/test-game/run/pbslow",
+                "time": "6m 00s",
+                "time_secs": 360.0,
+                "player_ids": ["player1"],
+            },  # type: ignore
+            headers={"X-API-Key": self.api_key},
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(response.json()["obsolete"])
+
+        fast.refresh_from_db()
+        slow = Runs.objects.get(id="pbslow")
+        self.assertFalse(fast.obsolete)
+        self.assertTrue(slow.obsolete)
+
+    def test_create_faster_run_obsoletes_existing(
+        self,
+    ) -> None:
+        """A newly created faster run obsoletes the same player's existing slower run."""
+        slow = Runs.objects.create(
+            id="oldslow",
+            game=self.game,
+            category=self.category,
+            runtype="main",
+            place=1,
+            url="https://speedrun.com/test-game/run/oldslow",
+            time="6m 00s",
+            time_secs=360.0,
+            vid_status="verified",
+            date=timezone.make_aware(datetime.datetime(2024, 1, 1)),
+            v_date=timezone.make_aware(datetime.datetime(2024, 1, 2)),
+        )
+        RunPlayers.objects.create(run=slow, player=self.player, order=1)
+
+        response = self.client.post(
+            "/",
+            json={
+                "id": "newfast",
+                "game_id": "game1",
+                "category_id": "cat1",
+                "runtype": "main",
+                "place": 1,
+                "url": "https://speedrun.com/test-game/run/newfast",
+                "time": "5m 00s",
+                "time_secs": 300.0,
+                "player_ids": ["player1"],
+            },  # type: ignore
+            headers={"X-API-Key": self.api_key},
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertFalse(response.json()["obsolete"])
+
+        slow.refresh_from_db()
+        fast = Runs.objects.get(id="newfast")
+        self.assertTrue(slow.obsolete)
+        self.assertFalse(fast.obsolete)
+
+    def test_create_does_not_obsolete_other_players(
+        self,
+    ) -> None:
+        """Keep-best dedup is per player: a different player's run is untouched."""
+        other = Players.objects.create(
+            id="player2",
+            name="OtherPlayer",
+            url="https://speedrun.com/user/OtherPlayer",
+        )
+        other_run = Runs.objects.create(
+            id="otherpb",
+            game=self.game,
+            category=self.category,
+            runtype="main",
+            place=1,
+            url="https://speedrun.com/test-game/run/otherpb",
+            time="4m 00s",
+            time_secs=240.0,
+            vid_status="verified",
+            date=timezone.make_aware(datetime.datetime(2024, 1, 1)),
+            v_date=timezone.make_aware(datetime.datetime(2024, 1, 2)),
+        )
+        RunPlayers.objects.create(run=other_run, player=other, order=1)
+
+        response = self.client.post(
+            "/",
+            json={
+                "id": "p1run",
+                "game_id": "game1",
+                "category_id": "cat1",
+                "runtype": "main",
+                "place": 2,
+                "url": "https://speedrun.com/test-game/run/p1run",
+                "time": "6m 00s",
+                "time_secs": 360.0,
+                "player_ids": ["player1"],
+            },  # type: ignore
+            headers={"X-API-Key": self.api_key},
+        )
+        self.assertEqual(response.status_code, 201)
+        other_run.refresh_from_db()
+        self.assertFalse(other_run.obsolete)
 
     def test_delete_run(
         self,
@@ -631,8 +758,7 @@ class RunsTimingSubmission(AuthTestBase):
         self.assertTrue(run.has_import_issues)
         self.assertTrue(
             any(
-                issue["type"] == "missing_timing_methods"
-                and "igt" in issue["methods"]
+                issue["type"] == "missing_timing_methods" and "igt" in issue["methods"]
                 for issue in run.import_issues
             ),
         )

@@ -1,3 +1,34 @@
+### v4.2
+###### June 6, 2026
+*   Added
+    *   Added more title breadcrumbs throughout the site instead of just `thps.run` everywhere.
+    *   Added some additional functionality to forward more errors and issues with Celery agents to Sentry.io.
+        *   There's been issues with Celery agents hanging, so I need more data to see what is going on.
+
+*   Changed
+    *   Changed the "Return to Runner" workflow a bit to make it a little more understandable.
+
+*   Fixed
+    *   Fixed an issue where `/changelog` links failed to render properly.
+    *   Fixed an issue where the caching in multiple parts of the site was too strict, resulting in stale data for users who (for example) changed their nickname or gradients.
+        *   Before, thps.run only accounted for `Runs` based on their `updated_at` field. Now, it also accounts for user customizations.
+        *   To do this, had to add a `updated_at` field to `CustomUser` (which is the model account thps.run users use).
+        *   This also covers the historical/over-time ranking boards, which are cached the most aggressively (past months never expired): a nickname or gradient edit now clears them, but routine SRC syncs (which only touch SRC-sourced fields) deliberately do not, so those boards stay warm.
+    *   Fixed an issue where recalculation would get the wrong game ID and crash, resulting in stale numbers in some cases.
+        *   Also hardened the streak recalculation so a board queued for a game that no longer exists (e.g. deleted between enqueue and run) now quietly does nothing instead of crashing the Celery worker.
+    *   Fixed an issue where adding or re-adding a verified run through the `POST /runs` (and `PUT /runs`) API did not obsolete a player's slower runs on the same leaderboard, so one player could show several non-obsolete runs (with only the fastest scoring points).
+        *   The points recalc already knew which run was a player's best, but the `obsolete` flag was only ever set by the SRC path. The API path now checks for this like it should.
+    *   Fixed an issue where a world record re-verified through the SRC discovery/sync agent did not get its streak applied: `points` landed at the base maximum and the streak `bonus` (months) stayed unset.
+        *   `update_standings` scored the WR from the already-stored `bonus` but never wrote it, and the discovery path never ran the streak recalc. The single-run sync now chains the same `recalculate_streaks_task` the approval path uses, so streak months and streak-inclusive points get persisted.
+
+*   Removed
+    *   Removed part of the reconciliation engine.
+        *   Was having issues getting it to work with Celery nicely. Will re-attack this later if the need arises, but thps.run should never miss a run with other measures in place.
+    *   Removed `place` and `obsolete` from the the `PutUpdatedSchema`/`PUT /runs` API endpoints.
+        *   Placement, points, and obsolete is calculated upon approval.
+
+***
+
 ### v4.1.3
 ###### June 5, 2026
 *   Added some additional docker-compose stuff for Fedora/RHEL environments.

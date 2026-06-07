@@ -1,7 +1,7 @@
 import logging
 from collections import defaultdict
 
-from celery import shared_task
+from celery import chain, shared_task
 from django.db import transaction
 
 from srl.leaderboard.recalculation import get_leaderboard_time_column
@@ -20,16 +20,9 @@ from srl.srcom.categories import sync_categories
 from srl.srcom.import_progress import bump
 from srl.srcom.levels import sync_levels
 from srl.srcom.players import sync_players
-from srl.srcom.recon_accumulators import (
-    VariantKey,
-    add_affected_player,
-    add_affected_variant,
-)
 from srl.srcom.reconciliation import (
     check_cancelled,
-    check_reconciliation,
     current_job,
-    dispatch_with_recon,
     reconciliation_upsert_check,
 )
 from srl.srcom.schema.internal import RunSyncContext, RunSyncTimesContext
@@ -54,75 +47,72 @@ logger = logging.getLogger(__name__)
 def sync_game_runs(
     game_id: str,
     reset: int = 0,
-    recon_job_id: str | None = None,
     progress_key: str | None = None,
 ) -> None:
-    with check_reconciliation(recon_job_id):
-        dispatched = 0
-        try:
-            if reset == 1:
-                RunVariableValues.objects.filter(run__game__id=game_id).delete()
-                VariableValues.objects.filter(var__game__id=game_id).delete()
-                Variables.objects.filter(game=game_id).delete()
-                Categories.objects.filter(game=game_id).delete()
-                Levels.objects.filter(game=game_id).delete()
-                Runs.objects.filter(game=game_id, obsolete=False).delete()
+    dispatched = 0
+    try:
+        if reset == 1:
+            RunVariableValues.objects.filter(run__game__id=game_id).delete()
+            VariableValues.objects.filter(var__game__id=game_id).delete()
+            Variables.objects.filter(game=game_id).delete()
+            Categories.objects.filter(game=game_id).delete()
+            Levels.objects.filter(game=game_id).delete()
+            Runs.objects.filter(game=game_id, obsolete=False).delete()
 
-            game_check = src_api(
-                f"https://speedrun.com/api/v1/games/"
-                f"{game_id}?embed=platforms,levels,categories,variables"
-            )
-            if not isinstance(game_check, dict):
-                return
+        game_check = src_api(
+            f"https://speedrun.com/api/v1/games/"
+            f"{game_id}?embed=platforms,levels,categories,variables"
+        )
+        if not isinstance(game_check, dict):
+            return
 
-            game = SrcGamesModel.model_validate(game_check)
+        game = SrcGamesModel.model_validate(game_check)
 
-            for category in game.categories or []:
-                sync_categories(category)
-            for level in game.levels or []:
-                sync_levels(level)
-            for variable in game.variables or []:
-                sync_variables(variable)
+        for category in game.categories or []:
+            sync_categories(category)
+        for level in game.levels or []:
+            sync_levels(level)
+        for variable in game.variables or []:
+            sync_variables(variable)
 
-            variables = game.variables or []
-            for category in game.categories or []:
-                is_il = category.type == "per-level"
-                level_iter = game.levels if (is_il and game.levels) else [None]
+        variables = game.variables or []
+        for category in game.categories or []:
+            is_il = category.type == "per-level"
+            level_iter = game.levels if (is_il and game.levels) else [None]
 
-                for level in level_iter:
-                    combos = build_leaderboard_combos(
-                        variables=variables,
+            for level in level_iter:
+                combos = build_leaderboard_combos(
+                    variables=variables,
+                    category_id=category.id,
+                    is_il=is_il,
+                    level_id=level.id if level else None,
+                )
+                for combo in combos:
+                    check_cancelled()
+                    lb_data = create_leaderboard_link(
+                        game_id=game.id,
                         category_id=category.id,
-                        is_il=is_il,
-                        level_id=level.id if level else None,
+                        il_id=level.id if level else None,
+                        var_combo=combo if combo else None,
                     )
-                    for combo in combos:
-                        check_cancelled()
-                        lb_data = create_leaderboard_link(
-                            game_id=game.id,
-                            category_id=category.id,
-                            il_id=level.id if level else None,
-                            var_combo=combo if combo else None,
+                    if lb_data:
+                        sync_leaderboards.delay(
+                            lb_data,
+                            progress_key=progress_key,
                         )
-                        if lb_data:
-                            dispatch_with_recon(
-                                sync_leaderboards,
-                                lb_data,
-                                progress_key=progress_key,
-                            )
-                            dispatched += 1
-        finally:
-            if progress_key:
-                bump(
-                    progress_key,
-                    "lb_total",
-                    dispatched,
-                )
-                bump(
-                    progress_key,
-                    "games_enumerated",
-                    1,
-                )
+                        dispatched += 1
+    finally:
+        if progress_key:
+            bump(
+                progress_key,
+                "lb_total",
+                dispatched,
+            )
+            bump(
+                progress_key,
+                "games_enumerated",
+                1,
+            )
 
 
 def _build_base_context(
@@ -179,36 +169,33 @@ def _build_base_context(
 @shared_task
 def sync_leaderboards(
     leaderboard_data: dict,
-    recon_job_id: str | None = None,
     progress_key: str | None = None,
 ) -> None:
-    with check_reconciliation(recon_job_id):
-        failed = False
-        try:
-            src_lb = SrcLeaderboardModel.model_validate(leaderboard_data)
-            if not src_lb.runs:
-                return
-            if progress_key:
-                bump(
-                    progress_key,
-                    "runs_total",
-                    len(src_lb.runs),
-                )
-            base_context = _build_base_context(src_lb)
-            for lb_run in src_lb.runs:
-                check_cancelled()
-                run_context = base_context.model_copy(update={"runs_data": lb_run})
-                dispatch_with_recon(
-                    sync_run,
-                    run_context.model_dump(),
-                    progress_key=progress_key,
-                )
-        except Exception:
-            failed = True
-            raise
-        finally:
-            if progress_key:
-                bump(progress_key, "lb_failed" if failed else "lb_done")
+    failed = False
+    try:
+        src_lb = SrcLeaderboardModel.model_validate(leaderboard_data)
+        if not src_lb.runs:
+            return
+        if progress_key:
+            bump(
+                progress_key,
+                "runs_total",
+                len(src_lb.runs),
+            )
+        base_context = _build_base_context(src_lb)
+        for lb_run in src_lb.runs:
+            check_cancelled()
+            run_context = base_context.model_copy(update={"runs_data": lb_run})
+            sync_run.delay(
+                run_context.model_dump(),
+                progress_key=progress_key,
+            )
+    except Exception:
+        failed = True
+        raise
+    finally:
+        if progress_key:
+            bump(progress_key, "lb_failed" if failed else "lb_done")
 
 
 def _passes_scope_filter(
@@ -418,104 +405,92 @@ def _persist_obsolete_run(
 def sync_obsolete_runs(
     player: str,
     scope_filter: dict | None = None,
-    recon_job_id: str | None = None,
     progress_key: str | None = None,
 ) -> None:
-    with check_reconciliation(recon_job_id):
-        failed = False
-        try:
-            counters: dict[str, int] = defaultdict(int)
+    failed = False
+    try:
+        counters: dict[str, int] = defaultdict(int)
 
-            for raw_run in src_api_paginate(
-                f"https://speedrun.com/api/v1/runs?user={player}",
+        for raw_run in src_api_paginate(
+            f"https://speedrun.com/api/v1/runs?user={player}",
+        ):
+            counters["total"] += 1
+            try:
+                src_run = SrcRunsModel.model_validate(raw_run)
+            except Exception:
+                counters["validation_err"] += 1
+                continue
+
+            if src_run.status.status != "verified":
+                counters["unverified"] += 1
+                continue
+
+            run_variables: dict[str, str] = src_run.values or {}
+            if not _passes_scope_filter(
+                scope_filter,
+                game_id=src_run.game,
+                category_id=src_run.category,
+                level_id=src_run.level,
+                variables=run_variables,
             ):
-                counters["total"] += 1
-                try:
-                    src_run = SrcRunsModel.model_validate(raw_run)
-                except Exception:
-                    counters["validation_err"] += 1
-                    continue
+                counters["filter"] += 1
+                continue
 
-                if src_run.status.status != "verified":
-                    counters["unverified"] += 1
-                    continue
+            game_info = (
+                Games.objects.only("id", "defaulttime", "idefaulttime")
+                .filter(id=src_run.game)
+                .first()
+            )
+            if game_info is None:
+                counters["no_game"] += 1
+                continue
 
-                run_variables: dict[str, str] = src_run.values or {}
-                if not _passes_scope_filter(
-                    scope_filter,
-                    game_id=src_run.game,
-                    category_id=src_run.category,
-                    level_id=src_run.level,
-                    variables=run_variables,
-                ):
-                    counters["filter"] += 1
-                    continue
+            if not _ensure_category_for_obsolete_run(src_run):
+                counters["no_category"] += 1
+                continue
 
-                game_info = (
-                    Games.objects.only("id", "defaulttime", "idefaulttime")
-                    .filter(id=src_run.game)
-                    .first()
+            if not _ensure_level_for_obsolete_run(src_run):
+                counters["no_level"] += 1
+                continue
+
+            if Runs.objects.filter(id=src_run.id).exists():
+                counters["exists"] += 1
+                reconciliation_upsert_check(
+                    Runs,
+                    defaults={},
+                    record_type="run",
+                    id=src_run.id,
                 )
-                if game_info is None:
-                    counters["no_game"] += 1
-                    continue
+                continue
 
-                if not _ensure_category_for_obsolete_run(src_run):
-                    counters["no_category"] += 1
-                    continue
-
-                if not _ensure_level_for_obsolete_run(src_run):
-                    counters["no_level"] += 1
-                    continue
-
-                if Runs.objects.filter(id=src_run.id).exists():
-                    counters["exists"] += 1
-                    reconciliation_upsert_check(
-                        Runs,
-                        defaults={},
-                        record_type="run",
-                        id=src_run.id,
-                    )
-                    continue
-
-                try:
-                    _persist_obsolete_run(src_run, game_info)
-                except Exception:
-                    logger.exception(
-                        "sync_obsolete_runs failed",
-                        extra={"run_id": src_run.id, "player_id": player},
-                    )
-                    counters["db_err"] += 1
-                    continue
-
-                add_affected_variant(
-                    recon_job_id,
-                    VariantKey(
-                        game=src_run.game,
-                        category=src_run.category,
-                        level=src_run.level,
-                        variables_hash=variables_hash(run_variables),
-                    ),
+            try:
+                _persist_obsolete_run(src_run, game_info)
+            except Exception:
+                logger.exception(
+                    "sync_obsolete_runs failed",
+                    extra={"run_id": src_run.id, "player_id": player},
                 )
-                counters["created"] += 1
+                counters["db_err"] += 1
+                continue
 
-            if counters["created"] > 0:
-                try:
-                    _resolve_obsoleted_at_for_player(player)
-                except Exception:
-                    pass
-        except Exception:
-            failed = True
-            raise
-        finally:
-            if progress_key:
-                bump(progress_key, "players_failed" if failed else "players_done")
+            counters["created"] += 1
+
+        if counters["created"] > 0:
+            try:
+                _resolve_obsoleted_at_for_player(player)
+            except Exception:
+                pass
+    except Exception:
+        failed = True
+        raise
+    finally:
+        if progress_key:
+            bump(progress_key, "players_failed" if failed else "players_done")
 
 
 @shared_task(pydantic=True)
 def sync_run(
     context_data: RunSyncContext,
-    recon_job_id: str | None = None,
     progress_key: str | None = None,
 ) -> None:
     """Creates or updates a `Runs` model object based on the `context_data` argument.
@@ -523,182 +498,177 @@ def sync_run(
     Arguments:
         context_data (RunSyncContext): Pydantic context built from the leaderboards endpoint.
     """
-    with check_reconciliation(recon_job_id):
-        failed = False
-        try:
-            place = context_data.runs_data.place
-            run_data = context_data.runs_data.run
-            if run_data.players is None:
-                return
+    failed = False
+    try:
+        place = context_data.runs_data.place
+        run_data = context_data.runs_data.run
+        if run_data.players is None:
+            return
 
-            default: dict = create_run_default(
-                run_data=run_data.model_dump(),
-                place=place,
-                lrtfix=context_data.lrt_fix,
-            )
+        default: dict = create_run_default(
+            run_data=run_data.model_dump(),
+            place=place,
+            lrtfix=context_data.lrt_fix,
+        )
 
-            # When Phase 3 is kicked off, leaderboard and streaks recalculations are done. To
-            # prevent deadlock on the database, if a reconciliation is going on it will just set
-            # the points to 0. Otherwise it would assume world record incorrectly, fuck up the
-            # formula, give like a bajillion points to a SmallIntField, crash the bot, and I cry.
-            if current_job() is not None:
-                points = 0
-            elif place == 1:
-                points = context_data.max_points
-            elif place > 1:
-                base_wr_query = filter_by_variable_map(
-                    Runs.objects.filter(
-                        game=context_data.game_id,
-                        category_id=context_data.category_id,
-                        level_id=context_data.level_id,
-                        obsolete=False,
-                        place=1,
-                    ),
-                    context_data.variable_value_map,
-                )
-                if context_data.category_type == "per-game":
-                    wr_pull = base_wr_query.filter(runtype="main").first()
-                else:
-                    wr_pull = base_wr_query.filter(runtype="il").first()
-
-                # When a WR exists in the DB, read times via from_attributes;
-                # otherwise validate from the SrcRunsTimes payload (aliased fields).
-                if wr_pull is not None:
-                    wr_times = RunSyncTimesContext.model_validate(wr_pull)
-                else:
-                    wr_times = RunSyncTimesContext.model_validate(
-                        run_data.times.model_dump(),
-                    )
-
-                default_time = src_method_to_internal(context_data.default_time_type)
-                if default_time == "rta":
-                    wr = (
-                        wr_times.timeigt_secs
-                        if wr_times.time_secs == 0
-                        else wr_times.time_secs
-                    )
-                elif default_time == "lrt":
-                    wr = wr_times.timenl_secs
-                else:
-                    wr = (
-                        wr_times.time_secs
-                        if wr_times.timeigt_secs == 0
-                        else wr_times.timeigt_secs
-                    )
-
-                points = points_formula(
-                    wr=wr,
-                    run=run_data.times.primary_t,
-                    max_points=context_data.max_points,
-                    short=wr < 60,
-                )
-            else:
-                points = 0
-
-            default["points"] = points
-            default["obsolete"] = False
-            default["obsoleted_at"] = None
-
-            user_player_ids = [
-                p.id
-                for p in run_data.players
-                if p is not None and p.id and p.rel == "user"
-            ]
-
-            if run_data.level:
-                default["level_id"] = run_data.level
-
-            # Does a quick check to ensure every user exists in the database before we join. In rare
-            # circumstances, reconciliation can find a new runner and this could cause a foreign key
-            # violation and crash the entire job.
-            unique_player_ids = set(user_player_ids)
-            existing_ids = set(
-                Players.objects.filter(id__in=unique_player_ids).values_list(
-                    "id",
-                    flat=True,
-                ),
-            )
-            missing_ids = unique_player_ids - existing_ids
-            for pid in missing_ids:
-                sync_players(pid)
-
-            with transaction.atomic():
-                run_obj = reconciliation_upsert_check(
-                    Runs,
-                    defaults=default,
-                    record_type="run",
-                    id=run_data.id,
-                )
-
-                RunPlayers.objects.filter(run=run_obj).delete()
-                RunPlayers.objects.bulk_create(
-                    [
-                        RunPlayers(run=run_obj, player_id=pid, order=order)
-                        for order, pid in enumerate(user_player_ids, start=1)
-                    ],
-                )
-
-                for var_id, val_id in (run_data.values or {}).items():
-                    reconciliation_upsert_check(
-                        RunVariableValues,
-                        defaults={},
-                        record_type="run_variable_value",
-                        run=run_obj,
-                        variable_id=var_id,
-                        value_id=val_id,
-                    )
-
-            run_obj.refresh_import_issues()
-
-            job = current_job()
-            job_id = str(job.id) if job is not None else None
-            for pid in user_player_ids:
-                add_affected_player(job_id, pid)
-            add_affected_variant(
-                job_id,
-                VariantKey(
+        # When Phase 3 is kicked off, leaderboard and streaks recalculations are done. To
+        # prevent deadlock on the database, if a reconciliation is going on it will just set
+        # the points to 0. Otherwise it would assume world record incorrectly, fuck up the
+        # formula, give like a bajillion points to a SmallIntField, crash the bot, and I cry.
+        if current_job() is not None:
+            points = 0
+        elif place == 1:
+            points = context_data.max_points
+        elif place > 1:
+            base_wr_query = filter_by_variable_map(
+                Runs.objects.filter(
                     game=context_data.game_id,
-                    category=context_data.category_id,
-                    level=context_data.level_id,
-                    variables_hash=variables_hash(run_data.values or {}),
-                ),
-            )
-
-            # With reconciliation, we do a lot of database edits and would easily lead to a
-            # deadlock. This helps prevent standing updates from occurring until after
-            # reconciliation is done.
-            if place >= 1 and current_job() is None:
-                dispatch_with_recon(
-                    update_standings,
-                    is_wr=(place == 1),
-                    game_id=context_data.game_id,
                     category_id=context_data.category_id,
                     level_id=context_data.level_id,
-                    variable_value_map=context_data.variable_value_map,
-                    max_points=context_data.max_points,
-                    run_type=default["runtype"],
-                    default_time_type=context_data.default_time_type,
+                    obsolete=False,
+                    place=1,
+                ),
+                context_data.variable_value_map,
+            )
+            if context_data.category_type == "per-game":
+                wr_pull = base_wr_query.filter(runtype="main").first()
+            else:
+                wr_pull = base_wr_query.filter(runtype="il").first()
+
+            # When a WR exists in the DB, read times via from_attributes;
+            # otherwise validate from the SrcRunsTimes payload (aliased fields).
+            if wr_pull is not None:
+                wr_times = RunSyncTimesContext.model_validate(wr_pull)
+            else:
+                wr_times = RunSyncTimesContext.model_validate(
+                    run_data.times.model_dump(),
                 )
 
-            dispatch_with_recon(
-                update_obsolete,
+            default_time = src_method_to_internal(context_data.default_time_type)
+            if default_time == "rta":
+                wr = (
+                    wr_times.timeigt_secs
+                    if wr_times.time_secs == 0
+                    else wr_times.time_secs
+                )
+            elif default_time == "lrt":
+                wr = wr_times.timenl_secs
+            else:
+                wr = (
+                    wr_times.time_secs
+                    if wr_times.timeigt_secs == 0
+                    else wr_times.timeigt_secs
+                )
+
+            points = points_formula(
+                wr=wr,
+                run=run_data.times.primary_t,
+                max_points=context_data.max_points,
+                short=wr < 60,
+            )
+        else:
+            points = 0
+
+        default["points"] = points
+        default["obsolete"] = False
+        default["obsoleted_at"] = None
+
+        user_player_ids = [
+            p.id for p in run_data.players if p is not None and p.id and p.rel == "user"
+        ]
+
+        if run_data.level:
+            default["level_id"] = run_data.level
+
+        # Does a quick check to ensure every user exists in the database before we join. In rare
+        # circumstances, reconciliation can find a new runner and this could cause a foreign key
+        # violation and crash the entire job.
+        unique_player_ids = set(user_player_ids)
+        existing_ids = set(
+            Players.objects.filter(id__in=unique_player_ids).values_list(
+                "id",
+                flat=True,
+            ),
+        )
+        missing_ids = unique_player_ids - existing_ids
+        for pid in missing_ids:
+            sync_players(pid)
+
+        with transaction.atomic():
+            run_obj = reconciliation_upsert_check(
+                Runs,
+                defaults=default,
+                record_type="run",
+                id=run_data.id,
+            )
+
+            RunPlayers.objects.filter(run=run_obj).delete()
+            RunPlayers.objects.bulk_create(
+                [
+                    RunPlayers(run=run_obj, player_id=pid, order=order)
+                    for order, pid in enumerate(user_player_ids, start=1)
+                ],
+            )
+
+            for var_id, val_id in (run_data.values or {}).items():
+                reconciliation_upsert_check(
+                    RunVariableValues,
+                    defaults={},
+                    record_type="run_variable_value",
+                    run=run_obj,
+                    variable_id=var_id,
+                    value_id=val_id,
+                )
+
+        run_obj.refresh_import_issues()
+
+        # During a bounded reconcile (current_job set) runs land with points=0 and the job
+        # recomputes each affected variant inline afterward, so skip the incremental standings
+        # update here; outside reconciliation, update places immediately.
+        if place >= 1 and current_job() is None:
+            standings_sig = update_standings.si(
+                is_wr=(place == 1),
                 game_id=context_data.game_id,
                 category_id=context_data.category_id,
                 level_id=context_data.level_id,
                 variable_value_map=context_data.variable_value_map,
-                players=[p.model_dump() for p in run_data.players if p is not None],
+                max_points=context_data.max_points,
                 run_type=default["runtype"],
-                default_time_type=context_data.default_time_type,
             )
+            if place == 1:
+                from srl.tasks import recalculate_streaks_task
 
-            for pid in unique_player_ids - missing_ids:
-                sync_players(pid)
-        except Exception:
-            failed = True
-            raise
-        finally:
-            if progress_key:
-                bump(progress_key, "runs_failed" if failed else "runs_done")
+                leaderboard = {
+                    "game_id": context_data.game_id,
+                    "category_id": context_data.category_id,
+                    "level_id": context_data.level_id,
+                    "runtype": default["runtype"],
+                    "variable_value_map": context_data.variable_value_map,
+                }
+                chain(
+                    standings_sig,
+                    recalculate_streaks_task.si(leaderboard),
+                ).delay()
+            else:
+                standings_sig.delay()
+
+        update_obsolete.delay(
+            game_id=context_data.game_id,
+            category_id=context_data.category_id,
+            level_id=context_data.level_id,
+            variable_value_map=context_data.variable_value_map,
+            players=[p.model_dump() for p in run_data.players if p is not None],
+            run_type=default["runtype"],
+        )
+
+        for pid in unique_player_ids - missing_ids:
+            sync_players(pid)
+    except Exception:
+        failed = True
+        raise
+    finally:
+        if progress_key:
+            bump(progress_key, "runs_failed" if failed else "runs_done")
 
 
 @shared_task

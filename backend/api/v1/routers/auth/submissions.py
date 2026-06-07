@@ -2,31 +2,6 @@ import logging
 from datetime import datetime
 
 import requests as http_requests
-from django.conf import settings
-from django.db import transaction
-from django.http import HttpRequest
-from django.utils import timezone
-from django.utils.dateparse import parse_date, parse_datetime
-from ninja import Router, Status
-from srl.encryption import decrypt_src_key
-from srl.leaderboard.trigger import recalculate_run
-from srl.models import BotSession, Players, Runs, RunVariableValues, SRCSyncTask
-from srl.models.base import METHOD_TO_TIME_FIELD
-from srl.models.categories import Categories
-from srl.models.games import Games
-from srl.models.levels import Levels
-from srl.models.platforms import Platforms
-from srl.models.run_players import RunPlayers
-from srl.models.variable_values import VariableValues
-from srl.models.variables import Variables
-from srl.srcom.v2 import is_v2_enabled
-from srl.srcom.v2.client import SrcV2Client, SrcV2Error
-from srl.srcom.v2.runs import build_submit_payload
-from srl.tasks import sync_src_action
-from srl.time_parser import parse_time
-from srl.timing import resolve_timing
-from srl.utils import convert_time
-
 from api.permissions import authed, session_only
 from api.rate_limiting import auth_rate_limit
 from api.v1.routers.auth.moderation import (
@@ -54,6 +29,30 @@ from api.v1.schemas.submissions import (
     VerifyRejectRequest,
     VerifyRejectResponse,
 )
+from django.conf import settings
+from django.db import transaction
+from django.http import HttpRequest
+from django.utils import timezone
+from django.utils.dateparse import parse_date, parse_datetime
+from ninja import Router, Status
+from srl.encryption import decrypt_src_key
+from srl.leaderboard.trigger import recalculate_run_sync
+from srl.models import BotSession, Players, Runs, RunVariableValues, SRCSyncTask
+from srl.models.base import METHOD_TO_TIME_FIELD
+from srl.models.categories import Categories
+from srl.models.games import Games
+from srl.models.levels import Levels
+from srl.models.platforms import Platforms
+from srl.models.run_players import RunPlayers
+from srl.models.variable_values import VariableValues
+from srl.models.variables import Variables
+from srl.srcom.v2 import is_v2_enabled
+from srl.srcom.v2.client import SrcV2Client, SrcV2Error
+from srl.srcom.v2.runs import build_submit_payload
+from srl.tasks import sync_src_action
+from srl.time_parser import parse_time
+from srl.timing import resolve_timing
+from srl.utils import convert_time
 
 logger = logging.getLogger(__name__)
 
@@ -378,7 +377,7 @@ def update_run_status(
                 action_in=action_in,
                 actor_player=player,
             )
-            run.save(update_fields=["vid_status", "approver"])
+            run.save(update_fields=["vid_status", "approver", "place", "obsolete"])
     except ModerationError as e:
         return Status(
             e.code,
@@ -391,7 +390,7 @@ def update_run_status(
             if getattr(request.user, "is_authenticated", False)
             else None
         )
-        recalculate_run(run, actor_user_id=actor_user_id_for_recalc)
+        recalculate_run_sync(run, actor_user_id=actor_user_id_for_recalc)
 
     actor_user_id = (
         request.user.pk if getattr(request.user, "is_authenticated", False) else None

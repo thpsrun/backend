@@ -161,10 +161,6 @@ class BackabilityTests(TestCase):
     def test_su_only_cap_revoked_when_superuser_lost(
         self,
     ) -> None:
-        """Regression: runs.delete is superuser-only, but the old check used
-        games.manage as a proxy — a demoted-from-SU but still-mod user kept
-        their runs.delete key marked backable when it shouldn't have been.
-        """
         game = _make_game("bkgm5")
         player = Players.objects.create(
             id="bkp5",

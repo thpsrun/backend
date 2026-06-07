@@ -6,6 +6,9 @@ from datetime import datetime
 from datetime import timezone as dt_tz
 from typing import Any
 
+from api.backability import is_key_backable
+from api.models import APIKey, APIKeyRevokedReason
+from api.v1.routers.utils.cache_utils import _HISTORY_CACHE_PREFIX
 from auditlog.context import get_actor
 from auditlog.models import GameAuditEvent
 from auditlog.recorders import record_event
@@ -27,10 +30,6 @@ from srl.models.games import Games
 from srl.models.players import Players
 from srl.tasks import rebackfill_game_runs
 
-from api.backability import is_key_backable
-from api.models import APIKey, APIKeyRevokedReason
-from api.v1.routers.utils.cache_utils import _HISTORY_CACHE_PREFIX
-
 logger = logging.getLogger(__name__)
 
 _GAME_TIMING_FIELDS = frozenset(
@@ -42,6 +41,20 @@ _GAME_TIMING_FIELDS = frozenset(
     },
 )
 _CHILD_TIMING_FIELDS = frozenset({"defaulttime", "required_methods"})
+
+_GRADIENT_FIELDS = ("gradient_1", "gradient_2", "gradient_3")
+
+
+def _clear_history_boards() -> None:
+    """Drop every cached historical points board.
+
+    `delete_pattern` is a django-redis extension; guard for backends that lack
+    it (e.g. LocMemCache in tests) so a profile edit never raises there.
+    """
+    cache = caches["default"]
+    delete_pattern = getattr(cache, "delete_pattern", None)
+    if delete_pattern is not None:
+        delete_pattern(f"{_HISTORY_CACHE_PREFIX}:*")
 
 
 def _actor_user_id() -> int | None:
@@ -462,6 +475,67 @@ def on_runhistory_saved(
         )
 
     _invalidate_earliest(scopes)
+
+
+@receiver(
+    pre_save,
+    sender=Players,
+    dispatch_uid="api.signals.flag_player_nickname_change",
+)
+def flag_player_nickname_change(sender, instance: Players, **kwargs) -> None:
+    """Stash on the instance whether this save changes the (display) nickname."""
+    if kwargs.get("raw"):
+        instance._nickname_dirty = False
+        return
+    if instance.pk is None:
+        instance._nickname_dirty = bool(instance.nickname)
+        return
+    old = (
+        sender.objects.filter(pk=instance.pk).values_list("nickname", flat=True).first()
+    )
+    instance._nickname_dirty = old != instance.nickname
+
+
+@receiver(
+    post_save,
+    sender=Players,
+    dispatch_uid="api.signals.invalidate_history_on_nickname",
+)
+def invalidate_history_on_nickname(sender, instance: Players, **kwargs) -> None:
+    if kwargs.get("raw"):
+        return
+    if getattr(instance, "_nickname_dirty", False):
+        _clear_history_boards()
+
+
+@receiver(
+    pre_save,
+    sender=settings.AUTH_USER_MODEL,
+    dispatch_uid="api.signals.flag_user_gradient_change",
+)
+def flag_user_gradient_change(sender, instance, **kwargs) -> None:
+    """Stash on the instance whether this save changes any name-gradient field."""
+    if kwargs.get("raw"):
+        instance._gradient_dirty = False
+        return
+    new = tuple(getattr(instance, field) for field in _GRADIENT_FIELDS)
+    if instance.pk is None:
+        instance._gradient_dirty = any(new)
+        return
+    old = sender.objects.filter(pk=instance.pk).values_list(*_GRADIENT_FIELDS).first()
+    instance._gradient_dirty = old is not None and old != new
+
+
+@receiver(
+    post_save,
+    sender=settings.AUTH_USER_MODEL,
+    dispatch_uid="api.signals.invalidate_history_on_gradient",
+)
+def invalidate_history_on_gradient(sender, instance, **kwargs) -> None:
+    if kwargs.get("raw"):
+        return
+    if getattr(instance, "_gradient_dirty", False):
+        _clear_history_boards()
 
 
 @contextlib.contextmanager

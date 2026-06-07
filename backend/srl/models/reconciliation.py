@@ -93,8 +93,6 @@ class ReconciliationJob(models.Model):
     counts_failed = models.IntegerField(default=0)
     error_summary = models.TextField(blank=True, default="")
     celery_task_id = models.CharField(max_length=128, blank=True, default="")
-    pending_children = models.IntegerField(default=0)
-    failure_count = models.IntegerField(default=0)
 
     class Meta:
         indexes = [

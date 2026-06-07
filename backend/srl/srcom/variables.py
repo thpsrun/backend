@@ -1,10 +1,7 @@
 from celery import shared_task
 from django.db import transaction
-
 from srl.models import Games, Variables, VariableValues
 from srl.srcom.reconciliation import (
-    check_reconciliation,
-    dispatch_with_recon,
     reconciliation_upsert_check,
 )
 from srl.srcom.schema.src import SrcVariablesModel
@@ -46,27 +43,25 @@ def sync_variables(
         )
 
     if src_variable.is_subcategory:
-        dispatch_with_recon(sync_values, src_variable.model_dump())
+        sync_values.delay(src_variable.model_dump())
 
 
 @shared_task(pydantic=True)
 def sync_values(
     src_variable: SrcVariablesModel | dict,
-    recon_job_id: str | None = None,
 ) -> None:
-    with check_reconciliation(recon_job_id):
-        if isinstance(src_variable, dict):
-            src_variable = SrcVariablesModel.model_validate(src_variable)
+    if isinstance(src_variable, dict):
+        src_variable = SrcVariablesModel.model_validate(src_variable)
 
-        for value_id, value_data in src_variable.values.values.items():
-            with transaction.atomic():
-                reconciliation_upsert_check(
-                    VariableValues,
-                    defaults={
-                        "var": Variables.objects.only("id").get(id=src_variable.id),
-                        "name": value_data.label,
-                        "rules": value_data.rules,
-                    },
-                    record_type="variable_value",
-                    value=value_id,
-                )
+    for value_id, value_data in src_variable.values.values.items():
+        with transaction.atomic():
+            reconciliation_upsert_check(
+                VariableValues,
+                defaults={
+                    "var": Variables.objects.only("id").get(id=src_variable.id),
+                    "name": value_data.label,
+                    "rules": value_data.rules,
+                },
+                record_type="variable_value",
+                value=value_id,
+            )

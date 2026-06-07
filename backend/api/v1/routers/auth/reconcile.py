@@ -6,10 +6,11 @@ from django.http import HttpRequest
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from ninja import Router
+from ninja.errors import HttpError
 from srl.models import ReconciliationJob
 from srl.models.reconciliation import ReconAction, ReconStatus
 from srl.srcom.reconciliation import acquire_lock, lock_holder, release_lock
-from srl.tasks import run_reconciliation_job, run_series_reconciliation
+from srl.tasks import run_bounded_game_reconciliation
 
 from api.permissions import authed
 from api.v1.schemas.reconciliation import (
@@ -58,7 +59,9 @@ def _compute_breakdown(
     return dict(breakdown)
 
 
-def _job_to_out(job: ReconciliationJob) -> dict:
+def _job_to_out(
+    job: ReconciliationJob,
+) -> dict:
     return {
         "id": job.id,
         "scope": job.scope,
@@ -77,6 +80,12 @@ def _job_to_out(job: ReconciliationJob) -> dict:
     }
 
 
+def _dispatch_recon_job(
+    job_id: str,
+) -> None:
+    run_bounded_game_reconciliation.delay(job_id)
+
+
 @router.post(
     "/admin/reconcile",
     auth=authed("reconcile.admin"),
@@ -92,6 +101,9 @@ def start_reconciliation(
     request: HttpRequest,
     payload: ReconcileRequest,
 ):
+    if payload.scope != ReconcileScope.GAME:
+        raise HttpError(422, "Only GAME-scope reconciliation is supported.")
+
     job = ReconciliationJob.objects.create(
         scope=payload.scope.value,
         target_id=payload.target_id or "",
@@ -108,10 +120,7 @@ def start_reconciliation(
             detail="A reconciliation is already in progress for this target.",
             existing_job_id=UUID(existing_id),
         )
-    if payload.scope == ReconcileScope.SERIES:
-        run_series_reconciliation.delay(str(job.id))
-    else:
-        run_reconciliation_job.delay(str(job.id))
+    _dispatch_recon_job(str(job.id))
     return 202, _job_to_out(job)
 
 

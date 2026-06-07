@@ -310,6 +310,35 @@ class ApplyModerationTests(TestCase):
         self.run.refresh_from_db()
         self.assertEqual(self.run.vid_status, "review")
 
+    def test_runupdateschema_excludes_system_fields(self) -> None:
+        """RunUpdateSchema must not expose system-owned fields to moderators."""
+        from api.v1.schemas.runs import RunUpdateSchema
+
+        for field in ("place", "obsolete", "approver_id", "v_date"):
+            self.assertNotIn(
+                field,
+                RunUpdateSchema.model_fields,
+                f"{field} must not be moderator-editable",
+            )
+
+    def test_verify_resets_place_obsolete_and_sets_approver(self) -> None:
+        """Approval gives the run a clean slate so recalc can place it correctly."""
+        self.run.place = 7
+        self.run.obsolete = True
+        self.run.save(update_fields=["place", "obsolete"])
+
+        sync_task = _apply_moderation(
+            run=self.run,
+            action_in=ModeratorActionIn(action="verify"),
+            actor_player=self.player,
+        )
+
+        self.assertEqual(self.run.vid_status, "verified")
+        self.assertEqual(self.run.place, 0)
+        self.assertFalse(self.run.obsolete)
+        self.assertEqual(self.run.approver, self.player)
+        self.assertEqual(sync_task.moderator, self.player)
+
 
 class UpdateRunModeratorActionTests(TestCase):
     """PUT /runs/:run_id with moderator_action - atomic data + verdict.

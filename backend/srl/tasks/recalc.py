@@ -7,19 +7,14 @@ from auditlog.recorders import record_event
 from celery import chain, shared_task
 from celery.exceptions import MaxRetriesExceededError
 from django.core.management import call_command
-from django.db import transaction
 from django_redis import get_redis_connection
 
 from srl.leaderboard.recalculation import (
-    build_leaderboard_metadata,
-    clear_leaderboard_history,
     get_leaderboard_time_column,
     get_runs_for_leaderboard,
-    process_leaderboard,
 )
 from srl.leaderboard.streaks import apply_streak_to_run
 from srl.models import Games, Runs, RunVariableValues
-from srl.srcom.reconciliation import check_reconciliation
 from srl.srcom.utils import variables_hash
 
 from ._common import (
@@ -30,12 +25,16 @@ from ._common import (
 )
 
 
-@shared_task(bind=True, name="srl.tasks.recalculate_leaderboard_task")
+@shared_task(
+    bind=True,
+    name="srl.tasks.recalculate_leaderboard_task",
+    acks_late=True,
+    reject_on_worker_lost=True,
+)
 def recalculate_leaderboard_task(
     self,
     leaderboard_dict: dict,
     *,
-    recon_job_id: str | None = None,
     actor_user_id: int | None = None,
 ) -> None:
     """Recalculate points and history for a single leaderboard variant.
@@ -53,22 +52,14 @@ def recalculate_leaderboard_task(
             raise self.retry(countdown=30, max_retries=3)
         except MaxRetriesExceededError:
             with actor_from_user_id(actor_user_id):
-                with check_reconciliation(recon_job_id):
-                    return
+                return
             return
 
     try:
         with actor_from_user_id(actor_user_id):
-            with check_reconciliation(recon_job_id):
-                _, game_is_ce, *_ = build_leaderboard_metadata([leaderboard_dict])
+            from srl.leaderboard.recompute import run_leaderboard_recompute
 
-                with transaction.atomic():
-                    clear_leaderboard_history(leaderboard_dict)
-                    process_leaderboard(
-                        leaderboard_dict,
-                        dry_run=False,
-                        game_is_ce=game_is_ce,
-                    )
+            run_leaderboard_recompute(leaderboard_dict)
     finally:
         try:
             redis.delete(lock_key)
@@ -79,37 +70,39 @@ def recalculate_leaderboard_task(
             )
 
 
-@shared_task(name="srl.tasks.recalculate_streaks_task")
+@shared_task(
+    name="srl.tasks.recalculate_streaks_task",
+    acks_late=True,
+    reject_on_worker_lost=True,
+)
 def recalculate_streaks_task(
     leaderboard_dict: dict,
     *,
-    recon_job_id: str | None = None,
     actor_user_id: int | None = None,
 ) -> None:
     """Recalculate streak bonus for the current WR on a leaderboard variant."""
 
     with actor_from_user_id(actor_user_id):
-        with check_reconciliation(recon_job_id):
-            time_col = get_leaderboard_time_column(leaderboard_dict)
+        time_col = get_leaderboard_time_column(leaderboard_dict)
 
-            wr_run = (
-                get_runs_for_leaderboard(leaderboard_dict)
-                .exclude(**{f"{time_col}__lte": 0})
-                .exclude(**{f"{time_col}__isnull": True})
-                .order_by(time_col)
-                .select_related("game")
-                .prefetch_related("players")
-                .first()
-            )
-            if wr_run is None:
-                return
+        wr_run = (
+            get_runs_for_leaderboard(leaderboard_dict)
+            .exclude(**{f"{time_col}__lte": 0})
+            .exclude(**{f"{time_col}__isnull": True})
+            .order_by(time_col)
+            .select_related("game")
+            .prefetch_related("players")
+            .first()
+        )
+        if wr_run is None:
+            return
 
-            result = apply_streak_to_run(wr_run)
-            if result is not None:
-                new_bonus, new_points = result
-                wr_run.bonus = new_bonus
-                wr_run.points = new_points
-                wr_run.save(update_fields=["bonus", "points"])
+        result = apply_streak_to_run(wr_run)
+        if result is not None:
+            new_bonus, new_points = result
+            wr_run.bonus = new_bonus
+            wr_run.points = new_points
+            wr_run.save(update_fields=["bonus", "points"])
 
 
 @shared_task(name="srl.tasks.build_streaks_task")
@@ -238,3 +231,22 @@ def recalculate_game_boards(
         )
 
         return {"game_slug": game_slug, "boards": boards_dispatched}
+
+
+@shared_task(name="srl.tasks.sweep_unranked_verified_runs")
+def sweep_unranked_verified_runs() -> int:
+    """Re-queue a board recalc for any verified, non-obsolete run that has no points.
+
+    Enforces the invariant: verified AND not obsolete => points > 0. A run in this state means its
+    leaderboard recalc was dropped (e.g. silent worker death).
+    """
+    from srl.leaderboard.trigger import recalculate_run
+
+    orphans = Runs.objects.filter(
+        vid_status="verified", obsolete=False, points=0
+    ).select_related("game")
+    count = 0
+    for run in orphans:
+        recalculate_run(run, cause="unranked_verified_sweeper")
+        count += 1
+    return count

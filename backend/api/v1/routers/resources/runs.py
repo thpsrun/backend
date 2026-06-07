@@ -742,6 +742,22 @@ def create_run(
                 ),
             )
         refetched_run.refresh_import_issues()
+
+        if refetched_run.vid_status == "verified":
+            from srl.leaderboard.resolution import resolve_leaderboard
+            from srl.srcom.utils import apply_player_obsolescence
+
+            leaderboard = resolve_leaderboard(refetched_run)
+            apply_player_obsolescence(
+                game_id=leaderboard["game_id"],
+                category_id=leaderboard["category_id"],
+                variable_value_map=leaderboard["variable_value_map"],
+                player_ids=list(refetched_run.players.values_list("id", flat=True)),
+                run_type=leaderboard["runtype"],
+                level_id=leaderboard["level_id"],
+            )
+            refetched_run.refresh_from_db(fields=["obsolete", "obsoleted_at"])
+
         response = RunModSchema.model_validate(refetched_run)
         response.players = get_run_players(refetched_run)
         response.variables = get_run_variables(refetched_run)
@@ -1034,11 +1050,27 @@ def update_run(
                 ),
             )
         refetched_run.refresh_import_issues()
+
+        deduped_obsolete_ids: list[str] = []
+        if refetched_run.vid_status == "verified":
+            from srl.leaderboard.resolution import resolve_leaderboard
+            from srl.srcom.utils import apply_player_obsolescence
+
+            leaderboard = resolve_leaderboard(refetched_run)
+            deduped_obsolete_ids = apply_player_obsolescence(
+                game_id=leaderboard["game_id"],
+                category_id=leaderboard["category_id"],
+                variable_value_map=leaderboard["variable_value_map"],
+                player_ids=list(refetched_run.players.values_list("id", flat=True)),
+                run_type=leaderboard["runtype"],
+                level_id=leaderboard["level_id"],
+            )
+            refetched_run.refresh_from_db(fields=["obsolete", "obsoleted_at"])
+
         response = RunModSchema.model_validate(refetched_run)
         response.players = get_run_players(refetched_run)
         response.variables = get_run_variables(refetched_run)
 
-        # Trigger recalculation if run became verified or time changed while verified
         became_verified = (
             old_vid_status != "verified" and refetched_run.vid_status == "verified"
         )
@@ -1047,7 +1079,7 @@ def update_run(
             or refetched_run.timenl_secs != old_timenl_secs
             or refetched_run.timeigt_secs != old_timeigt_secs
         )
-        if became_verified or time_changed_while_verified:
+        if became_verified or time_changed_while_verified or deduped_obsolete_ids:
             recalc_actor_user_id = (
                 request.user.pk
                 if getattr(request.user, "is_authenticated", False)

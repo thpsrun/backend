@@ -245,10 +245,6 @@ CELERY_BEAT_SCHEDULE = {
         "task": "srl.tasks.build_streaks_task",
         "schedule": crontab(hour=0, minute=0),
     },
-    "sweep-stuck-reconciliation-jobs-15min": {
-        "task": "srl.sweep_stuck_reconciliation_jobs",
-        "schedule": crontab(minute="*/15"),
-    },
     "scan-expiring-api-keys-daily": {
         "task": "notifications.scan_expiring_api_keys",
         "schedule": crontab(hour=12, minute=0),
@@ -272,6 +268,18 @@ CELERY_BEAT_SCHEDULE = {
     "discover-series-games-5min": {
         "task": "srl.tasks.discover_new_series_games",
         "schedule": crontab(minute="*/5"),
+    },
+    "sweep-pending-src-sync-5min": {
+        "task": "srl.tasks.sweep_pending_src_sync",
+        "schedule": crontab(minute="*/5"),
+    },
+    "replay-failed-edits-30min": {
+        "task": "srl.tasks.replay_failed_edits",
+        "schedule": crontab(minute="*/30"),
+    },
+    "sweep-unranked-verified-10min": {
+        "task": "srl.tasks.sweep_unranked_verified_runs",
+        "schedule": crontab(minute="*/10"),
     },
 }
 
@@ -435,3 +443,6 @@ SRC_DISCOVERY_POLL_SECONDS = int(os.getenv("SRC_DISCOVERY_POLL_SECONDS", "60"))
 SRC_DISCOVERY_PER_GAME_LIMIT = int(
     os.getenv("SRC_DISCOVERY_PER_GAME_LIMIT", "20"),
 )
+
+# Reconciliation: how many recent verified runs a routine GAME reconcile inspects.
+RECON_RECENT_RUN_LIMIT = int(os.getenv("RECON_RECENT_RUN_LIMIT", "20"))
