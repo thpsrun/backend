@@ -1,3 +1,16 @@
+### v4.2.1
+###### June 7, 2026
+*   Added
+    *   Added the `repair_missing_il_levels` management command to fix an issue where there were IL speedruns without a category or level associated.
+        *   This was from a rare bug with the v3.X build that I never got around to fixing. The bug was fixed, but these runs were still messed up. Now, they are good!
+
+*   Fixed
+    *   Fixed an issue where two specific false positives could be sent to Sentry.
+        *   The Celery agents can be recyled via `EX_RECYCLE`, but it would be seen as an error; now, it is seen as a healthy part of the code.
+        *   `SIGABRT`/`SystemExit` could be caused by a gunicorn, but the logging integration would incorrectly think that the worker was killed when it was instead idle. Now, they are dropped.
+
+***
+
 ### v4.2
 ###### June 6, 2026
 *   Added
