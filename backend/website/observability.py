@@ -1,4 +1,5 @@
 import sentry_sdk
+from billiard.pool import EX_RECYCLE
 from celery.signals import task_failure, worker_process_shutdown
 
 
@@ -23,7 +24,7 @@ def on_worker_process_shutdown(
     **kwargs,
 ) -> None:
     """Report abnormal worker child exits (OOM/SIGKILL/time-limit) to Sentry."""
-    if exitcode not in (0, None):
+    if exitcode not in (0, None, EX_RECYCLE):
         sentry_sdk.capture_message(
             f"Celery worker child {pid} exited abnormally: exitcode={exitcode}",
             level="error",

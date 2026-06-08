@@ -22,11 +22,41 @@ def _require_env(
     return value
 
 
+def _sentry_before_send(
+    event: dict,
+    hint: dict,
+) -> dict | None:
+    """Drop gunicorn worker-abort noise before it reaches Sentry.
+
+    This is mainly used to extend the types of errors that could be brought from Celery agents
+    before they are sent to Sentry.io or wherever. The current implementation removes any
+    `SIGABRT`/`SystermExit` errors that are generated when Gunicorn's arbiter kills the agent.
+    Without this, it would just be noise sent to Sentry.
+
+    Arguments:
+        event (dict): The Sentry event about to be sent.
+        hint (dict): Sentry's hint, which carries exc_info for exception events.
+
+    Returns:
+        result (dict | None): The event to send, or None to drop it.
+    """
+    exc_info: tuple | None = hint.get("exc_info")
+    exc_type: type | None = exc_info[0] if exc_info else None
+    if exc_type is not None and issubclass(exc_type, SystemExit):
+        return None
+
+    for value in (event.get("exception") or {}).get("values") or []:
+        if value.get("type") == "SystemExit":
+            return None
+    return event
+
+
 if os.getenv("SENTRY_ENABLED") == "True":
     sentry_sdk.init(
         dsn=os.getenv("SENTRY_DSN"),
         send_default_pii=False,
         traces_sample_rate=0.5,
+        before_send=_sentry_before_send,
     )
 
 SECRET_KEY = _require_env("SECRET_KEY")
@@ -235,9 +265,9 @@ CELERY_RESULT_EXTENDED = True
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 30 * 60
-CELERY_TASK_SOFT_TIME_LIMIT = 20 * 60  # catchable SoftTimeLimitExceeded before the hard SIGKILL
-CELERY_WORKER_MAX_MEMORY_PER_CHILD = 350000  # KB (~350 MB); recycle child gracefully before OOM
-CELERY_WORKER_PREFETCH_MULTIPLIER = 1  # a crash drops at most one message, not a prefetched batch
+CELERY_TASK_SOFT_TIME_LIMIT = 20 * 60
+CELERY_WORKER_MAX_MEMORY_PER_CHILD = 350000
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 
 # CELERY BEAT SCHEDULE
 CELERY_BEAT_SCHEDULE = {
@@ -397,7 +427,7 @@ HEADLESS_FRONTEND_URLS = {
     "socialaccount_login_error": f"{FRONTEND_URL}/login/error/",
 }
 
-# EMAIL (Resend via django-anymail TODO:)
+# EMAIL (Resend via django-anymail)
 EMAIL_BACKEND = "anymail.backends.resend.EmailBackend"
 ANYMAIL = {
     "RESEND_API_KEY": os.getenv("RESEND_API_KEY", ""),

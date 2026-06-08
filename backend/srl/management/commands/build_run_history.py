@@ -10,13 +10,13 @@ from django.db import transaction
 
 from srl.leaderboard.recalculation import (
     build_leaderboard_metadata,
+    enumerate_leaderboard_variants,
     process_leaderboard,
 )
 from srl.models import (
     Games,
     RunHistory,
     Runs,
-    RunVariableValues,
 )
 
 
@@ -47,11 +47,7 @@ class Command(BaseCommand):
         self,
         game_filter: str | None,
     ) -> Iterator[dict]:
-        """Enumerate all distinct leaderboard variants.
-
-        Groups runs by (game_id, category_id, level_id, runtype), then within each
-        group finds all distinct variable-value combinations via RunVariableValues.
-        """
+        """Enumerate all distinct leaderboard variants (optionally one game)."""
         base_query = Runs.objects.filter(
             vid_status="verified",
         ).exclude(
@@ -62,43 +58,7 @@ class Command(BaseCommand):
         if game_filter:
             base_query = base_query.filter(game_id=game_filter)
 
-        groups = base_query.values(
-            "game_id",
-            "category_id",
-            "level_id",
-            "runtype",
-        ).distinct()
-
-        for group in groups:
-            group_qs = base_query.filter(**group)
-            group_run_ids = group_qs.values_list("id", flat=True)
-
-            rvv_qs = RunVariableValues.objects.filter(run_id__in=group_run_ids).values(
-                "run_id", "variable_id", "value_id"
-            )
-
-            # Build a map of run_id -> frozenset of (var_id, val_id) pairs
-            run_signatures: dict[str, frozenset] = {}
-            for rvv in rvv_qs:
-                run_id = rvv["run_id"]
-                if run_id not in run_signatures:
-                    run_signatures[run_id] = frozenset()
-                run_signatures[run_id] = run_signatures[run_id] | frozenset(
-                    [(rvv["variable_id"], rvv["value_id"])]
-                )
-
-            for run_id in group_run_ids:
-                if run_id not in run_signatures:
-                    run_signatures[run_id] = frozenset()
-
-            seen_sigs: set[frozenset] = set()
-            for signature in run_signatures.values():
-                if signature not in seen_sigs:
-                    seen_sigs.add(signature)
-                    yield {
-                        **group,
-                        "variable_value_map": dict(signature),
-                    }
+        return enumerate_leaderboard_variants(base_query)
 
     def handle(
         self,

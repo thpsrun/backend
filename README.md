@@ -1,5 +1,5 @@
 # thps.run Website - Backend
-## Version 4.1.2
+## Version 4.2.1
 
 ![Django](https://img.shields.io/badge/Django-6.0-green.svg?logo=django&logoColor=white)
 ![Django Ninja](https://img.shields.io/badge/1.6-blue?color=black&label=django-ninja&logo=fastapi&logoColor=white)
