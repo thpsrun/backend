@@ -48,6 +48,16 @@ def _is_trusted(
 def client_ip(
     request: HttpRequest,
 ) -> str:
+    """Resolve the real client IP, trusting X-Forwarded-For only behind a trusted proxy.
+
+    Arguments:
+        request (HttpRequest): The incoming request.
+
+    Returns:
+        ip (str): The resolved client IP, or REMOTE_ADDR ("unknown" if absent) when the
+            peer is untrusted, no proxies are configured, or the chain yields no
+            non-proxy address.
+    """
     remote: str = request.META.get("REMOTE_ADDR", "") or "unknown"
 
     if settings.DEBUG:
@@ -66,9 +76,20 @@ def client_ip(
         return remote
 
     xff: str = request.META.get("HTTP_X_FORWARDED_FOR", "")
-    if xff:
-        first = xff.split(",")[0].strip()
-        if first:
-            return first
+    if not xff:
+        return remote
+
+    # Walks right-to-left, peeling off any trusted proxies. This is mainly to figure out what the
+    # real client IP is to prevent forged IP addresses from targeing the site.
+    for entry in reversed(xff.split(",")):
+        candidate = entry.strip()
+        if not candidate:
+            continue
+        try:
+            candidate_addr = ip_address(candidate)
+        except ValueError:
+            continue
+        if not _is_trusted(candidate_addr, proxies):
+            return candidate
 
     return remote

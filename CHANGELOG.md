@@ -1,3 +1,10 @@
+### v4.2.2
+###### June 8, 2026
+*   Fixed an issue where the client IP resolver was incorrectly accounting for the wrong IPs from `X-Forwarded-For`.
+    *   The fix hardens how IPs are given to thps.run; before, it was reading from left-to-right on the IP chain and not right-to-left due to proxying.
+
+***
+
 ### v4.2.1
 ###### June 7, 2026
 *   Added
