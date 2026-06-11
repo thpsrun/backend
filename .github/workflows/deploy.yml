@@ -93,8 +93,9 @@ jobs:
       - name: Run Django Tests
         working-directory: ./backend
         env:
-          # Override the host to use localhost since services run on the runner
+          # Override the hosts to use localhost since services run on the runner
           DATABASE_HOST: localhost
+          REDIS_HOST: localhost
         run: |
           python manage.py migrate --noinput
           python manage.py test --verbosity=2
@@ -276,18 +277,10 @@ jobs:
 
             echo "Deployment completed successfully!"
 
-      - name: Tag Successful Deployment
-        if: success()
-        run: |
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          git tag -a ${{ env.DEPLOY_TAG }} -m "Deployed to Production"
-          git push origin ${{ env.DEPLOY_TAG }}
-
       - name: Notify Success
         if: success()
         run: |
-          echo "Production deployment successful: ${{ env.DEPLOY_TAG }}"
+          echo "Production deployment successful!"
 
       - name: Notify Failure
         if: failure()

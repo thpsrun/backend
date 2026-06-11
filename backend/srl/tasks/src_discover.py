@@ -20,6 +20,7 @@ from srl.models import (
     RunVariableValues,
     Series,
     Variables,
+    VariableValues,
 )
 from srl.srcom.categories import sync_categories
 from srl.srcom.games import sync_game
@@ -69,18 +70,25 @@ def _ensure_dependencies(
             )
             return False
 
-    for var_id in (payload.get("values") or {}).keys():
-        if not Variables.objects.filter(id=var_id).exists():
-            try:
-                sync_variables(var_id)
-            except Exception as exc:
-                log.warning(
-                    "src_discover: sync_variables(%s) failed for run %s: %s",
-                    var_id,
-                    payload.get("id"),
-                    exc,
-                )
-                return False
+    for var_id, value_id in (payload.get("values") or {}).items():
+        needs_sync = not Variables.objects.filter(id=var_id).exists()
+        if not needs_sync and value_id:
+            needs_sync = not VariableValues.objects.filter(
+                var_id=var_id,
+                value=value_id,
+            ).exists()
+        if not needs_sync:
+            continue
+        try:
+            sync_variables(var_id)
+        except Exception as exc:
+            log.warning(
+                "src_discover: sync_variables(%s) failed for run %s: %s",
+                var_id,
+                payload.get("id"),
+                exc,
+            )
+            return False
 
     level_id = payload.get("level")
     if level_id and not Levels.objects.filter(id=level_id).exists():

@@ -60,11 +60,6 @@ urlpatterns = [
         SRCProviderSignupView.as_api_view(client="browser"),
         name="thps_oauth_signup_browser",
     ),
-    path(
-        "_allauth/app/v1/auth/provider/signup",
-        SRCProviderSignupView.as_api_view(client="app"),
-        name="thps_oauth_signup_app",
-    ),
     path("_allauth/", include("allauth.headless.urls")),
 ] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 

@@ -1,5 +1,6 @@
 from celery import shared_task
 from django.db import transaction
+
 from srl.models import Games, Variables, VariableValues
 from srl.srcom.reconciliation import (
     reconciliation_upsert_check,
@@ -42,8 +43,7 @@ def sync_variables(
             id=src_variable.id,
         )
 
-    if src_variable.is_subcategory:
-        sync_values.delay(src_variable.model_dump())
+    sync_values(src_variable)
 
 
 @shared_task(pydantic=True)

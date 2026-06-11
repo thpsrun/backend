@@ -22,7 +22,7 @@ def run_bounded_game_reconciliation(
     """
     # Lazy import to prevent circular dependency errors.
     from srl.srcom.recent_reconcile import reconcile_recent_game_runs
-    from srl.srcom.reconciliation import release_lock
+    from srl.srcom.reconciliation import CancellationRequested, release_lock
 
     job = ReconciliationJob.objects.get(id=job_id)
     job.status = ReconStatus.RUNNING.value
@@ -36,6 +36,8 @@ def run_bounded_game_reconciliation(
     error_summary = ""
     try:
         reconcile_recent_game_runs(job.target_id, job_id=str(job.id))
+    except CancellationRequested:
+        status = ReconStatus.CANCELLED.value
     except Exception as exc:
         status = ReconStatus.FAILED.value
         error_summary = str(exc)[:4000]
