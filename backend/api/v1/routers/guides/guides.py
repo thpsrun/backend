@@ -3,11 +3,17 @@ from typing import Annotated, Any
 from django.db import transaction
 from django.db.models import Q
 from django.http import HttpRequest
+from django.utils.text import slugify
 from guides.models import Guides, Tags
 from ninja import Query, Router, Status
 from srl.models.games import Games
 
-from api.permissions import authed, public_read
+from api.permissions import (
+    actor_game_check,
+    actor_key_check,
+    authed,
+    public_read,
+)
 from api.v1.routers.utils.embeds import parse_embeds
 from api.v1.routers.utils.resolvers import game_from_body, guide_from_path
 from api.v1.schemas.base import ErrorResponse
@@ -255,6 +261,24 @@ def create_guide(
                 ),
             )
 
+    slug = slugify(data.title)
+    if not slug:
+        return Status(
+            400,
+            ErrorResponse(
+                error="Guide title must contain at least one letter or number",
+                details=None,
+            ),
+        )
+    if Guides.objects.filter(slug__iexact=slug).exists():
+        return Status(
+            400,
+            ErrorResponse(
+                error="A guide with this title already exists",
+                details={"slug": slug},
+            ),
+        )
+
     try:
         with transaction.atomic():
             guide = Guides.objects.create(
@@ -331,9 +355,10 @@ def update_guide(
             ),
         )
 
+    new_game: Games | None = None
     if data.game_id:
         try:
-            Games.objects.get(id=data.game_id)
+            new_game = Games.objects.get(id=data.game_id)
         except Games.DoesNotExist:
             return Status(
                 400,
@@ -342,6 +367,19 @@ def update_guide(
                     details=None,
                 ),
             )
+        if new_game.pk != guide.game_id:
+            if guide.owner_id == request.user.pk:
+                allowed = actor_key_check(request, "guides.edit_own", new_game)
+            else:
+                allowed = actor_game_check(request, "guides.edit_any", new_game)
+            if not allowed:
+                return Status(
+                    403,
+                    ErrorResponse(
+                        error="Permission denied for the destination game",
+                        details=None,
+                    ),
+                )
 
     if data.tag_ids is not None:
         existing_ids = set(
@@ -364,8 +402,19 @@ def update_guide(
                 guide.title = data.title
 
             if data.slug is not None:
+                # Normalize so stored slugs stay canonical (SlugField is not
+                # validated by save()) and lookups match case-insensitively.
+                new_slug = slugify(data.slug)
+                if not new_slug:
+                    return Status(
+                        400,
+                        ErrorResponse(
+                            error="Slug must contain at least one letter or number",
+                            details={"slug": data.slug},
+                        ),
+                    )
                 existing_guide = (
-                    Guides.objects.filter(slug__iexact=data.slug)
+                    Guides.objects.filter(slug__iexact=new_slug)
                     .exclude(id=guide.pk)
                     .first()
                 )
@@ -374,13 +423,13 @@ def update_guide(
                         400,
                         ErrorResponse(
                             error="Guide With Slug Already Exists",
-                            details={"slug": data.slug},
+                            details={"slug": new_slug},
                         ),
                     )
-                guide.slug = data.slug
+                guide.slug = new_slug
 
-            if data.game_id:
-                guide.game = Games.objects.get(id=data.game_id)
+            if new_game is not None:
+                guide.game = new_game
             if data.short_description is not None:
                 guide.short_description = data.short_description
             if data.content is not None:

@@ -1,12 +1,10 @@
 from typing import Any
 
 from django import forms
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.db import models
 from django.db.models import QuerySet
-from django.http import HttpRequest, HttpResponse
-from django.shortcuts import redirect
-from django.urls import URLPattern, path, reverse
+from django.http import HttpRequest
 
 from srl.models import (
     Awards,
@@ -25,12 +23,7 @@ from srl.models import (
     Variables,
     VariableValues,
 )
-from srl.views import (
-    RefreshGameRunsView,
-    UpdateGameRunsView,
-    UpdateGameView,
-    UpdatePlayerView,
-)
+from srl.srcom import sync_game, sync_game_runs, sync_players
 
 
 class GameAdmin(admin.ModelAdmin):
@@ -63,62 +56,49 @@ class GameAdmin(admin.ModelAdmin):
     @admin.action(description="Update Game Metadata")
     def update_game(
         self,
-        _: HttpRequest,
+        request: HttpRequest,
         queryset: QuerySet["Games"],
-    ) -> HttpResponse:
-        """Updates the metadata for all selected games from the SRC API."""
+    ) -> None:
+        """Queues a metadata sync from the SRC API for each selected game."""
         game_ids = [obj.id for obj in queryset]
-        return redirect(
-            reverse("admin:update_game") + f"?game_ids={','.join(game_ids)}"
+        for game_id in game_ids:
+            sync_game.delay(game_id)
+        self.message_user(
+            request,
+            f"Queued metadata sync for {len(game_ids)} game(s).",
         )
 
     @admin.action(description="Update Game Runs")
     def update_game_runs(
         self,
-        _: HttpRequest,
+        request: HttpRequest,
         queryset: QuerySet["Games"],
-    ) -> HttpResponse:
-        """Updates the metadata for all runs of all selected games from the SRC API."""
+    ) -> None:
+        """Queues a run sync from the SRC API for each selected game."""
         game_ids = [obj.id for obj in queryset]
-        return redirect(
-            reverse("admin:update_game_runs") + f"?game_ids={','.join(game_ids)}"
+        for game_id in game_ids:
+            sync_game_runs.delay(game_id, 0)
+        self.message_user(
+            request,
+            f"Queued run sync for {len(game_ids)} game(s).",
         )
 
     @admin.action(description="(Destructive) Rebuild Game Runs")
     def refresh_game_runs(
         self,
-        _: HttpRequest,
+        request: HttpRequest,
         queryset: QuerySet["Games"],
-    ) -> HttpResponse:
-        """Removes all runs and re-retrieves them from the SRC API to re-import them."""
+    ) -> None:
+        """Queues a destructive delete + re-import of each selected game's runs."""
         game_ids = [obj.id for obj in queryset]
-        return redirect(
-            reverse("admin:refresh_game_runs") + f"?game_ids={','.join(game_ids)}"
+        for game_id in game_ids:
+            sync_game_runs.delay(game_id, 1)
+        self.message_user(
+            request,
+            f"Queued destructive rebuild for {len(game_ids)} game(s); existing runs "
+            "will be deleted and re-imported from SRC.",
+            messages.WARNING,
         )
-
-    def get_urls(
-        self,
-    ) -> list[URLPattern]:
-        """Adds all above methods to custom URLs."""
-        urls = super().get_urls()
-        custom_urls = [
-            path(
-                "update-game/",
-                self.admin_site.admin_view(UpdateGameView.as_view()),
-                name="update_game",
-            ),
-            path(
-                "update-game-runs/",
-                self.admin_site.admin_view(UpdateGameRunsView.as_view()),
-                name="update_game_runs",
-            ),
-            path(
-                "refresh-game-runs/",
-                self.admin_site.admin_view(RefreshGameRunsView.as_view()),
-                name="refresh_game_runs",
-            ),
-        ]
-        return custom_urls + urls
 
 
 class DefaultAdmin(admin.ModelAdmin):
@@ -222,28 +202,17 @@ class PlayersAdmin(admin.ModelAdmin):
     @admin.action(description="Update Player Metadata")
     def update_player(
         self,
-        _: HttpRequest,
+        request: HttpRequest,
         queryset: QuerySet["Players"],
-    ) -> HttpResponse:
-        """Updates the metadata for all selected players from the SRC API."""
+    ) -> None:
+        """Queues a metadata sync from the SRC API for each selected player."""
         player_ids = [obj.id for obj in queryset]
-        return redirect(
-            reverse("admin:update_player") + f"?player_ids={','.join(player_ids)}"
+        for player_id in player_ids:
+            sync_players.delay(player_id)
+        self.message_user(
+            request,
+            f"Queued metadata sync for {len(player_ids)} player(s).",
         )
-
-    def get_urls(
-        self,
-    ) -> list[URLPattern]:
-        """Adds all above methods to custom URLs."""
-        urls = super().get_urls()
-        custom_urls = [
-            path(
-                "update-player/",
-                self.admin_site.admin_view(UpdatePlayerView.as_view()),
-                name="update_player",
-            ),
-        ]
-        return custom_urls + urls
 
 
 admin.site.register(Games, GameAdmin)

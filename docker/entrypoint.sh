@@ -2,7 +2,8 @@
 set -euo pipefail
 
 postgres_ready() {
-    python << END
+    python << 'END'
+import os
 import sys
 
 from psycopg import connect
@@ -10,10 +11,10 @@ from psycopg.errors import OperationalError
 
 try:
     connect(
-        dbname="${POSTGRES_DB}",
-        user="${POSTGRES_USER}",
-        password="${POSTGRES_PASSWORD}",
-        host="postgres",
+        dbname=os.environ.get("POSTGRES_DB", ""),
+        user=os.environ.get("POSTGRES_USER", ""),
+        password=os.environ.get("POSTGRES_PASSWORD", ""),
+        host=os.environ.get("DATABASE_HOST", "postgres"),
     )
 except OperationalError:
     sys.exit(-1)

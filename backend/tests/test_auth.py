@@ -1,3 +1,4 @@
+from allauth.mfa.models import Authenticator
 from api.models import APIKey
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
@@ -41,6 +42,13 @@ class AuthTestBase(TestCase):
             password="supersecret123",
             is_superuser=True,
             is_staff=True,
+        )
+        # Superusers are privileged, and privileged keyholders must have an MFA
+        # factor registered before their API keys authenticate.
+        Authenticator.objects.create(
+            user=self.admin_user,
+            type=Authenticator.Type.TOTP,
+            data={},
         )
         self.key_obj, self.api_key = APIKey.objects.create_key(
             user=self.admin_user,

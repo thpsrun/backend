@@ -29,7 +29,12 @@ from srl.tasks import sync_src_action, sync_src_settings
 from srl.time_parser import parse_time
 from srl.utils import convert_time
 
-from api.permissions import authed, public_read
+from api.permissions import (
+    actor_capability_check,
+    actor_game_check,
+    authed,
+    public_read,
+)
 from api.v1.routers.auth.moderation import (
     ModerationError,
     _apply_moderation,
@@ -879,6 +884,19 @@ def update_run(
                         details=None,
                     ),
                 )
+
+            if game.pk != run.game.id and not actor_game_check(
+                request,
+                "runs.edit_any",
+                game,
+            ):
+                return Status(
+                    403,
+                    ErrorResponse(
+                        error="Permission denied for the destination game",
+                        details=None,
+                    ),
+                )
             run.game = game
             del update_data["game_id"]
 
@@ -1011,6 +1029,11 @@ def update_run(
 
             moderation_sync_task = None
             if run_data.moderator_action is not None:
+                if not actor_capability_check(request, "runs.verify", run):
+                    raise ModerationError(
+                        403,
+                        "moderator_action requires the runs.verify capability.",
+                    )
                 actor_player = getattr(request.user, "player", None)
                 if actor_player is None:
                     raise ModerationError(

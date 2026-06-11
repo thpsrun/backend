@@ -1,4 +1,3 @@
-import environ
 from accounts.headless_views import SRCProviderSignupView
 from accounts.views import (
     oauth_connect_complete,
@@ -14,11 +13,8 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
 
-env = environ.Env()
-environ.Env.read_env()
-
-admin.site.site_header = env("SITE_NAME")
-admin.site.site_title = env("SITE_NAME")
+admin.site.site_header = settings.SITE_NAME
+admin.site.site_title = settings.SITE_NAME
 admin.site.index_title = "Admin Panel"
 
 urlpatterns = [

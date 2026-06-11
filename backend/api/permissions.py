@@ -1,7 +1,9 @@
 from collections.abc import Callable
 from typing import Any
 
+from accounts.privileges import compute_has_required_factor, compute_privileged
 from auditlog.context import set_actor
+from django.conf import settings
 from django.contrib.auth.models import AnonymousUser
 from django.http import HttpRequest
 from ninja.errors import HttpError
@@ -195,6 +197,16 @@ def _resolve_caller(
             key: APIKey = APIKey.objects.get_from_key(api_key_header)
         except APIKey.DoesNotExist:
             raise HttpError(401, "Invalid or unusable API key")
+        if (
+            getattr(settings, "MFA_ENFORCE_FOR_PRIVILEGED", True)
+            and compute_privileged(key.user)
+            and not compute_has_required_factor(key.user)
+        ):
+            raise HttpError(
+                403,
+                "Multi-factor authentication setup is required before this "
+                "API key can be used.",
+            )
         return key.user, key
 
     user = getattr(request, "user", None)
@@ -246,6 +258,75 @@ def _key_scope_admits(
         return False
     target_game_id = _extract_target_game_id(target)
     return target_game_id in scope_games
+
+
+def actor_key_check(
+    request: HttpRequest,
+    capability: str,
+    target: Any,
+) -> bool:
+    """Re-applies API-key scope narrowing (only) against an additional target.
+
+    For flows where the user-level permission is already established but a scoped
+    key must still admit a second target (e.g. a guide owner re-homing their own
+    guide to a different game).
+
+    Arguments:
+        request (HttpRequest): The request after authed() ran (api_key bound).
+        capability (str): Capability name whose scope rules are re-applied.
+        target (Any): The additional object the key scope must admit.
+
+    Returns:
+        allowed (bool): True when there is no key, or the key scope admits.
+    """
+    key = getattr(request, "api_key", None)
+    return key is None or _key_scope_admits(key, capability, target)
+
+
+def actor_capability_check(
+    request: HttpRequest,
+    capability: str,
+    target: Any,
+) -> bool:
+    """Re-checks the already-authenticated actor against an extra capability.
+
+    Arguments:
+        request (HttpRequest): The request after authed() ran (user/api_key bound).
+        capability (str): Capability name registered in the rules registry.
+        target (Any): Object the capability predicate is checked against.
+
+    Returns:
+        allowed (bool): True when both the user permission and key scope admit.
+    """
+    user = getattr(request, "user", None)
+    if user is None or not getattr(user, "is_authenticated", False):
+        return False
+    if not user.has_perm(capability, target):
+        return False
+    return actor_key_check(request, capability, target)
+
+
+def actor_game_check(
+    request: HttpRequest,
+    capability: str,
+    game: Any,
+) -> bool:
+    """Checks whether the actor may aim `capability` at a different game.
+
+    Arguments:
+        request (HttpRequest): The request after authed() ran (user/api_key bound).
+        capability (str): The route capability, re-applied to key scope narrowing.
+        game (Any): Destination Games instance.
+
+    Returns:
+        allowed (bool): True when the destination move is permitted.
+    """
+    user = getattr(request, "user", None)
+    if user is None or not getattr(user, "is_authenticated", False) or game is None:
+        return False
+    if not user.has_perm("games.manage", game):
+        return False
+    return actor_key_check(request, capability, game)
 
 
 def authed(

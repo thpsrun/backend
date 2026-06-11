@@ -35,6 +35,8 @@ from srl.utils import src_api, src_api_probe
 log = logging.getLogger(__name__)
 
 _DISPATCH_LOCK_KEY = "src_discovery:dispatch:lock"
+_GAME_DISCOVERY_LOCK_KEY = "src_discovery:game:{game_id}:lock"
+_GAME_DISCOVERY_LOCK_TTL = 900
 _V1_RUNS_URL = "https://www.speedrun.com/api/v1/runs"
 
 _SRC_TO_LOCAL_STATUS: dict[str, str] = {
@@ -433,8 +435,7 @@ def _remove_deleted_run(
     )
 
 
-@shared_task(name="srl.tasks.discover_runs")
-def discover_runs(
+def _discover_runs(
     game_id: str,
 ) -> dict[str, int]:
     """Poll v1 for new/verified/rejected runs on `game_id` and reconcile locally."""
@@ -503,6 +504,28 @@ def discover_runs(
         counts,
     )
     return counts
+
+
+@shared_task(name="srl.tasks.discover_runs")
+def discover_runs(
+    game_id: str,
+) -> dict:
+    """Run per-game discovery under a per-game mutex.
+
+    SRC throttling can stretch a single pass well past the one-minute beat, so overlapping passes
+    for the same game would race each other's run/player writes; skip instead and let the next beat.
+    """
+    lock_key = _GAME_DISCOVERY_LOCK_KEY.format(game_id=game_id)
+    if not cache.add(lock_key, "1", timeout=_GAME_DISCOVERY_LOCK_TTL):
+        log.info(
+            "src_discover: game=%s skipped - discovery already running",
+            game_id,
+        )
+        return {"skipped": True, "reason": "game_lock_held"}
+    try:
+        return _discover_runs(game_id)
+    finally:
+        cache.delete(lock_key)
 
 
 @shared_task(name="srl.tasks.dispatch_run_discovery")

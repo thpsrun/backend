@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from allauth.mfa.models import Authenticator
 from api.models import APIKey, APIKeyRevokedReason
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase, override_settings
@@ -292,6 +293,13 @@ class APIKeySubsetEnforcementTest(APIKeyEndpointsTestBase):
             user=self.user,
         )
         self.game.moderators.add(player)
+        # Moderators are privileged, and privileged keyholders need an MFA
+        # factor before their keys authenticate at all.
+        Authenticator.objects.create(
+            user=self.user,
+            type=Authenticator.Type.TOTP,
+            data={},
+        )
 
         _, raw = APIKey.objects.create_key(
             user=self.user,

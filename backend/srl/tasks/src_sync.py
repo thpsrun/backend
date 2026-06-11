@@ -35,7 +35,7 @@ V2_RETRY_BACKOFF = [30, 60, 120, 300, 600]
 SRC_API_BASE = "https://www.speedrun.com/api/v1"
 SRC_TIMEOUT = 15
 RETRY_BACKOFF = [30, 60, 120, 300, 600]
-PENDING_SYNC_STALE_MINUTES = 10
+PENDING_SYNC_STALE_MINUTES = 15
 
 
 # Re-export so tests can patch them on this module.

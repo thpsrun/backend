@@ -10,7 +10,9 @@ _NAVBAR_CACHE_PREFIX = "navbar:"
 def _invalidate_navbar_cache() -> None:
     """Delete all navbar cache entries."""
     cache = caches["default"]
-    cache.delete_pattern(f"{_NAVBAR_CACHE_PREFIX}*")
+    delete_pattern = getattr(cache, "delete_pattern", None)
+    if delete_pattern is not None:
+        delete_pattern(f"{_NAVBAR_CACHE_PREFIX}*")
 
 
 @receiver(

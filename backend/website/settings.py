@@ -184,7 +184,6 @@ else:
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
-    SECURE_BROWSER_XSS_FILTER = True
     X_FRAME_OPTIONS = "DENY"
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
@@ -345,7 +344,8 @@ SOCIALACCOUNT_EMAIL_AUTHENTICATION = True
 PASSWORD_RESET_TIMEOUT = 1800
 ACCOUNT_LOGIN_METHODS = {"username", "email"}
 ACCOUNT_SIGNUP_FIELDS = ["email*", "username*", "password1*", "password2*"]
-MFA_TOTP_ISSUER = os.getenv("SITE_NAME", "THPS Speedrunning")
+SITE_NAME = os.getenv("SITE_NAME", "thps.run")
+MFA_TOTP_ISSUER = SITE_NAME
 
 SOCIALACCOUNT_ADAPTER = "accounts.adapters.SocialAccountAdapter"
 MFA_ADAPTER = "accounts.adapters.MFAAdapter"
