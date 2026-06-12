@@ -209,7 +209,12 @@ def main_wrs_cache_key() -> str:
     timestamp = _cached_timestamp(
         "ts:main:wrs",
         [
-            Runs.objects.filter(place=1, obsolete=False, vid_status="verified"),
+            Runs.objects.filter(
+                place=1,
+                obsolete=False,
+                vid_status="verified",
+                date__gte=timezone.now() - timezone.timedelta(days=30),
+            ),
             *_player_display_querysets(),
         ],
     )
@@ -221,7 +226,12 @@ def main_pbs_cache_key() -> str:
     timestamp = _cached_timestamp(
         "ts:main:pbs",
         [
-            Runs.objects.filter(place__gt=1, obsolete=False, vid_status="verified"),
+            Runs.objects.filter(
+                place__gt=1,
+                obsolete=False,
+                vid_status="verified",
+                date__gte=timezone.now() - timezone.timedelta(days=30),
+            ),
             *_player_display_querysets(),
         ],
     )

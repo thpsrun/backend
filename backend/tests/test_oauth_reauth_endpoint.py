@@ -147,6 +147,8 @@ class EndToEndDisconnectTests(TestCase):
         self.assertEqual(resp.status_code, 401)
         self.assertEqual(resp.json()["error"], "reauth_required")
 
+        # Stamp the session the way a completed OAuth reauth callback would;
+        # the real provider round-trip cannot run in tests.
         session = self.client.session
         session[AUTHENTICATION_METHODS_SESSION_KEY] = [
             {

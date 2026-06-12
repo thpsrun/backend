@@ -8,4 +8,5 @@ class AccountsConfig(AppConfig):
     def ready(
         self,
     ) -> None:
+        """Import signal receivers so they register at app startup."""
         import accounts.signals  # noqa: F401

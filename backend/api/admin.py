@@ -30,11 +30,14 @@ _MODEL_RENAME: dict[str, str] = {
 
 
 class _MergedAllauthAdminSite(AdminSite):
+    """AdminSite subclass that folds the allauth apps into one nav section."""
+
     def get_app_list(
         self,
         request: HttpRequest,
         app_label: str | None = None,
     ) -> list[dict[str, Any]]:
+        """Regroup allauth models under a single "User Accounts" app entry."""
         app_list = super().get_app_list(request, app_label)  # type: ignore
 
         user_account_models: list[dict[str, Any]] = []
@@ -67,6 +70,8 @@ admin.site.__class__ = _MergedAllauthAdminSite
 
 @admin.register(APIKey)
 class APIKeyAdmin(admin.ModelAdmin):
+    """Admin for API keys; the hash/prefix are read-only since keys are never re-shown."""
+
     list_display = (
         "label",
         "user",
@@ -89,6 +94,8 @@ class APIKeyAdmin(admin.ModelAdmin):
 
 @admin.register(APIActivityLog)
 class APIActivityLogAdmin(admin.ModelAdmin):
+    """Read-only viewer: log rows are written by middleware and must stay tamper-proof."""
+
     list_display = (
         "created_at",
         "method",

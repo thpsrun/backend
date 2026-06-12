@@ -36,6 +36,7 @@ router = Router()
 def _build_key_response(
     key: APIKey,
 ) -> APIKeyResponse:
+    """Serialize an APIKey row for read responses (never includes the raw key)."""
     return APIKeyResponse(
         id=str(key.pk),
         label=key.label,
@@ -57,6 +58,7 @@ def _create_apikey_response(
     key: APIKey,
     raw: str,
 ) -> APIKeyCreateResponse:
+    """Creation-time response: the only place the raw key string is ever returned."""
     base = _build_key_response(key)
     return APIKeyCreateResponse(**base.model_dump(), key=raw)
 

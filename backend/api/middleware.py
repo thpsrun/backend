@@ -50,6 +50,7 @@ def _sanitize_payload(
     value: Any,
     depth: int = 0,
 ) -> Any:
+    """Redact sensitive keys and cap depth/size so logged payloads stay small and safe."""
     if depth > MAX_SANITIZE_DEPTH:
         return "<truncated>"
     if isinstance(value, dict):
@@ -74,9 +75,9 @@ def _sanitize_payload(
 class APIActivityLogMiddleware:
     """Middleware to log mutating API activity to the APIActivityLog table.
 
-    Captures all /api/v1/ POST/PUT/PATCH/DELETE calls regardless of status code
-    (failed mutations are useful for spotting abuse). Also refreshes
-    APIKey.last_used / last_used_ip when a key was used.
+    Captures all /api/v1/ POST/PUT/PATCH/DELETE calls regardless of status code (failed mutations
+    are useful for spotting abuse). Also refreshes APIKey.last_used / last_used_ip when a key
+    was used.
     """
 
     MODEL_MAPPINGS: dict[str, tuple[str, str]] = {
@@ -100,6 +101,8 @@ class APIActivityLogMiddleware:
         request: HttpRequest,
     ) -> HttpResponse:
         response = self.get_response(request)
+        # Runs for every method, not just mutations, so GET-only keys still show a
+        # fresh last_used. request.api_key is bound by the authed() dependency.
         self._update_api_key_usage(request)
 
         if request.path.startswith("/api/v1/") and request.method in MUTATING_METHODS:
@@ -131,6 +134,7 @@ class APIActivityLogMiddleware:
         request: HttpRequest,
         response: HttpResponse,
     ) -> None:
+        # Best-effort by design: a failure to log must never break the response.
         try:
             api_key_obj: APIKey | None = getattr(request, "api_key", None)
             user = getattr(request, "user", None)

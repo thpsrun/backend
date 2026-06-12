@@ -9,6 +9,8 @@ from srl.models.base import validate_profile_bg
 
 
 class CustomUser(AbstractUser):
+    """Site user: AbstractUser plus profile cosmetics and the encrypted SRC API key."""
+
     class Meta:
         verbose_name = "User"
         verbose_name_plural = "Users"
@@ -85,13 +87,18 @@ class CustomUser(AbstractUser):
 
 
 class UserDataExport(models.Model):
+    """Tracks one user data export request and the archive it produced."""
+
     class Status(models.TextChoices):
+        """Lifecycle states of an export; READY archives expire to EXPIRED after the TTL."""
+
         PENDING = "PENDING", "Pending"
         RUNNING = "RUNNING", "Running"
         READY = "READY", "Ready"
         FAILED = "FAILED", "Failed"
         EXPIRED = "EXPIRED", "Expired"
 
+    # UUID pk doubles as the archive filename, so export paths are unguessable.
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,

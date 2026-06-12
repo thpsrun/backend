@@ -56,6 +56,7 @@ def _log_security_event(
     user,
     **fields,
 ) -> None:
+    """Log a structured security event with user, IP, and user-agent context."""
     extra = {
         "event": event,
         "user_id": getattr(user, "pk", None),
@@ -69,6 +70,7 @@ def _log_security_event(
 def _social_accounts_for(
     user,
 ) -> list[SocialAccountListItem]:
+    """List the user's linked social accounts for API responses."""
     items: list[SocialAccountListItem] = []
     for sa in SocialAccount.objects.filter(user=user).order_by("date_joined"):
         extra = sa.extra_data or {}
@@ -87,6 +89,7 @@ def _social_accounts_for(
 def _authenticators_for(
     user,
 ) -> list[AuthenticatorListItem]:
+    """List the user's authenticators using public, non-enumerable ids."""
     items: list[AuthenticatorListItem] = []
     for a in Authenticator.objects.filter(user=user).order_by("created_at"):
         data = a.data or {}
@@ -215,6 +218,7 @@ def delete_social_account(
                 request=request,
                 socialaccount=account,
             )
+
             _revoke_other_sessions(locked_user, session_key)
     except User.DoesNotExist:
         return Status(
@@ -261,6 +265,7 @@ def _revoke_other_sessions(
     user,
     current_session_key: str | None,
 ) -> int:
+    """Delete every other live session for `user`; returns the number deleted."""
     target_id = str(user.pk)
     keys_to_kill: list[str] = []
     for session in Session.objects.filter(expire_date__gte=timezone.now()):
@@ -278,7 +283,7 @@ def _revoke_other_sessions(
 def _send_password_deletion_email(
     user,
 ) -> None:
-
+    """Notify the user by email that their password was removed."""
     adapter = get_adapter()
     ctx = {"user": user}
     try:
@@ -406,6 +411,9 @@ def initiate_oauth_reauth(
             ),
         )
 
+    # AuthProcess.LOGIN only drives the provider round-trip; the reauth intent
+    # written below is what routes the callback into the reauth flow instead of
+    # a normal login.
     redirect_response = provider_obj.redirect(
         request,
         process=AuthProcess.LOGIN,

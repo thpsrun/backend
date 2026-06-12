@@ -37,4 +37,6 @@ class TripCircuitBreakerTest(TestCase):
         trip_circuit_breaker("second trip", category="v2_4xx")
         bs_after = BotSession.load()
         self.assertEqual(bs_after.last_severe_error_at, first_ts)
+        # Intentional: a second trip is a no-op, so the original v2_auth
+        # category survives rather than being overwritten by v2_4xx.
         self.assertEqual(bs_after.last_severe_error_category, "v2_auth")

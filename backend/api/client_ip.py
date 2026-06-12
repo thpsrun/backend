@@ -16,6 +16,7 @@ TrustedEntry = IPv4Address | IPv6Address | IPv4Network | IPv6Network
 
 @lru_cache(maxsize=1)
 def _get_trusted_proxies() -> tuple[TrustedEntry, ...]:
+    """Parse TRUSTED_PROXIES once per process; the setting is env-fixed at startup."""
     raw: str = getattr(settings, "TRUSTED_PROXIES", "") or ""
     parsed: list[TrustedEntry] = []
     for entry in raw.split(","):
@@ -28,6 +29,8 @@ def _get_trusted_proxies() -> tuple[TrustedEntry, ...]:
             else:
                 parsed.append(ip_address(entry))
         except ValueError:
+            # A malformed entry must not break IP resolution for every request;
+            # dropping it just means that proxy is treated as untrusted.
             continue
     return tuple(parsed)
 
@@ -36,6 +39,7 @@ def _is_trusted(
     addr: IPv4Address | IPv6Address,
     proxies: tuple[TrustedEntry, ...],
 ) -> bool:
+    """Check an address against the trusted proxy list (exact IPs and CIDR ranges)."""
     for p in proxies:
         if isinstance(p, (IPv4Network, IPv6Network)):
             if addr in p:
@@ -60,6 +64,7 @@ def client_ip(
     """
     remote: str = request.META.get("REMOTE_ADDR", "") or "unknown"
 
+    # Dev runserver has no proxy in front; never honor XFF locally so it can't be spoofed.
     if settings.DEBUG:
         return remote
 
@@ -92,4 +97,5 @@ def client_ip(
         if not _is_trusted(candidate_addr, proxies):
             return candidate
 
+    # Every XFF hop was itself a trusted proxy; fall back to the direct peer.
     return remote

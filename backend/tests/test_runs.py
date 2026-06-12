@@ -294,6 +294,8 @@ class RunsWriteTest(AuthTestBase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["id"], "toupdate")
+        # place is not a RunUpdateSchema field, so the place=1 in the payload is silently
+        # dropped: placement is server-computed, not client-settable on update.
         self.assertEqual(data["place"], 5)
         self.assertEqual(data["times"]["time"], "5m 00s")
 

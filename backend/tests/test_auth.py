@@ -272,3 +272,5 @@ class AuthMeUpdateTest(AuthMeTestBase):
         )
         self.player.refresh_from_db()
         self.assertIsNone(self.player.discord)
+
+        self.assertEqual(response.status_code, 200)

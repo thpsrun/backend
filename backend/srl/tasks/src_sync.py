@@ -70,6 +70,8 @@ def sync_src_action(
         if sync_task.status == SRCSyncTask.Status.SYNCED:
             return
 
+        # v1 moderation acts as the keyholder, so this needs the moderator's own
+        # Fernet-encrypted SRC key; the shared bot session cannot verify on their behalf.
         user = sync_task.moderator.user if sync_task.moderator else None
         if not user or not user.encrypted_api_key:
             save_sync_task(
@@ -129,6 +131,8 @@ def sync_src_action(
             )
             return
 
+        # Client errors are permanent (bad payload, revoked key, run deleted on SRC);
+        # retrying cannot change the outcome, so fail immediately and alert.
         if response.status_code in (400, 401, 403, 404):
             save_sync_task(
                 sync_task,
@@ -145,6 +149,7 @@ def sync_src_action(
             )
             return
 
+        # 420 is SRC's nonstandard rate-limit status; both it and 503 clear up on their own.
         if response.status_code in (420, 503):
             _handle_retryable_failure(
                 sync_task,
@@ -277,6 +282,8 @@ def sync_src_settings(
                 category=ErrorCategory.AUTH,
                 exc=exc,
             )
+            # Stale bot session: kick the async re-login (Redis-locked IMAP 2FA flow) and
+            # retry after 30s, which usually gives the refresh time to complete.
             refresh_bot_session.delay()
             if sync_task.attempts < sync_task.max_attempts:
                 sync_src_settings.apply_async(
@@ -295,6 +302,8 @@ def sync_src_settings(
                 category=ErrorCategory.API_CONTRACT,
                 exc=exc,
             )
+            # A contract mismatch means SRC changed their private v2 API; trip the breaker
+            # to halt all v2 traffic instead of failing every queued edit the same way.
             trip_circuit_breaker(
                 reason=(
                     f"PutRunSettings response did not match v2 contract on "
@@ -404,7 +413,9 @@ def sweep_pending_src_sync() -> int:
     stale = SRCSyncTask.objects.filter(
         status=SRCSyncTask.Status.PENDING,
         updated_at__lt=cutoff,
-        attempts__lt=F("max_attempts"),
+        attempts__lt=F(
+            "max_attempts"
+        ),  # never resurrect tasks that exhausted their retries
     ).values_list("id", "action")
 
     count = 0
