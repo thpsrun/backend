@@ -38,7 +38,7 @@
     *   Changed the dev Docker compose file to be bound on loopback port 8001 instead of being bound to the host.
     *   Changed the behavior of the production deploy to wait until the Django container is healthy.
     *   Changed the behavior of migrations/collectstatics so they no longer run against the previous image.
-    *   Changed the API key behavior to where, if a user is demoted and they had moderator-specific capabilties, then the key will be revoked.
+    *   Changed the API key behavior to where, if a user is demoted and they had moderator-specific capabilities, then the key will be revoked.
 
 *   Removed
     *   Removed unused dependencies (`pytz`, `uritemplate`, `django-environ`).
