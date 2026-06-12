@@ -1,3 +1,4 @@
+from allauth.mfa.models import Authenticator
 from api.models import APIKey
 from api.permissions import authed, public_read
 from django.contrib.auth import get_user_model
@@ -87,6 +88,15 @@ class AuthedDependencyTest(TestCase):
             user=cls.mod_user,
         )
         cls.game.moderators.add(cls.mod_player)
+
+        # Privileged users (superusers, game mods) must have an MFA factor registered
+        # or authed() rejects their credentials outright.
+        for privileged_user in (cls.super_user, cls.mod_user):
+            Authenticator.objects.create(
+                user=privileged_user,
+                type=Authenticator.Type.TOTP,
+                data={},
+            )
 
         cls.test_run = Runs.objects.create(
             id="auth-run",

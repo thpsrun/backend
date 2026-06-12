@@ -17,6 +17,7 @@ from django.db.models import (
 )
 from django.db.models.expressions import Expression
 from django.db.models.functions import TruncDate
+from django.utils import timezone
 from srl.models import Games, Players, RunHistory, RunPlayers, Runs, RunVariableValues
 
 from api.v1.routers.utils import (
@@ -351,6 +352,7 @@ def query_latest_runs(
     else:
         filters["place__gt"] = 1
 
+    time_delta = timezone.now() - timezone.timedelta(days=30)
     runs: QuerySet[Runs] = (
         Runs.objects.select_related("game", "category", "level")
         .prefetch_related(
@@ -360,6 +362,7 @@ def query_latest_runs(
             "runvariablevalues_set__value",
         )
         .filter(**filters)
+        .filter(date__gte=time_delta)
         .order_by("-v_date")[:5]
     )
 

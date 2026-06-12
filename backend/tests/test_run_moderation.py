@@ -1,4 +1,5 @@
 from accounts.models import CustomUser
+from allauth.mfa.models import Authenticator
 from api.models import APIKey
 from api.v1.routers.auth.moderation import (
     ModerationError,
@@ -365,6 +366,11 @@ class UpdateRunModeratorActionTests(TestCase):
         )
         self.mod_user.encrypted_api_key = "fake-key"
         self.mod_user.save(update_fields=["encrypted_api_key"])
+        Authenticator.objects.create(
+            user=self.mod_user,
+            type=Authenticator.Type.TOTP,
+            data={},
+        )
 
         self.mod_player = Players.objects.create(
             id="modactor",

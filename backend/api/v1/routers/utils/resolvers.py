@@ -72,7 +72,7 @@ def guide_from_path(
 ) -> Guides:
     kwargs = _path_kwargs(request)
     if "slug" in kwargs:
-        return get_object_or_404(Guides, slug=kwargs["slug"])
+        return get_object_or_404(Guides, slug__iexact=kwargs["slug"])
     if "guide_id" in kwargs:
         return get_object_or_404(Guides, pk=kwargs["guide_id"])
     return None  # type: ignore

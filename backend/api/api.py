@@ -69,7 +69,7 @@ ninja_api: NinjaAPI = NinjaAPI(
     AUTHENTICATION:
     - GET requests are public. No API key is required to access this information.
     - All other HTTP requests will require a valid API key in the X-API-Key header to proceed.
-        - If you want an API key, contact ThePackle on the thps.run Discord.
+        - API keys can be acquired in your account settings.
 
     QUERYING:
     Depending on the endpoint chosen, you will be able to further refine queries to reduce the
@@ -265,6 +265,8 @@ def global_exception_handler(
             },
         )
 
+        # Only record whether a key was present, never the key itself, so credentials
+        # cannot leak into Sentry.
         api_key_header = request.headers.get("X-API-Key")
         if api_key_header:
             scope.set_tag("has_api_key", "true")
@@ -315,6 +317,7 @@ def global_exception_handler(
 def health_check(
     request: HttpRequest,
 ) -> dict[str, Any]:
+    """Return a static health payload for uptime monitoring."""
     return {
         "status": "healthy",
         "version": ninja_api.version,
@@ -325,6 +328,11 @@ def health_check(
 def _hide_from_schema(
     router: Router,
 ) -> Router:
+    """Strip a router's operations from the OpenAPI docs while leaving them routable.
+
+    Used for frontend-internal endpoints (auth flows, admin tooling, page data) that
+    are not part of the public API contract documented at /docs.
+    """
     for path_view in router.path_operations.values():
         for op in path_view.operations:
             op.include_in_schema = False

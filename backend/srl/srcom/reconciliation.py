@@ -40,11 +40,18 @@ _current_job: contextvars.ContextVar[ReconciliationJob | None] = contextvars.Con
 def reconciliation_context(
     job: ReconciliationJob,
 ) -> Iterator[None]:
-    token = _current_job.set(job)
+    """Bind `job` and reset every job-scoped contextvar for the duration of the context."""
+    job_token = _current_job.set(job)
+    cancel_token = _last_cancel_check.set((0.0, False))
+    items_token = _pending_items.set([])
+    counts_token = _pending_counts.set({})
     try:
         yield
     finally:
-        _current_job.reset(token)
+        _current_job.reset(job_token)
+        _last_cancel_check.reset(cancel_token)
+        _pending_items.reset(items_token)
+        _pending_counts.reset(counts_token)
 
 
 def current_job() -> ReconciliationJob | None:

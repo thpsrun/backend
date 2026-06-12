@@ -1,4 +1,3 @@
-import environ
 from accounts.headless_views import SRCProviderSignupView
 from accounts.views import (
     oauth_connect_complete,
@@ -14,11 +13,8 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
 
-env = environ.Env()
-environ.Env.read_env()
-
-admin.site.site_header = env("SITE_NAME")
-admin.site.site_title = env("SITE_NAME")
+admin.site.site_header = settings.SITE_NAME
+admin.site.site_title = settings.SITE_NAME
 admin.site.index_title = "Admin Panel"
 
 urlpatterns = [
@@ -59,11 +55,6 @@ urlpatterns = [
         "_allauth/browser/v1/auth/provider/signup",
         SRCProviderSignupView.as_api_view(client="browser"),
         name="thps_oauth_signup_browser",
-    ),
-    path(
-        "_allauth/app/v1/auth/provider/signup",
-        SRCProviderSignupView.as_api_view(client="app"),
-        name="thps_oauth_signup_app",
     ),
     path("_allauth/", include("allauth.headless.urls")),
 ] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

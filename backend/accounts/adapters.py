@@ -18,12 +18,8 @@ from accounts.oauth_connect import (
     _CONNECT_COMPLETE_URL_PATH,
     handle_connect,
 )
-from accounts.oauth_connect import (
-    clear_intent as clear_connect_intent,
-)
-from accounts.oauth_connect import (
-    peek_intent as peek_connect_intent,
-)
+from accounts.oauth_connect import clear_intent as clear_connect_intent
+from accounts.oauth_connect import peek_intent as peek_connect_intent
 from accounts.oauth_login import handle_login
 from accounts.oauth_login import peek_intent as peek_login_intent
 from accounts.oauth_reauth import handle_reauth
@@ -39,6 +35,7 @@ def _check_oauth_unique(
     sociallogin: SocialLogin,
     exclude_user: AbstractBaseUser | None = None,
 ) -> None:
+    """Reject the login when its Discord/Twitch handle already belongs to another player."""
     extra = sociallogin.account.extra_data or {}
     provider = sociallogin.account.provider
     qs = Players.objects.exclude(user__isnull=True)
@@ -53,6 +50,8 @@ def _check_oauth_unique(
 
     elif provider == "twitch":
         login = extra.get("login")
+        # Players.twitch stores full URLs, so the untrusted provider value is only ever
+        # embedded in one when it matches Twitch's login charset.
         if login and TWITCH_LOGIN_RE.match(login):
             url = f"https://twitch.tv/{login}"
             if qs.filter(twitch__iexact=url).exists():
@@ -60,11 +59,16 @@ def _check_oauth_unique(
 
 
 class SocialAccountAdapter(DefaultSocialAccountAdapter):
+    """Dispatches provider callbacks into the intent-based connect/reauth/signup/login flows."""
+
     def is_open_for_signup(  # type: ignore
         self,
         request: HttpRequest,
         sociallogin: SocialLogin,
     ) -> bool:
+        """Keep provider signup open; the SRC-key signup form is the real gate."""
+        # SOCIALACCOUNT_AUTO_SIGNUP=False already blocks implicit account creation; returning
+        # True here only permits the explicit signup flow that captures the SRC API key.
         return True
 
     def pre_social_login(
@@ -72,8 +76,11 @@ class SocialAccountAdapter(DefaultSocialAccountAdapter):
         request: HttpRequest,
         sociallogin: SocialLogin,
     ) -> None:
+        """Validate the pending OAuth intent before allauth acts on the provider callback."""
         process = sociallogin.state.get("process")
 
+        # During connect, the colliding handle may legitimately be the current user's own
+        # Players row; only handles claimed by other users should block.
         if process == "connect" and getattr(request.user, "is_authenticated", False):
             exclude_user = request.user
         else:
@@ -93,6 +100,9 @@ class SocialAccountAdapter(DefaultSocialAccountAdapter):
             handle_connect(request, sociallogin, connect_intent)
             return
 
+        # At most one intent should exist per session. peek (not read) is used so an expired
+        # intent still routes to its own handler and surfaces as intent_expired in the popup,
+        # instead of being auto-cleared and falling through to the wrong flow.
         reauth_intent = peek_reauth_intent(request)
         if reauth_intent is not None:
             handle_reauth(request, sociallogin, reauth_intent)
@@ -110,6 +120,8 @@ class SocialAccountAdapter(DefaultSocialAccountAdapter):
 
         if sociallogin.user:
             if not sociallogin.is_existing:
+                # Unknown identity without a signup intent: bounce rather than auto-create,
+                # since signup must capture the user's SRC API key first.
                 raise ImmediateHttpResponse(
                     HttpResponseRedirect(f"{settings.FRONTEND_URL}/login/no-link/"),
                 )
@@ -124,6 +136,9 @@ class SocialAccountAdapter(DefaultSocialAccountAdapter):
         request: HttpRequest,
         socialaccount: SocialAccount,
     ) -> str:
+        """Send the popup to the connect-complete page once allauth has linked the account."""
+        # handle_connect leaves the intent in place so allauth can finish linking; the
+        # success path clears it here.
         clear_connect_intent(request)
         return (
             f"{_CONNECT_COMPLETE_URL_PATH}"
@@ -135,9 +150,12 @@ class SocialAccountAdapter(DefaultSocialAccountAdapter):
         account: SocialAccount,
         accounts: list[SocialAccount],
     ) -> None:
+        """Refuse to disconnect a social account that is the user's last way to log in."""
         # This is additional logic to lock the user from removing their password AND their
         # social media - otherwise a user would be completely locked out.
         with transaction.atomic():
+            # Lock the user row so two concurrent disconnects cannot both pass the
+            # last-method check and strand the account.
             user = (
                 type(account.user).objects.select_for_update().get(pk=account.user.pk)
             )
@@ -157,17 +175,23 @@ class SocialAccountAdapter(DefaultSocialAccountAdapter):
 
 
 class MFAAdapter(DefaultMFAAdapter):
+    """Tunes allauth's MFA enforcement for sessions authenticated via OAuth."""
+
     def is_mfa_enabled(
         self,
         user,
         types=None,
     ) -> bool:
+        """Report MFA as disabled for social logins that do not require a TOTP step."""
         if user.is_anonymous:
             return False
 
         request = context.request
 
         if request is not None:
+            # Only the latest authentication method matters: when the session was just
+            # established via OAuth, TOTP-only users still get an MFA prompt, but passkey
+            # owners are exempt (see social_login_requires_mfa).
             methods = request.session.get(AUTHENTICATION_METHODS_SESSION_KEY, [])
             if methods and methods[-1].get("method") == "socialaccount":
                 if not social_login_requires_mfa(user):
@@ -180,6 +204,7 @@ class MFAAdapter(DefaultMFAAdapter):
         self,
         authenticator: Authenticator,
     ) -> bool:
+        """Refuse to delete the last passkey of an account with no other way to log in."""
         if authenticator.type != "webauthn":
             return super().can_delete_authenticator(authenticator)
 

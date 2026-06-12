@@ -8,4 +8,5 @@ class ApiConfig(AppConfig):
     def ready(
         self,
     ) -> None:
+        import api.checks  # noqa: F401
         import api.signals  # noqa: F401

@@ -9,6 +9,8 @@ from rest_framework_api_key.models import AbstractAPIKey, BaseAPIKeyManager
 
 
 class APIKeyRevokedReason(models.TextChoices):
+    """Why a key was revoked; the empty string doubles as "still active"."""
+
     NONE = "", "Not revoked"
     USER = "user", "Revoked by owner"
     PERMISSION_REVOKED = "permission_revoked", "Permission revoked"
@@ -17,12 +19,16 @@ class APIKeyRevokedReason(models.TextChoices):
 
 
 class APIActivityAuthMethod(models.TextChoices):
+    """How the caller authenticated for an activity-log row."""
+
     API_KEY = "api_key", "API Key"
     SESSION = "session", "Session"
     ANONYMOUS = "anonymous", "Anonymous"
 
 
 class APIActivityAction(models.TextChoices):
+    """Coarse action category derived from the HTTP method."""
+
     CREATE = "create", "Create"
     UPDATE = "update", "Update"
     DELETE = "delete", "Delete"
@@ -31,9 +37,14 @@ class APIActivityAction(models.TextChoices):
 
 
 class APIKeyManager(BaseAPIKeyManager):
+    """Manager layering owner/expiry checks on top of the library's revoked filter."""
+
     def get_usable_keys(
         self,
     ) -> models.QuerySet:
+        """Restrict usable keys to active owners and unexpired keys."""
+        # get_from_key() resolves through this queryset, so disabled owners and expired
+        # keys 401 the same way a revoked or unknown key does.
         return (
             super()
             .get_usable_keys()
@@ -57,10 +68,13 @@ class APIKeyManager(BaseAPIKeyManager):
         self,
         key: str,
     ) -> "APIKey":
+        """Typed passthrough so callers get APIKey instead of the abstract base."""
         return super().get_from_key(key)  # type: ignore
 
 
 class APIKey(AbstractAPIKey):
+    """A user-owned API key, optionally narrowed to specific games and capabilities."""
+
     objects: APIKeyManager = APIKeyManager()
 
     user = models.ForeignKey(
@@ -108,6 +122,7 @@ class APIKey(AbstractAPIKey):
         reason: "APIKeyRevokedReason | str",
     ) -> bool:
         """Mark this key as revoked with a reason and timestamp."""
+        # Idempotent: False tells callers (signals, sweep) not to double-write audit events.
         if self.revoked:
             return False
         self.revoked = True
@@ -118,6 +133,8 @@ class APIKey(AbstractAPIKey):
 
 
 class APIActivityLog(models.Model):
+    """One mutating API request, written by APIActivityLogMiddleware."""
+
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -139,6 +156,8 @@ class APIActivityLog(models.Model):
         default=APIActivityAuthMethod.ANONYMOUS,
     )
 
+    # Label copied at request time: the FK above is SET_NULL and labels are mutable,
+    # so the log preserves what the caller actually used.
     key_label_snapshot = models.CharField(max_length=100, blank=True, default="")
     method = models.CharField(max_length=8)
     path = models.CharField(max_length=512)

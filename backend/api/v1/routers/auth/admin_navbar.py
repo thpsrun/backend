@@ -35,6 +35,7 @@ router = Router()
 def _nav_item_payload(
     item: NavItem,
 ) -> dict:
+    """Flat NavItem list; children stays empty (the tree shape comes from get_navbar_state)."""
     return {
         "id": item.pk,
         "name": item.name,
@@ -49,6 +50,7 @@ def _nav_item_payload(
 def _social_payload(
     link: SocialLink,
 ) -> dict:
+    """Serialize a SocialLink for single-item admin responses."""
     return {
         "id": link.pk,
         "platform": link.platform,

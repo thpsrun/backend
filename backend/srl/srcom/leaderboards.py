@@ -52,12 +52,12 @@ def sync_game_runs(
     dispatched = 0
     try:
         if reset == 1:
-            RunVariableValues.objects.filter(run__game__id=game_id).delete()
-            VariableValues.objects.filter(var__game__id=game_id).delete()
-            Variables.objects.filter(game=game_id).delete()
-            Categories.objects.filter(game=game_id).delete()
-            Levels.objects.filter(game=game_id).delete()
-            Runs.objects.filter(game=game_id, obsolete=False).delete()
+            with transaction.atomic():
+                Runs.objects.filter(game=game_id).delete()
+                VariableValues.objects.filter(var__game__id=game_id).delete()
+                Variables.objects.filter(game=game_id).delete()
+                Categories.objects.filter(game=game_id).delete()
+                Levels.objects.filter(game=game_id).delete()
 
         game_check = src_api(
             f"https://speedrun.com/api/v1/games/"

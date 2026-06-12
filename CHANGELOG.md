@@ -1,3 +1,50 @@
+### v4.3
+###### June 12, 2026
+*   Added
+    *   Added a new mobile format
+        *   Should scale decently on phones and tablets now - send feedback!
+    *   Added lazy loading to a bunch of parts of the site (which hopefully will increase performance?)
+        *   Will be assessing this over time.
+    *   Added a very basic meta description for the site.
+        *   Plan on making this better in a future release.
+    *   Added a new `REDIS_HOST` environmental variable to better handle test suites (and to allow custom redis db names).
+    *   Added a new constraint to email addresses so duplicates are not allowed.
+    *   Added an MFA requirement to API keys owned by privileged users (superusers, game moderators).
+        *   Their keys stop authenticating until a TOTP/passkey is registered, matching the browser-session rule.
+    *   Added a system check (`api.W001`) that warns when production runs without `TRUSTED_PROXIES`, since per-IP rate limiting collapses behind a proxy without it.
+    *   Added a bunch of comments and docstrings through backend and frontend repos.
+        *   I am still awful at making comments at the moment ugh.
+
+*   Fixed
+    *   Fixed an issue where `RunHistory` was incorrectly dealing with unique constraints.
+    *   Fixed an issue where events and notifications could be attributed to `system` instead of the user in question.
+    *   Fixed an issue where where runs could never be imported if they had non-subcategory varialbes (e.g. label variables) or newly added variable values weren't properly added, leading to an infinite loop.
+    *   Fixed an issue where `Refresh Game Runs` would crash in the admin UI.
+    *   Fixed an issue where cancelled reconcilliation jobs could destroy later Celery workers in some cases.
+    *   Fixed an issue where the health check was, in fact, not healthy.
+    *   Fixed an issue where dependabot was pointed to the wrong directory.
+    *   Fixed an issue where the deploy pipeline was pointing to an old backup path.
+    *   Fixed an issue where API keys limited to `runs.edit_any` could verify/reject runs through `moderator_action` without `runs.verify` as a capability.
+    *   Fixed an issue where API keys could target other games, runs, or guides within their jurisdiction.
+    *   Fixed an issue where API key creation would return a `Server 500 Error` when a non-superuser requested `run` or `guide`-scoped capabilities.
+    *   Fixed an issue where API keys were not properly checking MFA status of the account in some cases.
+    *   Fixed an issue where points recalculations would not reopen a player's next best run when a world record was removed.
+    *   Fixed an issue where timing methods could be improperly compared in some situations of recalculation.
+    *   Fixed an issue where navbar cache invalidation could cause a crash. 
+
+*   Changed
+    *   Changed the behavior of the `Latest Runs` and `Latest Records` logic wherein runs will not appear if it has been more than 30 days after submission.
+    *   (BETA) Changed the behavior of Celery scheduling to where, if a game is still being checked, a second scan would not start.
+    *   Changed the dev Docker compose file to be bound on loopback port 8001 instead of being bound to the host.
+    *   Changed the behavior of the production deploy to wait until the Django container is healthy.
+    *   Changed the behavior of migrations/collectstatics so they no longer run against the previous image.
+    *   Changed the API key behavior to where, if a user is demoted and they had moderator-specific capabilities, then the key will be revoked.
+
+*   Removed
+    *   Removed unused dependencies (`pytz`, `uritemplate`, `django-environ`).
+
+***
+
 ### v4.2.2
 ###### June 8, 2026
 *   Fixed an issue where the client IP resolver was incorrectly accounting for the wrong IPs from `X-Forwarded-For`.

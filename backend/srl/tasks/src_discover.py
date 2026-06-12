@@ -20,6 +20,7 @@ from srl.models import (
     RunVariableValues,
     Series,
     Variables,
+    VariableValues,
 )
 from srl.srcom.categories import sync_categories
 from srl.srcom.games import sync_game
@@ -34,6 +35,8 @@ from srl.utils import src_api, src_api_probe
 log = logging.getLogger(__name__)
 
 _DISPATCH_LOCK_KEY = "src_discovery:dispatch:lock"
+_GAME_DISCOVERY_LOCK_KEY = "src_discovery:game:{game_id}:lock"
+_GAME_DISCOVERY_LOCK_TTL = 900
 _V1_RUNS_URL = "https://www.speedrun.com/api/v1/runs"
 
 _SRC_TO_LOCAL_STATUS: dict[str, str] = {
@@ -69,18 +72,25 @@ def _ensure_dependencies(
             )
             return False
 
-    for var_id in (payload.get("values") or {}).keys():
-        if not Variables.objects.filter(id=var_id).exists():
-            try:
-                sync_variables(var_id)
-            except Exception as exc:
-                log.warning(
-                    "src_discover: sync_variables(%s) failed for run %s: %s",
-                    var_id,
-                    payload.get("id"),
-                    exc,
-                )
-                return False
+    for var_id, value_id in (payload.get("values") or {}).items():
+        needs_sync = not Variables.objects.filter(id=var_id).exists()
+        if not needs_sync and value_id:
+            needs_sync = not VariableValues.objects.filter(
+                var_id=var_id,
+                value=value_id,
+            ).exists()
+        if not needs_sync:
+            continue
+        try:
+            sync_variables(var_id)
+        except Exception as exc:
+            log.warning(
+                "src_discover: sync_variables(%s) failed for run %s: %s",
+                var_id,
+                payload.get("id"),
+                exc,
+            )
+            return False
 
     level_id = payload.get("level")
     if level_id and not Levels.objects.filter(id=level_id).exists():
@@ -425,8 +435,7 @@ def _remove_deleted_run(
     )
 
 
-@shared_task(name="srl.tasks.discover_runs")
-def discover_runs(
+def _discover_runs(
     game_id: str,
 ) -> dict[str, int]:
     """Poll v1 for new/verified/rejected runs on `game_id` and reconcile locally."""
@@ -495,6 +504,28 @@ def discover_runs(
         counts,
     )
     return counts
+
+
+@shared_task(name="srl.tasks.discover_runs")
+def discover_runs(
+    game_id: str,
+) -> dict:
+    """Run per-game discovery under a per-game mutex.
+
+    SRC throttling can stretch a single pass well past the one-minute beat, so overlapping passes
+    for the same game would race each other's run/player writes; skip instead and let the next beat.
+    """
+    lock_key = _GAME_DISCOVERY_LOCK_KEY.format(game_id=game_id)
+    if not cache.add(lock_key, "1", timeout=_GAME_DISCOVERY_LOCK_TTL):
+        log.info(
+            "src_discover: game=%s skipped - discovery already running",
+            game_id,
+        )
+        return {"skipped": True, "reason": "game_lock_held"}
+    try:
+        return _discover_runs(game_id)
+    finally:
+        cache.delete(lock_key)
 
 
 @shared_task(name="srl.tasks.dispatch_run_discovery")

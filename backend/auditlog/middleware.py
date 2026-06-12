@@ -20,8 +20,8 @@ class AuditActorMiddleware:
         self,
         request: HttpRequest,
     ) -> HttpResponse:
+        """Bind the session actor before the view runs so in-view recorders see it."""
         try:
-            response = self.get_response(request)
             if not request.path.startswith("/api/"):
                 raw_user = getattr(request, "user", None)
                 user = (
@@ -33,6 +33,6 @@ class AuditActorMiddleware:
                 if user is not None:
                     label = getattr(user, "username", "") or ""
                     set_actor(user=user, api_key=None, label=label[:128])
-            return response
+            return self.get_response(request)
         finally:
             clear_actor()

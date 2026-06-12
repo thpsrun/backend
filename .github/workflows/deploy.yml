@@ -93,8 +93,9 @@ jobs:
       - name: Run Django Tests
         working-directory: ./backend
         env:
-          # Override the host to use localhost since services run on the runner
+          # Override the hosts to use localhost since services run on the runner
           DATABASE_HOST: localhost
+          REDIS_HOST: localhost
         run: |
           python manage.py migrate --noinput
           python manage.py test --verbosity=2
@@ -149,12 +150,8 @@ jobs:
             cd ~/backend
             git pull origin dev
 
-            echo "Running database migrations..."
-            docker compose -f docker-compose.PROD.yml run --rm django python manage.py migrate --noinput
-
-            echo "Collecting static files..."
-            docker compose -f docker-compose.PROD.yml run --rm django python manage.py collectstatic --noinput
-
+            # migrate + collectstatic run in the container entrypoint with the
+            # freshly built image; running them here would use the OLD image.
             echo "Restarting Docker containers..."
             docker compose -f docker-compose.PROD.yml down
             docker compose -f docker-compose.PROD.yml up -d --build
@@ -218,12 +215,6 @@ jobs:
         with:
           ref: main
 
-      - name: Create Deployment Tag
-        run: |
-          TAG="deploy-$(date +'%Y%m%d-%H%M%S')"
-          echo "DEPLOY_TAG=$TAG" >> $GITHUB_ENV
-          echo "Deployment tag: $TAG"
-
       - name: SSH - Backup Database
         uses: appleboy/ssh-action@v1.2.5
         with:
@@ -235,14 +226,14 @@ jobs:
             set -e
             cd ~/backend
 
-            mkdir -p ~/backups
+            mkdir -p ~/backend/backups/local/
             BACKUP_FILE="pre-deploy-$(date +'%Y%m%d-%H%M%S').sql.gz"
 
             echo "Creating pre-deployment backup: $BACKUP_FILE"
-            docker exec postgres sh -c 'pg_dump -U $POSTGRES_USER $POSTGRES_DB' | gzip > ~/backups/$BACKUP_FILE
+            docker exec postgres sh -c 'pg_dump -U $POSTGRES_USER $POSTGRES_DB' | gzip > ~/backend/backups/local/$BACKUP_FILE
 
-            if [ -f ~/backups/$BACKUP_FILE ]; then
-              SIZE=$(du -h ~/backups/$BACKUP_FILE | cut -f1)
+            if [ -f ~/backend/backups/local/$BACKUP_FILE ]; then
+              SIZE=$(du -h ~/backend/backups/local/$BACKUP_FILE | cut -f1)
               echo "Backup created: $BACKUP_FILE ($SIZE)"
             else
               echo "Backup failed!"
@@ -261,12 +252,8 @@ jobs:
             cd ~/backend
             git pull origin main
 
-            echo "Running database migrations..."
-            docker compose -f docker-compose.PROD.yml run --rm django python manage.py migrate --noinput
-
-            echo "Collecting static files..."
-            docker compose -f docker-compose.PROD.yml run --rm django python manage.py collectstatic --noinput
-
+            # migrate + collectstatic run in the container entrypoint with the
+            # freshly built image; running them here would use the OLD image.
             echo "Restarting Docker containers..."
             docker compose -f docker-compose.PROD.yml down
             docker compose -f docker-compose.PROD.yml up -d --build
@@ -274,20 +261,31 @@ jobs:
             echo "Cleaning up Docker..."
             docker system prune -f
 
-            echo "Deployment completed successfully!"
+            echo "Waiting for the django container to report healthy..."
+            HEALTHY=""
+            for i in $(seq 1 30); do
+              STATUS=$(docker inspect --format='{{.State.Health.Status}}' django 2>/dev/null || echo "missing")
+              if [ "$STATUS" = "healthy" ]; then
+                echo "django container is healthy"
+                HEALTHY="yes"
+                break
+              fi
+              echo "  attempt $i/30: container status=$STATUS"
+              sleep 5
+            done
+            if [ -z "$HEALTHY" ]; then
+              echo "!!! django container failed to become healthy !!!"
+              docker compose -f docker-compose.PROD.yml ps
+              docker compose -f docker-compose.PROD.yml logs --tail=80 django
+              exit 1
+            fi
 
-      - name: Tag Successful Deployment
-        if: success()
-        run: |
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          git tag -a ${{ env.DEPLOY_TAG }} -m "Deployed to Production"
-          git push origin ${{ env.DEPLOY_TAG }}
+            echo "Deployment completed successfully!"
 
       - name: Notify Success
         if: success()
         run: |
-          echo "Production deployment successful: ${{ env.DEPLOY_TAG }}"
+          echo "Production deployment successful!"
 
       - name: Notify Failure
         if: failure()

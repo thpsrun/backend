@@ -3,14 +3,24 @@ import uuid
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.db.models.functions import Lower
 from django_resized import ResizedImageField
 from srl.models.base import validate_profile_bg
 
 
 class CustomUser(AbstractUser):
+    """Site user: AbstractUser plus profile cosmetics and the encrypted SRC API key."""
+
     class Meta:
         verbose_name = "User"
         verbose_name_plural = "Users"
+        constraints = [
+            models.UniqueConstraint(
+                Lower("email"),
+                condition=~models.Q(email=""),
+                name="unique_user_email_ci",
+            ),
+        ]
 
     encrypted_api_key = models.TextField(
         verbose_name="Encrypted SRC API Key",
@@ -77,13 +87,18 @@ class CustomUser(AbstractUser):
 
 
 class UserDataExport(models.Model):
+    """Tracks one user data export request and the archive it produced."""
+
     class Status(models.TextChoices):
+        """Lifecycle states of an export; READY archives expire to EXPIRED after the TTL."""
+
         PENDING = "PENDING", "Pending"
         RUNNING = "RUNNING", "Running"
         READY = "READY", "Ready"
         FAILED = "FAILED", "Failed"
         EXPIRED = "EXPIRED", "Expired"
 
+    # UUID pk doubles as the archive filename, so export paths are unguessable.
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,

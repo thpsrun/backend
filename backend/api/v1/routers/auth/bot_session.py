@@ -22,6 +22,7 @@ router = Router()
 
 
 def _replay_window_cutoff() -> datetime:
+    """Oldest created_at an EDIT_RUN task may have and still be eligible for replay."""
     days = getattr(settings, "SRC_V2_REPLAY_MAX_AGE_DAYS", 7)
     return datetime.now(timezone.utc) - timedelta(days=days)
 
@@ -29,6 +30,7 @@ def _replay_window_cutoff() -> datetime:
 def _edit_run_count(
     status: str,
 ) -> int:
+    """Count EDIT_RUN sync tasks with the given status inside the replay window."""
     return SRCSyncTask.objects.filter(
         action=SRCSyncTask.ActionType.EDIT_RUN,
         status=status,
@@ -39,6 +41,7 @@ def _edit_run_count(
 def _to_response(
     bs: BotSession,
 ) -> BotSessionResponse:
+    """Build the BotSessionResponse for a BotSession row."""
     return BotSessionResponse(
         status=bs.status,
         validated_at=bs.validated_at,
@@ -128,6 +131,7 @@ def put_kill_switch(
         if bs.disabled_by_circuit_breaker:
             bs.disabled_by_circuit_breaker = False
             bs.save(update_fields=["disabled_by_circuit_breaker"])
+
         replay_queued_count = SRCSyncTask.objects.filter(
             action=SRCSyncTask.ActionType.EDIT_RUN,
             status=SRCSyncTask.Status.FAILED,

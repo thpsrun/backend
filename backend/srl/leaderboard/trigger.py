@@ -21,8 +21,6 @@ def _wr_check(
 
     run_time = getattr(run, time_col) or 0
     if run_time <= 0:
-        run_time = getattr(run, "time_secs") or 0
-    if run_time <= 0:
         return False
 
     result = (

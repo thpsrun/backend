@@ -20,6 +20,13 @@ class RunHistory(models.Model):
             models.Index(fields=["start_date", "end_date"]),
             models.Index(fields=["run", "start_date"]),
         ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["run"],
+                condition=models.Q(end_date__isnull=True),
+                name="unique_open_runhistory_per_run",
+            ),
+        ]
 
     run = models.ForeignKey(
         Runs,
@@ -51,14 +58,6 @@ class RunHistory(models.Model):
         verbose_name="Streak Start (WR entries only)",
     )
     created_at = models.DateTimeField(auto_now_add=True)
-
-    constraints = [
-        models.UniqueConstraint(
-            fields=["run"],
-            condition=models.Q(end_date__isnull=True),
-            name="unique_open_runhistory_per_run",
-        ),
-    ]
 
     def __str__(
         self,

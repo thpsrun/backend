@@ -40,6 +40,7 @@ router = Router()
 def _resolve_player(
     ident: str,
 ) -> Players:
+    """Resolve a Player by exact ID first, then by unique name/nickname/username."""
     by_id = list(Players.objects.filter(id=ident))
     if len(by_id) == 1:
         return by_id[0]
@@ -64,6 +65,7 @@ def _resolve_player(
 def _resolve_user(
     ident: str,
 ) -> Any:
+    """Resolve a player identifier to its linked Django user, raising 404 if unclaimed."""
     player = _resolve_player(ident)
     if player.user is None:
         raise HttpError(
@@ -76,6 +78,7 @@ def _resolve_user(
 def _revoke_user_sessions(
     user: Any,
 ) -> int:
+    """Delete every unexpired session belonging to `user`; returns the count deleted."""
     target_id = str(user.pk)
     keys_to_kill: list[str] = []
     for session in Session.objects.filter(expire_date__gte=timezone.now()):
@@ -90,6 +93,7 @@ def _refuse_self_target(
     request: HttpRequest,
     target_user: Any,
 ) -> None:
+    """Reject admin actions aimed at the actor's own account (self-lockout guard)."""
     actor_user = getattr(request, "user", None)
     if actor_user is not None and actor_user.pk == target_user.pk:
         raise HttpError(
@@ -320,11 +324,14 @@ def admin_upload_pfp(
             ),
         )
 
+    # player.id originates from SRC; strip anything path-like before it
+    # becomes a filesystem name.
     safe_id = "".join(c for c in player.id if c.isalnum() or c in "-_")
     file_path = os.path.join(PFP_DIR, f"{safe_id}.jpg")
     temp_path = f"{file_path}.tmp"
 
     try:
+        # Write-then-rename so a concurrent reader never sees a partial image.
         rgb.save(temp_path, "JPEG", quality=85)
         os.replace(temp_path, file_path)
     except OSError:
@@ -375,6 +382,8 @@ def admin_delete_pfp(
         raise HttpError(400, "Invalid Player ID")
 
     file_path = os.path.join(PFP_DIR, f"{safe_id}.jpg")
+    # Defense in depth: even after sanitizing, refuse any path that resolves
+    # outside PFP_DIR (covers symlink tricks) before unlinking.
     resolved_target = os.path.realpath(file_path)
     resolved_root = os.path.realpath(PFP_DIR)
     try:
@@ -605,6 +614,8 @@ def admin_password_reset(
             ),
         )
 
+    # All in one transaction: if the reset email cannot be sent, the password
+    # wipe and session purge roll back instead of silently locking the user out.
     with transaction.atomic():
         user.set_unusable_password()
         user.save(update_fields=["password"])
@@ -647,6 +658,8 @@ def admin_ban_user(
     reason = body.reason or ""
 
     with transaction.atomic():
+        # Keys are revoked (with reason BANNED), not deleted, so the audit
+        # trail of why each key died is preserved.
         for key in APIKey.objects.filter(user=user, revoked_at__isnull=True):
             key.revoke(APIKeyRevokedReason.BANNED)
 
@@ -658,6 +671,8 @@ def admin_ban_user(
         except Players.DoesNotExist:
             player = None
         if player is not None:
+            # sync_paused stops the SRC discovery loop from refreshing this
+            # player's data while the ban is in effect.
             player.sync_paused = True
             player.save(update_fields=["sync_paused"])
 

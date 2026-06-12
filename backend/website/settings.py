@@ -184,7 +184,6 @@ else:
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
-    SECURE_BROWSER_XSS_FILTER = True
     X_FRAME_OPTIONS = "DENY"
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
@@ -204,7 +203,8 @@ if DEBUG:
 else:
     redis_password = _require_env("REDIS_PASSWORD")
 redis_auth = f":{redis_password}@" if redis_password else ""
-REDIS_DB = f"redis://{redis_auth}redis:6379"
+REDIS_HOST = os.getenv("REDIS_HOST", "redis")
+REDIS_DB = f"redis://{redis_auth}{REDIS_HOST}:6379"
 
 # Comma-separated IPs or CIDR ranges of trusted reverse proxies. When the request's
 # REMOTE_ADDR matches one of these, X-Forwarded-For is honored for rate limiting and logging.
@@ -344,7 +344,8 @@ SOCIALACCOUNT_EMAIL_AUTHENTICATION = True
 PASSWORD_RESET_TIMEOUT = 1800
 ACCOUNT_LOGIN_METHODS = {"username", "email"}
 ACCOUNT_SIGNUP_FIELDS = ["email*", "username*", "password1*", "password2*"]
-MFA_TOTP_ISSUER = os.getenv("SITE_NAME", "THPS Speedrunning")
+SITE_NAME = os.getenv("SITE_NAME", "thps.run")
+MFA_TOTP_ISSUER = SITE_NAME
 
 SOCIALACCOUNT_ADAPTER = "accounts.adapters.SocialAccountAdapter"
 MFA_ADAPTER = "accounts.adapters.MFAAdapter"
@@ -421,6 +422,7 @@ SOCIALACCOUNT_PROVIDERS = {
 
 # ALLAUTH HEADLESS
 HEADLESS_ONLY = True
+HEADLESS_CLIENTS = ("browser",)
 HEADLESS_FRONTEND_URLS = {
     "account_confirm_email": f"{FRONTEND_URL}/verify-email/{{key}}",
     "account_reset_password_from_key": f"{FRONTEND_URL}/reset-password/{{uidb36}}/{{key}}",

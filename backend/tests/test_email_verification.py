@@ -27,6 +27,7 @@ class RegisterVerificationTest(TestCase):
     ) -> None:
         self.player = _seed_eligible_player()
         self.client = Client()
+        # Registration eligibility requires the player to have a verified run; fake it.
         self._has_run_patch = patch(
             "api.v1.routers.auth.register.RunPlayers.objects",
         )
@@ -34,6 +35,8 @@ class RegisterVerificationTest(TestCase):
         mock_runs.filter.return_value.exists.return_value = True
         self.addCleanup(self._has_run_patch.stop)
 
+        # Register validates src_api_key against SRC's live /profile endpoint; stub it
+        # to return this player's id so the key "belongs" to the seeded player.
         self._src_patch = patch(
             "api.v1.routers.auth.register.http_requests.get",
         )

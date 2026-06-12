@@ -30,6 +30,7 @@ THROTTLE_WINDOW = timedelta(hours=24)
 def _row_to_item(
     row: UserDataExport,
 ) -> DataExportItem:
+    """Serialize a UserDataExport row into the API item shape."""
     return DataExportItem(
         id=row.id,
         status=row.status,
@@ -121,6 +122,8 @@ def download_data_export(
     request: HttpRequest,
     export_id: UUID,
 ):
+    # Not-ready, expired, and missing-file all collapse into the same 404 so the
+    # response never leaks export lifecycle state.
     row = UserDataExport.objects.filter(pk=export_id, user=request.user).first()
     if row is None:
         return 404, ErrorResponse(error="Export not found.")

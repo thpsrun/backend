@@ -13,6 +13,8 @@ from accounts.turnstile import TurnstileUnavailable, verify_turnstile
 
 logger = logging.getLogger("accounts.turnstile")
 
+# Backend pages rendered inside the OAuth popup. They postMessage their result back to
+# the React opener, which only works when COOP does not sever window.opener.
 _OAUTH_POPUP_PATH_RE = re.compile(
     r"^/accounts/("
     r"oauth-connect-complete/"
@@ -35,12 +37,14 @@ class OAuthPopupCOOPMiddleware:
         self,
         get_response: Callable[[HttpRequest], HttpResponse],
     ) -> None:
+        """Store the downstream handler."""
         self.get_response = get_response
 
     def __call__(
         self,
         request: HttpRequest,
     ) -> HttpResponse:
+        """Override COOP on popup pages after the response is built."""
         response = self.get_response(request)
         if _OAUTH_POPUP_PATH_RE.match(request.path):
             response.headers["Cross-Origin-Opener-Policy"] = (  # type: ignore
@@ -54,6 +58,8 @@ _TURNSTILE_PROTECTED: frozenset[tuple[str, str]] = frozenset(
         ("POST", "/_allauth/browser/v1/auth/login"),
         ("POST", "/_allauth/browser/v1/auth/password/request"),
         ("POST", "/_allauth/browser/v1/auth/provider/signup"),
+        # provider/redirect starts the OAuth handshake and can be hit with either verb,
+        # so both are gated to keep bots from kicking off provider flows.
         ("GET", "/_allauth/browser/v1/auth/provider/redirect"),
         ("POST", "/_allauth/browser/v1/auth/provider/redirect"),
         ("POST", "/api/v1/auth/register"),
@@ -67,6 +73,7 @@ def _turnstile_error(
     code: str,
     message: str,
 ) -> JsonResponse:
+    """Build a 403 in the allauth-headless error shape the frontend already parses."""
     return JsonResponse(
         {
             "status": 403,
@@ -79,6 +86,7 @@ def _turnstile_error(
 def _client_ip_or_none(
     request: HttpRequest,
 ) -> str | None:
+    """Return the client IP, or None when it could not be determined."""
     ip = client_ip(request)
     return None if ip == "unknown" else ip
 
@@ -90,15 +98,18 @@ class TurnstileMiddleware:
         self,
         get_response: Callable[[HttpRequest], HttpResponse],
     ) -> None:
+        """Store the downstream handler."""
         self.get_response = get_response
 
     def __call__(
         self,
         request: HttpRequest,
     ) -> HttpResponse:
+        """Reject protected requests that lack a valid Turnstile token."""
         key = (request.method or "", request.path)
         if key not in _TURNSTILE_PROTECTED:
             return self.get_response(request)
+
         if not settings.TURNSTILE_SECRET_KEY:
             return self.get_response(request)
 
@@ -116,6 +127,8 @@ class TurnstileMiddleware:
         try:
             ok = verify_turnstile(token, remote_ip)
         except TurnstileUnavailable:
+            # Fail closed: a Cloudflare outage blocks logins rather than waving
+            # everything through, but with a distinct code so the UI can explain it.
             logger.warning("turnstile siteverify unavailable", extra=log_ctx)
             return _turnstile_error(
                 "turnstile_unavailable",

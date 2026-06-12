@@ -8,7 +8,7 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from ninja import Router, Status
 from ninja.errors import HttpError
-from srl.models import Games
+from srl.models import Games, Players
 
 from api.models import APIKey, APIKeyRevokedReason
 from api.permissions import (
@@ -36,6 +36,7 @@ router = Router()
 def _build_key_response(
     key: APIKey,
 ) -> APIKeyResponse:
+    """Serialize an APIKey row for read responses (never includes the raw key)."""
     return APIKeyResponse(
         id=str(key.pk),
         label=key.label,
@@ -57,6 +58,7 @@ def _create_apikey_response(
     key: APIKey,
     raw: str,
 ) -> APIKeyCreateResponse:
+    """Creation-time response: the only place the raw key string is ever returned."""
     base = _build_key_response(key)
     return APIKeyCreateResponse(**base.model_dump(), key=raw)
 
@@ -65,12 +67,16 @@ def _check_user_capes(
     user,
     capability: str,
 ) -> bool:
+    """True when the user can naturally back `capability` on at least one game."""
     if user.is_superuser:
         return True
-    for g in Games.objects.all().iterator():
-        if user.has_perm(capability, g):
-            return True
-    return False
+    if capability in MOD_SCOPES:
+        return _user_moderates_any_game(user)
+    if capability in PLAYER_SCOPES:
+        player = getattr(user, "player", None)
+        return player is not None and player.claim_status == Players.ClaimStatus.CLAIMED
+
+    return user.has_perm(capability, None)
 
 
 def _user_moderates_any_game(

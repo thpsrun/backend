@@ -494,6 +494,42 @@ def _handle_add(
         )
 
 
+def _promote_player_best(
+    state: _WalkerState,
+    player_ids: set[str],
+    wr_time: float,
+    event_date: datetime,
+) -> None:
+    """Reopen each affected player's best pooled run if it lost its active entry.
+
+    After a run is removed, its players may still have a slower run sitting in
+    the pool (closed when the faster run arrived). That run is their PB again,
+    so it receives a fresh scoring period against the current WR time.
+    """
+    for pid in player_ids:
+        stack = state.player_best_runs.get(pid) or []
+        if not stack:
+            continue
+        promoted_time, promoted_id = stack[0]
+        if promoted_id in state.active_entries:
+            continue
+        promoted_run, _ = state.active_pool[promoted_id]
+        is_short = _is_short_run(promoted_time, state.runtype)
+        formula_points = points_formula(
+            wr_time,
+            promoted_time,
+            state.max_points,
+            short=is_short,
+        )
+        _open_active_entry(
+            state,
+            promoted_run,
+            promoted_time,
+            event_date,
+            formula_points,
+        )
+
+
 def _handle_remove(
     state: _WalkerState,
     run: Runs,
@@ -587,30 +623,17 @@ def _handle_remove(
         state.current_wr_id = new_wr_id
         state.current_wr_time = new_wr_time
         state.current_wr_player_ids = new_wr_player_ids
-    else:
-        for pid in player_ids:
-            stack = state.player_best_runs.get(pid) or []
-            if not stack:
-                continue
-            promoted_time, promoted_id = stack[0]
-            if promoted_id in state.active_entries:
-                continue
 
-            promoted_run, _ = state.active_pool[promoted_id]
-            is_short = _is_short_run(promoted_time, state.runtype)
-            formula_points = points_formula(
-                state.current_wr_time,  # type: ignore
-                promoted_time,
-                state.max_points,
-                short=is_short,
-            )
-            _open_active_entry(
-                state,
-                promoted_run,
-                promoted_time,
-                event_date,
-                formula_points,
-            )
+        # The removed WR's players may have a next-best pooled run that deserves
+        # to reopen now that their better run is gone (mirrors the non-WR branch).
+        _promote_player_best(state, player_ids, new_wr_time, event_date)
+    else:
+        _promote_player_best(
+            state,
+            player_ids,
+            state.current_wr_time,  # type: ignore
+            event_date,
+        )
 
 
 def enumerate_leaderboard_variants(
