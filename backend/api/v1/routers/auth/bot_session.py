@@ -87,14 +87,14 @@ def get_bot_session(
     },
     summary="Trigger v2 Bot Session Refresh",
     description=(
-        "Manually triggers refresh_bot_session(). Intended for ops "
-        "use when the bot session has expired and tasks are parking."
+        "Queues an asynchronous refresh_bot_session() run on Celery and "
+        "returns the current (pre-refresh) session status immediately. "
     ),
 )
 def post_refresh(
     request: HttpRequest,
 ) -> Status:
-    refresh_bot_session()
+    refresh_bot_session.delay()
     return Status(200, _to_response(BotSession.load()))
 
 

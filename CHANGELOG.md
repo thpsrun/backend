@@ -1,3 +1,8 @@
+### v4.3.1
+###### June 21, 2026
+*   Fixed an issue where the SRC API v2 bot refresh command would be killed too early, making the session stale.
+*   Fixed some smaller CSS issues throughout the site.
+
 ### v4.3
 ###### June 12, 2026
 *   Added

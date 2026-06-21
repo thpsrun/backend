@@ -72,7 +72,7 @@ class PlayerSearchResultSchema(BaseEmbedSchema):
         json_schema_extra={
             "example": {
                 "id": "v8lponvj",
-                "name": "ThePackle",
+                "name": "Anastasia",
                 "nickname": None,
                 "country_id": "us",
                 "pfp": None,
@@ -162,10 +162,10 @@ class PlayerResponse(BaseEmbedSchema):
         json_schema_extra={
             "example": {
                 "id": "v8lponvj",
-                "url": "https://speedrun.com/user/ThePackle",
+                "url": "https://speedrun.com/user/Anastasia",
                 "joined": "2015-06-22",
                 "player": {
-                    "name": "ThePackle",
+                    "name": "Anastasia",
                     "nickname": None,
                     "pronouns": "he/him",
                     "country": {"id": "us", "name": "United States", "flag": None},
@@ -173,8 +173,8 @@ class PlayerResponse(BaseEmbedSchema):
                     "ex_stream": False,
                 },
                 "socials": {
-                    "twitch": "https://twitch.tv/thepackle",
-                    "youtube": "https://youtube.com/thepackle",
+                    "twitch": "https://twitch.tv/Anastasia",
+                    "youtube": "https://youtube.com/Anastasia",
                     "twitter": None,
                     "bluesky": None,
                     "discord": None,

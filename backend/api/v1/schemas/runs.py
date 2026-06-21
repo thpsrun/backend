@@ -1,14 +1,15 @@
 from datetime import datetime
 from typing import Any, Literal
 
+from ninja import Schema
+from pydantic import ConfigDict, Field, field_validator, model_validator
+
 from api.v1.schemas.base import (
     BaseEmbedSchema,
     RunStatusType,
     RunTypeType,
     TimingMethodType,
 )
-from ninja import Schema
-from pydantic import ConfigDict, Field, field_validator, model_validator
 
 
 def compute_run_subcategory(
@@ -276,7 +277,7 @@ class RunSchema(RunBaseSchema):
                 "game": "n2680o1p",
                 "category": "rklge08d",
                 "level": None,
-                "players": [{"id": "v8lponvj", "name": "ThePackle", "order": 1}],
+                "players": [{"id": "v8lponvj", "name": "Anastasia", "order": 1}],
                 "variables": {"5lygdn8q": "pc"},
             },
         },
@@ -387,7 +388,7 @@ class RunModSchema(RunSchema):
                 "game": "n2680o1p",
                 "category": "rklge08d",
                 "level": None,
-                "players": [{"id": "v8lponvj", "name": "ThePackle", "order": 1}],
+                "players": [{"id": "v8lponvj", "name": "Anastasia", "order": 1}],
                 "variables": {"5lygdn8q": "pc"},
                 "import_issues": [
                     {"type": "missing_timing_methods", "methods": ["rta"]},
