@@ -5,14 +5,13 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
-
 _EXAMPLE_API_MUTATION: dict[str, Any] = {
     "id": 12345,
     "created_at": "2026-05-17T13:42:11Z",
     "event_type": "timing_config_change",
     "actor_kind": "api_key",
     "actor_user_id": 17,
-    "actor_username": "thepackle",
+    "actor_username": "Anastasia",
     "actor_api_key_id": "2f5WxpNy.sha512$$...",
     "actor_label": "qwee",
     "target_app": "srl",
@@ -28,9 +27,9 @@ _EXAMPLE_RECALC_DISPATCH: dict[str, Any] = {
     "event_type": "recalc_dispatch",
     "actor_kind": "user",
     "actor_user_id": 17,
-    "actor_username": "thepackle",
+    "actor_username": "Anastasia",
     "actor_api_key_id": None,
-    "actor_label": "thepackle",
+    "actor_label": "Anastasia",
     "target_app": "",
     "target_model": "",
     "target_id": "",

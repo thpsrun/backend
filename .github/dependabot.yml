@@ -5,25 +5,38 @@
 
 version: 2
 updates:
+  - package-ecosystem: "pip"
+    directory: "~/backend/"
+    schedule:
+      interval: "weekly"
+    groups:
+      pip-version-updates:
+        applies-to: version-updates
+        patterns: ["*"]
+      pip-security-updates:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  - package-ecosystem: "github-actions"
+    directory: "~/backend/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions-version-updates:
+        applies-to: version-updates
+        patterns: ["*"]
+      actions-security-updates:
+        applies-to: security-updates
+        patterns: ["*"]
+
   - package-ecosystem: "docker"
     directory: "~/backend/"
     schedule:
       interval: "weekly"
-      
-  - package-ecosystem: "pip"
-    directory: "~/backend/"
-    schedule:
-      interval: "daily"
     groups:
-      django-libaries:
+      docker-version-updates:
         applies-to: version-updates
-        patterns:
-          - "django*"
-          - "Django"
-      support-dependencies:
-        applies-to: version-updates
-        patterns:
-          - "*"
-        exclude-patterns:
-          - "django*"
-          - "Django"
+        patterns: ["*"]
+      docker-security-updates:
+        applies-to: security-updates
+        patterns: ["*"]

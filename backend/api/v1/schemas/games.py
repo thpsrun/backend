@@ -29,9 +29,9 @@ class GameModeratorEmbedSchema(BaseEmbedSchema):
         json_schema_extra={
             "example": {
                 "id": "v8lponvj",
-                "name": "ThePackle",
+                "name": "Anastasia",
                 "nickname": None,
-                "url": "https://speedrun.com/user/ThePackle",
+                "url": "https://speedrun.com/user/Anastasia",
                 "country_id": "us",
                 "pfp": None,
                 "gradients": {
@@ -136,9 +136,9 @@ class GameSchema(GameBaseSchema):
                 "moderators": [
                     {
                         "id": "v8lponvj",
-                        "name": "ThePackle",
+                        "name": "Anastasia",
                         "nickname": None,
-                        "url": "https://speedrun.com/user/ThePackle",
+                        "url": "https://speedrun.com/user/Anastasia",
                         "country_id": "us",
                         "pfp": None,
                         "gradients": {

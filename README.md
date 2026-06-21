@@ -1,12 +1,12 @@
 # thps.run Website - Backend
-## Version 4.2.2
+## Version 4.3
 
 ![Django](https://img.shields.io/badge/Django-6.0-green.svg?logo=django&logoColor=white)
 ![Django Ninja](https://img.shields.io/badge/1.6-blue?color=black&label=django-ninja&logo=fastapi&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17.10-green?logo=postgresql&logoColor=white)
 
 ### What the heck is this??
-This has been the pet project of [ThePackle](https://twitch.tv/thepackle) for a few years now. In short, it is a highly-customizable, easy-to-use, and curated website that aims to mimic a lot of the leaderboard functionality seen from [HaloRuns](https://haloruns.com). Built entirely in Django (Python), this is the open-source files used for websites like [thps.run](https://thps.run).  
+This has been the pet project of [Anastasia](https://twitch.tv/theanastasia) for a few years now. In short, it is a highly-customizable, easy-to-use, and curated website that aims to mimic a lot of the leaderboard functionality seen from [HaloRuns](https://haloruns.com). Built entirely in Django (Python), this is the open-source files used for websites like [thps.run](https://thps.run).  
   
 This repo, specifically, is for the backend portion. If you wish to help with the frontend (React/TypeScript), then you can find it here: [thps.run Frontend](https://github.com/thpsrun/frontend).
 
@@ -39,16 +39,28 @@ Points (lovingly referred to as Packle Points by the THPS community) is a score 
 
 This is how points are distributed when you have a world record:
 *   Full-game (non-Category Extensions): 1000 points
-*   Individual Levels: 100 points
-*   Category Extensions: 25 points
+*   Individual Levels: 250 points
+*   Category Extensions: 50 points
 
-All subsequent runs that are slower than the world record will receive reduced points. It is an algorithmic formula, but here is how it looks with Python:
-*   `math.floor((0.008 * math.pow(math.e, (4.8284 * (wr_time/secs)))) * run_type)`  
+Additionally, Streaks are bonus points awarded to players if they continue being the WR holder each month!
+*   +125 points a month as the full game category record holder.
+*   +32.5 points a month as the individual level record holder.
+
+All subsequent runs that are slower than the world record will receive reduced points. Two formulas are used; one if the record is less than 1 minute and above it:
+*   Standard Formula (in Python): `math.floor((0.008 * math.pow(math.e, (4.8284 * (wr_time/secs)))) * run_type)`
+*   Shorter Formula (in Python): `math.floor((math.pow(math.e, (4.8284 * math.sqrt(wr_time / 60) * (wr_time/pb_secs)))) * run_type`
+    *   Reason for this is because the original formula punishes non-record holders a lot harder overall.
   
 And how it looks in a simple formula: 
-*   P = 0.008 * e<sup>4.8284x</sup> * y
-    *   x = World Record Seconds (as a float) divided by Personal Best Seconds (as a float)
-    *   y = Points based on the type of run it belogns to (see above).
+*   Standard:
+    *   P = 0.008 * e<sup>4.8284x</sup> * y
+        *   x = World Record Seconds (as a float) divided by Personal Best Seconds (as a float)
+        *   y = Points based on the type of run it belongs to (see above).
+*   Shorter:
+    *   P = e<sup>(4.8284 * √(X/60) * (X/Y - 1))</sup> * z
+        *   X = World Record Seconds
+        *   Y = Personal Best Seconds
+        *   Z = Points based on the type of run it belongs to (see above).
   
 As an example of how points are reduced, how is a sample based on if a category's world record is 1:20:00:
 *   1:20:00 = 1000 points (maximum for full-game)
@@ -60,15 +72,19 @@ As an example of how points are reduced, how is a sample based on if a category'
 *   5:00:00 = 28 points
   
 ### Installation
-### This is from the old version of the repo. Later, I'll fix it lol
 1.  Install the requirements above to your computer or server.
 2.  Git clone this repo or download a copy with the .ZIP.
+    1.  Recommended to create a virutal envionment with `python -m pip venv .` within the directory you want to hold this in.
 3.  Open the new folder in a code editor and make whatever changes are needed to `.env.example`, then rename it to JUST `.env`.
-4.  Through whatever means, `docker compose up` to begin pulling the images and packages.
-5.  After it is opened, access it through localhost:8001; if this fails, check system logs. If `DEBUG` in the `.env` file is set to True, then you should see a callback stack of the error.
-6.  Follow the [Post-Installation Steps](#post-installation-steps) below.
-7.  Either determine the exact SRC ID for your series using the URL syntax in "How does this work" or use the slug for your series name (e.g., Tony Hawk's slug is simply tonyhawk).
-8.  Go to `http://localhost:8001/illiad` and login. Afterward, go to the `Series` section and click on the "Add Series" option on the top-right. Fill in the sections provided, then click "SAVE".
-9.  Select your new `Series` object, go to the "Action" drop-down, and select "Initialze Series Data".
-  
-**NOTE: Depending on the size of your community, this may take a while! You should only have to do this once, but this will begin to crawl your community to gather the metadata for EVERY game, category, subcategory, platform, player, and speedrun and import them into your database. You will be heavily rate limited by Speedrun.com. BE PATIENT!!!!!!!! If in doubt, check the Django logs to see if there are any workers reporting issues or updates in the last ~5 minutes.**
+4.  Through whatever means, `docker compose up -d --build` to begin pulling the images and packages.
+    1.  The PROD file is used for the production server of thps.run, modify as needed for your environment.
+5.  After it is opened, access it through `http://localhost:8001/illiad`; if this fails, check system logs. If `DEBUG` in the `.env` file is set to True, then you should see a callback stack of the error.
+    1.  The default `localhost:8001`, with `DEBUG` set to `True` will not give you much. This is the backend project, so it has no UI outside of the admin console.
+6.  Setup your superuser with `docker exec -it django python3 manage.py createsuperuser` and follow the prompts. After, log into the admin console.
+7.  Use `docker exec -it django python3 manage.py init_series --series <SRC_SERIES_ID> --watch` to begin crawling the series to import into your instance.
+    > [!IMPORTANT]  
+    > This will take a while to complete, depending on the size of your series (how many players, how many leaderboards, how many runs, how many games, etc.). SRC's API throttles hard, but the code is designed
+    > to keep this in mind! It will tell you if it is waiting for the rate limit to expire (~75-100 reqs/minute).
+8.  If step 7 goes well, your data should be imported! If you have any issues, send logs and everything through an Issue!
+    > [!NOTE]
+    > If you are wanting a frontend to base things off of, the `thpsrun/frontend` project can be used as a basis. Just keep in mind there is a lot of thps.run-specific things in there :)
