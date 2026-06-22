@@ -237,8 +237,12 @@ def recalculate_game_boards(
 def sweep_unranked_verified_runs() -> int:
     """Re-queue a board recalc for any verified, non-obsolete run that has no points.
 
-    Enforces the invariant: verified AND not obsolete => points > 0. A run in this state means its
-    leaderboard recalc was dropped (e.g. silent worker death).
+    Runs a recalc can never score are skipped instead of being re-queued every run, so the sweep
+    cannot spin on them forever; a run with import issues (e.g. a missing required timing method) or
+    no resolved primary time has no scoreable time. They are logged for manual attention.
+
+    Returns:
+        int: The number of runs actually re-queued for recalculation (excludes skipped ones).
     """
     from srl.leaderboard.trigger import recalculate_run
 
@@ -246,7 +250,19 @@ def sweep_unranked_verified_runs() -> int:
         vid_status="verified", obsolete=False, points=0
     ).select_related("game")
     count = 0
+    unscoreable: list[str] = []
     for run in orphans:
+        if run.has_import_issues or run.p_time_secs is None:
+            unscoreable.append(run.id)
+            continue
         recalculate_run(run, cause="unranked_verified_sweeper")
         count += 1
+
+    if unscoreable:
+        logger.warning(
+            "sweep_unranked_verified_runs: skipped %d unscoreable run(s) "
+            "(import issues or no primary time); needs manual attention: %s",
+            len(unscoreable),
+            unscoreable,
+        )
     return count

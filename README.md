@@ -1,9 +1,4 @@
 # thps.run Website - Backend
-## Version 4.3
-
-![Django](https://img.shields.io/badge/Django-6.0-green.svg?logo=django&logoColor=white)
-![Django Ninja](https://img.shields.io/badge/1.6-blue?color=black&label=django-ninja&logo=fastapi&logoColor=white)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17.10-green?logo=postgresql&logoColor=white)
 
 ### What the heck is this??
 This has been the pet project of [Anastasia](https://twitch.tv/theanastasia) for a few years now. In short, it is a highly-customizable, easy-to-use, and curated website that aims to mimic a lot of the leaderboard functionality seen from [HaloRuns](https://haloruns.com). Built entirely in Django (Python), this is the open-source files used for websites like [thps.run](https://thps.run).  
