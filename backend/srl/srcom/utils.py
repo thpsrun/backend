@@ -4,7 +4,8 @@ from itertools import product
 
 from celery import shared_task
 from django.db import OperationalError
-from django.db.models import Count, QuerySet
+from django.db.models import Count, F, QuerySet
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 from pydantic import RootModel
 
@@ -302,13 +303,18 @@ def apply_player_obsolescence(
     run_type: str,
     level_id: str | None = None,
 ) -> list[str]:
-    """Keep-best dedup: mark each player's slower verified runs in a variant obsolete.
+    """Keep-best dedup: make each player's fastest verified run in a variant the active one.
 
     The synchronous core shared by the SRC sync path (`update_obsolete`) and the API
-    create/update path (`create_run`/`update_run`). For every player, the variant's verified
-    non-obsolete runs are ordered by the leaderboard's resolved time column and all but the
-    fastest are flagged obsolete, with their open RunHistory closed. Does not dispatch a
-    recalc; callers own that.
+    create/update path (`create_run`/`update_run`). For every player, the variant's verified runs
+    are ordered by the leaderboard's resolved time column (ties broken by effective date then id,
+    matching the recompute walker); the fastest is forced active and all others obsolete.
+
+    Crucially this inspects *all* verified runs, not just non-obsolete ones, so it can repair an
+    inverted state where a faster run was left `obsolete` while a slower same-player run stayed
+    active (the case that strands a verified run at points=0 and makes the unranked sweep churn).
+    A run that is any processed player's keeper is never obsoleted, so co-op runs are not stolen.
+    Does not dispatch a recalc; callers own that.
 
     Arguments:
         game_id (str): Unique SRC ID of the game.
@@ -319,7 +325,8 @@ def apply_player_obsolescence(
         level_id (str | None): Unique SRC ID of the level for IL leaderboards.
 
     Returns:
-        obsolete_run_ids (list[str]): Run IDs newly marked obsolete (empty if none changed).
+        changed_run_ids (list[str]): Run IDs whose obsolete state was flipped in either direction
+            (empty if nothing changed). Callers re-dispatch a recalc when this is non-empty.
     """
     from srl.leaderboard.recalculation import get_leaderboard_time_column
 
@@ -336,42 +343,63 @@ def apply_player_obsolescence(
         },
     )
 
-    base_qs = Runs.objects.filter(
-        runtype=run_type,
-        game_id=game_id,
-        category_id=category_id,
-        level_id=level_id,
-        vid_status="verified",
-        obsolete=False,
+    base_qs = (
+        Runs.objects.filter(
+            runtype=run_type,
+            game_id=game_id,
+            category_id=category_id,
+            level_id=level_id,
+            vid_status="verified",
+        )
+        .exclude(**{f"{time_col}__lte": 0})
+        .exclude(**{f"{time_col}__isnull": True})
     )
     base_qs = filter_by_variable_map(base_qs, variable_value_map)
+    base_qs = base_qs.annotate(_eff=Coalesce(F("v_date"), F("date")))
 
-    obsolete_run_ids: list[str] = []
+    current_obsolete: dict[str, bool] = {}
+    keepers: set[str] = set()
+    non_keepers: set[str] = set()
     for player_id in player_ids:
-        player_runs = list(
+        rows = list(
             base_qs.filter(run_players__player__id=player_id)
-            .order_by(time_col)
-            .values_list("id", flat=True),
+            .order_by(time_col, "_eff", "id")
+            .values_list("id", "obsolete"),
         )
-        if len(player_runs) > 1:
-            obsolete_run_ids.extend(player_runs[1:])
+        if not rows:
+            continue
+        for run_id, is_obsolete in rows:
+            current_obsolete[run_id] = is_obsolete
+        keepers.add(rows[0][0])
+        non_keepers.update(run_id for run_id, _ in rows[1:])
 
-    if not obsolete_run_ids:
+    # A run that is some player's keeper must stay active even if it is another player's slower run.
+    non_keepers -= keepers
+    to_obsolete = [rid for rid in non_keepers if not current_obsolete[rid]]
+    to_activate = [rid for rid in keepers if current_obsolete[rid]]
+
+    if not to_obsolete and not to_activate:
         return []
 
     now = timezone.now()
-    Runs.objects.filter(id__in=obsolete_run_ids).update(
-        obsolete=True,
-        obsoleted_at=now,
-    )
-    RunHistory.objects.filter(
-        run_id__in=obsolete_run_ids,
-        end_date__isnull=True,
-    ).update(
-        end_date=now,
-        end_reason=RunHistoryEndReason.OBSOLETED,
-    )
-    return obsolete_run_ids
+    if to_obsolete:
+        Runs.objects.filter(id__in=to_obsolete).update(
+            obsolete=True,
+            obsoleted_at=now,
+        )
+        RunHistory.objects.filter(
+            run_id__in=to_obsolete,
+            end_date__isnull=True,
+        ).update(
+            end_date=now,
+            end_reason=RunHistoryEndReason.OBSOLETED,
+        )
+    if to_activate:
+        Runs.objects.filter(id__in=to_activate).update(
+            obsolete=False,
+            obsoleted_at=None,
+        )
+    return to_obsolete + to_activate
 
 
 @shared_task(
@@ -423,6 +451,51 @@ def update_obsolete(
 
             leaderboard = resolve_leaderboard(sample_run)
             recalculate_leaderboard_task.delay(leaderboard)
+
+
+def finalize_run_standings(
+    leaderboard: dict,
+    place: int,
+    player_ids: list[str],
+) -> None:
+    """Settle a freshly imported run's standings and WR history synchronously.
+
+    Applies player obsolescence, then recomputes the variant's points/places/history inline so the
+    /history timeline is consistent with /runs the instant the run becomes visible, instead of
+    deferring RunHistory to an async task a consumer (e.g. the Discord bot) can race. Mirrors the
+    moderation path's `recalculate_run_sync`: the recompute is inline, the WR's anniversary streak
+    bonus is still refined asynchronously.
+
+    Arguments:
+        leaderboard (dict): The variant signature {game_id, category_id, level_id, runtype,
+            variable_value_map} the imported run belongs to.
+        place (int): The imported run's placement; 1 means it took the world record.
+        player_ids (list[str]): SRC ids of the run's non-guest players, used to obsolete each
+            player's slower runs in the variant before recomputing.
+
+    """
+    from srl.leaderboard.recompute import recompute_variant_locked
+
+    apply_player_obsolescence(
+        game_id=leaderboard["game_id"],
+        category_id=leaderboard["category_id"],
+        variable_value_map=leaderboard["variable_value_map"],
+        player_ids=player_ids,
+        run_type=leaderboard["runtype"],
+        level_id=leaderboard["level_id"],
+    )
+
+    ran = recompute_variant_locked(leaderboard)
+    if not ran:
+        from srl.tasks import recalculate_leaderboard_task
+
+        recalculate_leaderboard_task.delay(leaderboard)
+        return
+
+    if place == 1:
+        from srl.tasks import recalculate_streaks_task
+
+        recalculate_streaks_task.si(leaderboard).delay()
 
 
 def create_run_default(

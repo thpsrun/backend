@@ -1,7 +1,7 @@
 import logging
 from collections import defaultdict
 
-from celery import chain, shared_task
+from celery import shared_task
 from django.db import transaction
 
 from srl.leaderboard.recalculation import get_leaderboard_time_column
@@ -32,9 +32,9 @@ from srl.srcom.utils import (
     create_leaderboard_link,
     create_run_default,
     filter_by_variable_map,
+    finalize_run_standings,
     src_method_to_internal,
     update_obsolete,
-    update_standings,
     variables_hash,
 )
 from srl.srcom.variables import sync_variables
@@ -622,44 +622,37 @@ def sync_run(
 
         run_obj.refresh_import_issues()
 
-        # During a bounded reconcile (current_job set) runs land with points=0 and the job
-        # recomputes each affected variant inline afterward, so skip the incremental standings
-        # update here; outside reconciliation, update places immediately.
-        if place >= 1 and current_job() is None:
-            standings_sig = update_standings.si(
-                is_wr=(place == 1),
+        # In the moderation path, the leaderboard recalculation is done inline. However, in the
+        # cases that a run is discovered instead of approved, the recalculation then happens in
+        # the background as a new Celery job that doesn't always kick off immediately. To keep
+        # things consistent, this will dispatch when a new run is created or updated.
+        if current_job() is None:
+            leaderboard = {
+                "game_id": context_data.game_id,
+                "category_id": context_data.category_id,
+                "level_id": context_data.level_id,
+                "runtype": default["runtype"],
+                "variable_value_map": context_data.variable_value_map,
+            }
+            obsolescence_player_ids = [
+                p.id
+                for p in run_data.players
+                if p is not None and p.rel != "guest" and p.id
+            ]
+            finalize_run_standings(
+                leaderboard=leaderboard,
+                place=place,
+                player_ids=obsolescence_player_ids,
+            )
+        else:
+            update_obsolete.delay(
                 game_id=context_data.game_id,
                 category_id=context_data.category_id,
                 level_id=context_data.level_id,
                 variable_value_map=context_data.variable_value_map,
-                max_points=context_data.max_points,
+                players=[p.model_dump() for p in run_data.players if p is not None],
                 run_type=default["runtype"],
             )
-            if place == 1:
-                from srl.tasks import recalculate_streaks_task
-
-                leaderboard = {
-                    "game_id": context_data.game_id,
-                    "category_id": context_data.category_id,
-                    "level_id": context_data.level_id,
-                    "runtype": default["runtype"],
-                    "variable_value_map": context_data.variable_value_map,
-                }
-                chain(
-                    standings_sig,
-                    recalculate_streaks_task.si(leaderboard),
-                ).delay()
-            else:
-                standings_sig.delay()
-
-        update_obsolete.delay(
-            game_id=context_data.game_id,
-            category_id=context_data.category_id,
-            level_id=context_data.level_id,
-            variable_value_map=context_data.variable_value_map,
-            players=[p.model_dump() for p in run_data.players if p is not None],
-            run_type=default["runtype"],
-        )
 
         for pid in unique_player_ids - missing_ids:
             sync_players(pid)

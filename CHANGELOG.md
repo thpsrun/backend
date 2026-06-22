@@ -1,7 +1,15 @@
+### v4.3.2
+###### June 21, 2026
+*   Fixed an issue where discovered runs would not properly be pushed through RunHistory and, instead, require a later Celery job to fix it.
+
+***
+
 ### v4.3.1
 ###### June 21, 2026
 *   Fixed an issue where the SRC API v2 bot refresh command would be killed too early, making the session stale.
 *   Fixed some smaller CSS issues throughout the site.
+
+***
 
 ### v4.3
 ###### June 12, 2026
