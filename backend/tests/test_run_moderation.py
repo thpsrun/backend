@@ -1,3 +1,6 @@
+import datetime
+from unittest.mock import patch
+
 from accounts.models import CustomUser
 from allauth.mfa.models import Authenticator
 from api.models import APIKey
@@ -10,7 +13,9 @@ from api.v1.schemas.runs import ModeratorActionIn
 from auditlog.context import clear_actor
 from django.db import transaction
 from django.test import TestCase
+from django.utils import timezone
 from ninja.testing import TestClient
+from srl.leaderboard.trigger import recalculate_run_sync
 from srl.models import Games, Players, RunPlayers, Runs
 from srl.models.base import LeaderboardChoices
 from srl.models.src_sync import SRCSyncTask
@@ -549,4 +554,91 @@ class UpdateRunModeratorActionTests(TestCase):
                     "reason": "cheat suspected",
                 }
             },
+        )
+
+
+class VerifyRecalcObsolescenceTests(TestCase):
+    """Regression: verifying a run must obsolete the same player's slower runs in the variant.
+
+    The SRC-discovery (`finalize_run_standings`) and API create/update paths both apply keep-best
+    dedup when a run becomes verified. The moderation/verify path (`recalculate_run_sync`)
+    historically skipped it, leaving the player's slower run stranded as verified + not obsolete +
+    points=0 until the discovery crawl happened to repair it.
+    """
+
+    def setUp(
+        self,
+    ) -> None:
+        self.game = Games.objects.create(
+            id="obsgame",
+            name="Obs Game",
+            slug="obs-game",
+            twitch="Obs Game",
+            release="2000-01-01",
+            boxart="https://example.invalid/cover",
+            defaulttime="rta",
+            idefaulttime="rta",
+            pointsmax=1000,
+            ipointsmax=100,
+        )
+        self.runner = Players.objects.create(
+            id="obsrunner",
+            name="obsrunner",
+        )
+        # The player's already-verified, slower run (the older PB that should be obsoleted).
+        self.slow_run = Runs.objects.create(
+            id="slowrun",
+            game=self.game,
+            runtype="main",
+            vid_status="verified",
+            obsolete=False,
+            place=1,
+            points=1000,
+            time="6m 00s",
+            time_secs=360.0,
+            date=timezone.make_aware(datetime.datetime(2026, 1, 1)),
+            v_date=timezone.make_aware(datetime.datetime(2026, 1, 2)),
+        )
+        RunPlayers.objects.create(run=self.slow_run, player=self.runner)
+        # The faster run the moderator just verified.
+        self.fast_run = Runs.objects.create(
+            id="fastrun",
+            game=self.game,
+            runtype="main",
+            vid_status="verified",
+            obsolete=False,
+            place=0,
+            points=0,
+            time="5m 00s",
+            time_secs=300.0,
+            date=timezone.make_aware(datetime.datetime(2026, 2, 1)),
+        )
+        RunPlayers.objects.create(run=self.fast_run, player=self.runner)
+
+    def tearDown(
+        self,
+    ) -> None:
+        clear_actor()
+        super().tearDown()
+
+    @patch("srl.leaderboard.trigger.recalculate_streaks_task")
+    @patch("srl.leaderboard.recompute.recompute_variant_locked", return_value=True)
+    def test_verify_obsoletes_slower_same_player_run(
+        self,
+        _mock_recompute,
+        _mock_streaks,
+    ) -> None:
+        """Verifying the faster run obsoletes the player's slower run; the keeper stays active."""
+        recalculate_run_sync(self.fast_run)
+
+        self.slow_run.refresh_from_db()
+        self.fast_run.refresh_from_db()
+        self.assertTrue(
+            self.slow_run.obsolete,
+            "The player's slower run should be obsoleted when their faster run is verified.",
+        )
+        self.assertIsNotNone(self.slow_run.obsoleted_at)
+        self.assertFalse(
+            self.fast_run.obsolete,
+            "The verified (faster) run must remain active, not obsolete.",
         )

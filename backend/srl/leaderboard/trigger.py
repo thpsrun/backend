@@ -92,8 +92,23 @@ def recalculate_run_sync(
 ) -> None:
     """Recompute a run's leaderboard variant inline so points exist before the caller returns."""
     from srl.leaderboard.recompute import recompute_variant_locked
+    from srl.srcom.utils import apply_player_obsolescence
 
     leaderboard = resolve_leaderboard(run)
+
+    # Keep-best dedup before recomputing: a newly verified run must obsolete the same player's
+    # slower runs in this variant. The SRC-discovery (finalize_run_standings) and API
+    # create/update paths already do this; without it here the moderation/verify path leaves the
+    # older run stranded (verified + not obsolete + points=0) until the discovery crawl repairs it.
+    apply_player_obsolescence(
+        game_id=leaderboard["game_id"],
+        category_id=leaderboard["category_id"],
+        variable_value_map=leaderboard["variable_value_map"],
+        player_ids=list(run.players.values_list("id", flat=True)),
+        run_type=leaderboard["runtype"],
+        level_id=leaderboard["level_id"],
+    )
+
     ran = recompute_variant_locked(leaderboard)
     if not ran:
         recalculate_run(

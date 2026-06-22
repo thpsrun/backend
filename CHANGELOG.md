@@ -1,3 +1,9 @@
+### v4.3.2.1
+###### June 21, 2026
+*   Fixed an issue where approving a runs on thps.run would not have runs properly obsoleted in some cases.
+
+***
+
 ### v4.3.2
 ###### June 21, 2026
 *   Fixed an issue where discovered runs would not properly be pushed through RunHistory and, instead, require a later Celery job to fix it.
