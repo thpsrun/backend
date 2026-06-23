@@ -5,6 +5,7 @@ from datetime import timedelta
 from celery import shared_task
 from django.db import transaction
 from django.utils import timezone
+
 from srl.leaderboard.recalculation import get_leaderboard_time_column
 from srl.models import (
     Categories,
@@ -676,18 +677,28 @@ def sync_run(
 @shared_task
 def sync_single_run(
     run_id: str,
+    run_payload: dict | None = None,
 ) -> None:
+    """Sync one verified run into the local DB from SRC.
+
+    Arguments:
+        run_id (str): Unique SRC ID of the run to sync.
+        run_payload (dict | None): An already-fetched bare run object; if none it is fetched from
+            the SRC API.
+    """
     check_cancelled()
 
-    run_response = src_api(
-        f"https://speedrun.com/api/v1/runs/{run_id}",
-        raw=True,
-    )
-    assert isinstance(run_response, dict)
-    if "data" not in run_response:
-        return
+    if run_payload is None:
+        run_response = src_api(
+            f"https://speedrun.com/api/v1/runs/{run_id}",
+            raw=True,
+        )
+        assert isinstance(run_response, dict)
+        if "data" not in run_response:
+            return
+        run_payload = run_response["data"]
 
-    src_run = SrcRunsModel.model_validate(run_response["data"])
+    src_run = SrcRunsModel.model_validate(run_payload)
 
     if src_run.level:
         lb_url = (

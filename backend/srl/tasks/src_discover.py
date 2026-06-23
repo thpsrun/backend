@@ -24,10 +24,12 @@ from srl.models import (
 )
 from srl.srcom.categories import sync_categories
 from srl.srcom.games import sync_game
+from srl.srcom.leaderboards import sync_single_run
 from srl.srcom.levels import sync_levels
 from srl.srcom.players import sync_players
 from srl.srcom.reconciliation import reconciliation_upsert_check
 from srl.srcom.schema.src import SrcRunsModel
+from srl.srcom.series import iter_series_games
 from srl.srcom.utils import create_run_default
 from srl.srcom.variables import sync_variables
 from srl.utils import src_api, src_api_probe
@@ -183,11 +185,10 @@ def _lightweight_upsert_run(
 def _call_sync_single_run(
     run_id: str,
     success_reason: str,
+    run_payload: dict[str, Any] | None = None,
 ) -> str:
-    from srl.srcom.leaderboards import sync_single_run
-
     try:
-        sync_single_run(run_id)
+        sync_single_run(run_id, run_payload=run_payload)
     except Exception as exc:
         log.warning(
             "src_discover: sync_single_run(%s) failed: %s",
@@ -329,7 +330,9 @@ def _process_run_payload(
         if not _ensure_dependencies(payload):
             return "deps_missing"
         if target_status == Runs.VidStatus.VERIFIED:
-            return _call_sync_single_run(run_id, "verified_imported")
+            return _call_sync_single_run(
+                run_id, "verified_imported", run_payload=payload
+            )
         reason = (
             "new_imported"
             if target_status == Runs.VidStatus.NEW
@@ -347,7 +350,7 @@ def _process_run_payload(
         return "deps_missing"
 
     if target_status == Runs.VidStatus.VERIFIED:
-        return _call_sync_single_run(run_id, "verified_refreshed")
+        return _call_sync_single_run(run_id, "verified_refreshed", run_payload=payload)
 
     return _call_lightweight_upsert(
         payload,
@@ -550,8 +553,6 @@ def dispatch_run_discovery() -> dict:
 @shared_task(name="srl.tasks.discover_new_series_games")
 def discover_new_series_games() -> dict:
     """Walk each Series, import any new games, and reconcile their runs."""
-    from srl.srcom.series import iter_series_games
-
     existing_ids = set(Games.objects.values_list("id", flat=True))
     added: list[str] = []
     for series in Series.objects.all():

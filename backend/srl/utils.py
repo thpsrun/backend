@@ -1,6 +1,7 @@
 import calendar
 import logging
 import math
+import random
 import time
 from datetime import date
 from typing import TYPE_CHECKING, Iterator
@@ -9,6 +10,7 @@ import requests
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.db.models import Count
+
 from srl.models import RunHistory, RunVariableValues
 from srl.srcom.schema.src import SrcRunsTimes
 
@@ -18,7 +20,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 SRC_HEADERS = {
-    "User-Agent": "thps.run/4.0 (https://thps.run; automation@thps.run)",
+    "User-Agent": "thps.run; (https://thps.run; automation@thps.run)",
 }
 SRC_MAX_RETRIES = 10
 SRC_BACKOFF_SECS = 60
@@ -26,6 +28,61 @@ SRC_BACKOFF_SECS = 60
 
 class SrcRateLimited(ValueError):
     """Raised when SRC keeps returning 420/503 until retries are exhausted."""
+
+
+_src_session = requests.Session()
+_src_session.headers.update(SRC_HEADERS)
+
+
+def _src_backoff_sleep(
+    backoff_secs: int,
+) -> None:
+    """Sleep `backoff_secs` plus a random interval so all workers don't retry at the same time.
+
+    Arguments:
+        backoff_secs (int): Base per-attempt sleep; randomness is addded after.
+    """
+    time.sleep(backoff_secs + random.uniform(0, backoff_secs * 0.1))
+
+
+def _src_request(
+    url: str,
+    max_retries: int,
+    backoff_secs: int,
+) -> requests.Response | None:
+    """GET an SRC v1 URL over the shared session, retrying on 420/503.
+
+    The shared retry primitive behind src_api and src_api_probe. Returns the final Response whatever
+    its status (each caller applies its own non-200 contract): a non-420/503 status returns
+    immediately; a 420 (Enhance Your Calm) / 503 sleeps a random amount of  `backoff_secs` and
+    retries up to `max_retries` attempts, returning the last rate-limited Response once they are
+    all exhausted.
+
+    Arguments:
+        url (str): The complete URL of the API endpoint being called.
+        max_retries (int): Maximum number of attempts before giving up.
+        backoff_secs (int): Base per-attempt sleep on a 420/503.
+
+    Returns:
+        response (requests.Response): The final HTTP response (still 420/503 if retries ran out).
+    """
+    response = None
+    for attempt in range(1, max_retries + 1):
+        response = _src_session.get(url, timeout=30)
+        if response.status_code not in (420, 503):
+            return response
+
+        logger.warning(
+            "SRC rate limit (%s) on attempt %d/%d, sleeping ~%ds: %s",
+            response.status_code,
+            attempt,
+            max_retries,
+            backoff_secs,
+            url,
+        )
+        _src_backoff_sleep(backoff_secs)
+
+    return response
 
 
 def convert_time(
@@ -96,22 +153,9 @@ def src_api(
     retries: int = SRC_MAX_RETRIES if max_retries is None else max_retries
     backoff: int = SRC_BACKOFF_SECS if backoff_secs is None else backoff_secs
 
-    response = None
-    for attempt in range(1, retries + 1):
-        response = requests.get(url, headers=SRC_HEADERS, timeout=30)
-        if response.status_code not in (420, 503):
-            break
+    response = _src_request(url, retries, backoff)
 
-        logger.warning(
-            "SRC rate limit (%s) on attempt %d/%d, sleeping %ds: %s",
-            response.status_code,
-            attempt,
-            retries,
-            backoff,
-            url,
-        )
-        time.sleep(backoff)
-    else:
+    if response.status_code in (420, 503):
         raise SrcRateLimited(
             f"SRC API rate limit exceeded after {retries} retries ({url})"
         )
@@ -142,21 +186,7 @@ def src_api_probe(
         tuple[int, dict | None]: The final HTTP status code and, on a 200, the JSON
             envelope (otherwise None).
     """
-    response = None
-    for attempt in range(1, SRC_MAX_RETRIES + 1):
-        response = requests.get(url, headers=SRC_HEADERS, timeout=30)
-        if response.status_code not in (420, 503):
-            break
-
-        logger.warning(
-            "SRC rate limit (%s) on attempt %d/%d, sleeping %ds: %s",
-            response.status_code,
-            attempt,
-            SRC_MAX_RETRIES,
-            SRC_BACKOFF_SECS,
-            url,
-        )
-        time.sleep(SRC_BACKOFF_SECS)
+    response = _src_request(url, SRC_MAX_RETRIES, SRC_BACKOFF_SECS)
 
     if response.status_code != 200:
         return response.status_code, None

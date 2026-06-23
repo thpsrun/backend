@@ -642,3 +642,107 @@ class VerifyRecalcObsolescenceTests(TestCase):
             self.fast_run.obsolete,
             "The verified (faster) run must remain active, not obsolete.",
         )
+
+
+class ChangePlayersObsolescenceTests(TestCase):
+    def setUp(
+        self,
+    ) -> None:
+        self.game = Games.objects.create(
+            id="cpgame",
+            name="CP Game",
+            slug="cp-game",
+            twitch="CP Game",
+            release="2000-01-01",
+            boxart="https://example.invalid/cover",
+            defaulttime="rta",
+            idefaulttime="rta",
+            pointsmax=1000,
+            ipointsmax=100,
+        )
+        self.player_a = Players.objects.create(id="playerA", name="playerA")
+        self.player_b = Players.objects.create(id="playerB", name="playerB")
+        # Player A's keeper (faster) and the slower A run it obsoletes.
+        self.fast_run = Runs.objects.create(
+            id="cpfast",
+            game=self.game,
+            runtype="main",
+            vid_status="verified",
+            obsolete=False,
+            place=1,
+            points=1000,
+            time="5m 00s",
+            time_secs=300.0,
+            date=timezone.make_aware(datetime.datetime(2026, 2, 1)),
+        )
+        RunPlayers.objects.create(run=self.fast_run, player=self.player_a)
+        self.slow_run = Runs.objects.create(
+            id="cpslow",
+            game=self.game,
+            runtype="main",
+            vid_status="verified",
+            obsolete=True,
+            obsoleted_at=timezone.now(),
+            place=0,
+            points=0,
+            time="6m 00s",
+            time_secs=360.0,
+            date=timezone.make_aware(datetime.datetime(2026, 1, 1)),
+        )
+        RunPlayers.objects.create(run=self.slow_run, player=self.player_a)
+        # Player B's existing run, slower than fast_run, so re-crediting fast_run to B obsoletes it.
+        self.b_run = Runs.objects.create(
+            id="cpbrun",
+            game=self.game,
+            runtype="main",
+            vid_status="verified",
+            obsolete=False,
+            place=1,
+            points=900,
+            time="5m 30s",
+            time_secs=330.0,
+            date=timezone.make_aware(datetime.datetime(2026, 1, 15)),
+        )
+        RunPlayers.objects.create(run=self.b_run, player=self.player_b)
+
+    def tearDown(
+        self,
+    ) -> None:
+        clear_actor()
+        super().tearDown()
+
+    @patch("srl.leaderboard.trigger.recalculate_streaks_task")
+    @patch("srl.leaderboard.trigger.recalculate_leaderboard_task")
+    def test_change_players_rededuplicates_both_old_and_new_player(
+        self,
+        _mock_recalc,
+        _mock_streaks,
+    ) -> None:
+        """Re-credit A's keeper to B: A's slower run un-obsoletes, B's slower run obsoletes."""
+        from srl.leaderboard.trigger import recalculate_run_after_player_change
+
+        # Simulate the player swap the endpoint performs: fast_run moves from A to B.
+        RunPlayers.objects.filter(run=self.fast_run).delete()
+        RunPlayers.objects.create(run=self.fast_run, player=self.player_b)
+
+        recalculate_run_after_player_change(
+            self.fast_run,
+            old_player_ids=[self.player_a.id],
+            new_player_ids=[self.player_b.id],
+        )
+
+        self.fast_run.refresh_from_db()
+        self.slow_run.refresh_from_db()
+        self.b_run.refresh_from_db()
+        self.assertFalse(
+            self.slow_run.obsolete,
+            "The old player's slower run should un-obsolete once their faster run is re-credited.",
+        )
+        self.assertTrue(
+            self.b_run.obsolete,
+            "The new player's slower run should obsolete once a faster run is credited to them.",
+        )
+        self.assertFalse(
+            self.fast_run.obsolete,
+            "The re-credited run is the new player's keeper and must stay active.",
+        )
