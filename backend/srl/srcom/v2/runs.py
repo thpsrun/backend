@@ -42,10 +42,10 @@ def snapshot_run(
 ) -> dict[str, Any]:
     """Converts the v2 API fields into a dict."""
     variables_repr = sorted(
-        [
-            (rvv.variable.id, rvv.value_id)
-            for rvv in RunVariableValues.objects.filter(run=run)
-        ],
+        RunVariableValues.objects.filter(run=run).values_list(
+            "variable_id",
+            "value_id",
+        ),
     )
     player_names = [
         rp.player.name

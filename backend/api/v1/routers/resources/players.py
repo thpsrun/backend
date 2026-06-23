@@ -1,13 +1,8 @@
 import re
 from typing import Annotated
 
-from django.db.models import Count, Q, QuerySet, Sum
-from django.http import HttpRequest
-from ninja import Query, Router, Status
-from srl.models import CountryCodes, Players, Runs
-
 from api.permissions import authed, public_read
-from api.v1.routers.utils.embeds import parse_embeds
+from api.v1.routers.utils.embeds import InvalidEmbedsError, parse_embeds
 from api.v1.schemas.base import ErrorResponse
 from api.v1.schemas.players import (
     AwardSchema,
@@ -27,6 +22,10 @@ from api.v1.schemas.players import (
 )
 from api.v1.schemas.runs import compute_run_subcategory
 from api.v1.utils import get_or_generate_id
+from django.db.models import Count, Q, QuerySet, Sum
+from django.http import HttpRequest
+from ninja import Query, Router, Status
+from srl.models import CountryCodes, Players, Runs
 
 router = Router()
 
@@ -290,7 +289,16 @@ def get_player(
             ),
         )
 
-    embed_fields = parse_embeds(embed, "players")
+    try:
+        embed_fields = parse_embeds(embed, "players")
+    except InvalidEmbedsError as e:
+        return Status(
+            400,
+            ErrorResponse(
+                error=str(e),
+                details={"valid_embeds": sorted(e.valid)},
+            ),
+        )
 
     try:
         player = (

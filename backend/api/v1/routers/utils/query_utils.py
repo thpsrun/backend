@@ -1,6 +1,14 @@
 from datetime import date as date_type
 from typing import Any
 
+from api.v1.routers.utils import (
+    main_pbs_cache_key,
+    main_records_cache_key,
+    main_stats_cache_key,
+    main_wrs_cache_key,
+)
+from api.v1.schemas.players import extract_gradients
+from api.v1.schemas.runs import compute_run_subcategory
 from django.core.cache import caches
 from django.core.files.storage import default_storage
 from django.db.models import (
@@ -19,15 +27,6 @@ from django.db.models.expressions import Expression
 from django.db.models.functions import TruncDate
 from django.utils import timezone
 from srl.models import Games, Players, RunHistory, RunPlayers, Runs, RunVariableValues
-
-from api.v1.routers.utils import (
-    main_pbs_cache_key,
-    main_records_cache_key,
-    main_stats_cache_key,
-    main_wrs_cache_key,
-)
-from api.v1.schemas.players import extract_gradients
-from api.v1.schemas.runs import PlayerRunEmbedSchema, compute_run_subcategory
 
 
 def _value_timing_subquery() -> Subquery:
@@ -488,41 +487,6 @@ def query_stats() -> dict[str, Any]:
     }
 
 
-def query_player_runs(
-    player_id: str,
-    include_obsoletes: bool = False,
-) -> list[dict[str, Any]]:
-    qs: QuerySet[Runs] = (
-        Runs.objects.select_related("game", "category", "level", "platform")
-        .prefetch_related(
-            "run_players__player__countrycode",
-            "run_players__player__user",
-            "runvariablevalues_set__variable",
-            "runvariablevalues_set__value",
-        )
-        .filter(
-            run_players__player__id=player_id,
-            vid_status="verified",
-        )
-    )
-
-    if not include_obsoletes:
-        qs = qs.filter(obsolete=False)
-
-    qs = qs.order_by("game__release", "date")
-
-    result = []
-    for run in qs:
-        data = PlayerRunEmbedSchema.model_validate(run).model_dump()
-        data["players"] = _export_players(
-            run.run_players.all(),  # type: ignore
-            country_detail=False,
-        )
-        result.append(data)
-
-    return result
-
-
 def query_overall_leaderboard() -> list[dict[str, Any]]:
     rows = (
         RunPlayers.objects.filter(
@@ -798,7 +762,7 @@ def query_lbs_runs(
 
     qs: QuerySet[Runs] = (
         Runs.objects.filter(**filters)
-        .select_related("level")
+        .select_related("game", "category", "level")
         .prefetch_related(
             "run_players__player__countrycode",
             "run_players__player__user",
@@ -863,7 +827,7 @@ def query_lbs_recent(
             vid_status="verified",
             v_date__isnull=False,
         )
-        .select_related("category", "level")
+        .select_related("game", "category", "level")
         .prefetch_related(
             "run_players__player__countrycode",
             "run_players__player__user",
@@ -914,7 +878,7 @@ def query_lbs_il_summary(
             obsolete=False,
             vid_status="verified",
         )
-        .select_related("category", "level")
+        .select_related("game", "category", "level")
         .prefetch_related(
             "run_players__player__countrycode",
             "run_players__player__user",

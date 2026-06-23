@@ -12,7 +12,7 @@ from srl.srcom.utils import variables_hash
 logger = logging.getLogger(__name__)
 
 RECALC_LOCK_TTL_SECONDS = 300
-API_ACTIVITY_LOG_RETENTION_DAYS = 90
+API_ACTIVITY_LOG_RETENTION_DAYS = 180
 
 
 @contextmanager

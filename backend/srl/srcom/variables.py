@@ -1,6 +1,5 @@
 from celery import shared_task
 from django.db import transaction
-
 from srl.models import Games, Variables, VariableValues
 from srl.srcom.reconciliation import (
     reconciliation_upsert_check,
@@ -53,12 +52,14 @@ def sync_values(
     if isinstance(src_variable, dict):
         src_variable = SrcVariablesModel.model_validate(src_variable)
 
+    var_obj = Variables.objects.only("id").get(id=src_variable.id)
+
     for value_id, value_data in src_variable.values.values.items():
         with transaction.atomic():
             reconciliation_upsert_check(
                 VariableValues,
                 defaults={
-                    "var": Variables.objects.only("id").get(id=src_variable.id),
+                    "var": var_obj,
                     "name": value_data.label,
                     "rules": value_data.rules,
                 },

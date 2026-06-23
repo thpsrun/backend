@@ -27,18 +27,6 @@ def write_intent(
     request.session.modified = True
 
 
-def read_intent(
-    request: HttpRequest,
-) -> dict[str, Any] | None:
-    intent = request.session.get(LOGIN_INTENT_SESSION_KEY)
-    if not intent:
-        return None
-    if is_intent_expired(intent):
-        clear_intent(request)
-        return None
-    return intent
-
-
 def peek_intent(
     request: HttpRequest,
 ) -> dict[str, Any] | None:

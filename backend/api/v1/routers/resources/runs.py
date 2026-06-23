@@ -1,34 +1,5 @@
 from typing import Annotated, Literal
 
-from django.core.exceptions import ValidationError
-from django.db import transaction
-from django.db.models import Q
-from django.http import HttpRequest
-from ninja import Query, Router, Status
-from srl.leaderboard.trigger import recalculate_run
-from srl.models import (
-    Categories,
-    Games,
-    Levels,
-    Platforms,
-    Players,
-    RunPlayers,
-    Runs,
-    RunVariableValues,
-    SRCSyncTask,
-    Variables,
-    VariableValues,
-)
-from srl.srcom.v2 import is_v2_enabled
-from srl.srcom.v2.runs import (
-    build_settings_payload,
-    compute_v2_eligible_diff,
-    snapshot_run,
-)
-from srl.tasks import sync_src_action, sync_src_settings
-from srl.time_parser import parse_time
-from srl.utils import convert_time
-
 from api.permissions import (
     actor_capability_check,
     actor_game_check,
@@ -61,6 +32,34 @@ from api.v1.schemas.runs import (
     RunUpdateSchema,
 )
 from api.v1.utils import get_or_generate_id
+from django.core.exceptions import ValidationError
+from django.db import transaction
+from django.db.models import Q
+from django.http import HttpRequest
+from ninja import Query, Router, Status
+from srl.leaderboard.trigger import recalculate_run
+from srl.models import (
+    Categories,
+    Games,
+    Levels,
+    Platforms,
+    Players,
+    RunPlayers,
+    Runs,
+    RunVariableValues,
+    SRCSyncTask,
+    Variables,
+    VariableValues,
+)
+from srl.srcom.v2 import is_v2_enabled
+from srl.srcom.v2.runs import (
+    build_settings_payload,
+    compute_v2_eligible_diff,
+    snapshot_run,
+)
+from srl.tasks import sync_src_action, sync_src_settings
+from srl.time_parser import parse_time
+from srl.utils import convert_time
 
 router = Router()
 
@@ -288,7 +287,16 @@ def get_all_runs(
         Query(ge=0, description="Offset from 0"),
     ] = 0,
 ) -> Status:
-    embed_fields = parse_embeds(embed, "runs")
+    try:
+        embed_fields = parse_embeds(embed, "runs")
+    except InvalidEmbedsError as e:
+        return Status(
+            400,
+            ErrorResponse(
+                error=str(e),
+                details={"valid_embeds": sorted(e.valid)},
+            ),
+        )
 
     try:
         queryset = (

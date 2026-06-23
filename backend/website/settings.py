@@ -287,10 +287,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "accounts.purge_user_data_exports",
         "schedule": crontab(hour=2, minute=0),
     },
-    # "prune-api-activity-log-daily": {
-    #    "task": "srl.tasks.prune_api_activity_log",
-    #    "schedule": crontab(hour=3, minute=15),
-    # },
+    "prune-api-activity-log-daily": {
+        "task": "srl.tasks.prune_api_activity_log",
+        "schedule": crontab(hour=3, minute=0),
+    },
     "dispatch-run-discovery-1min": {
         "task": "srl.tasks.dispatch_run_discovery",
         "schedule": crontab(minute="*"),

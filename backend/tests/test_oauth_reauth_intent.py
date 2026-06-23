@@ -6,7 +6,8 @@ from accounts.oauth_reauth import (
     REAUTH_INTENT_SESSION_KEY,
     clear_intent,
     handle_reauth,
-    read_intent,
+    is_intent_expired,
+    peek_intent,
     write_intent,
 )
 from allauth.account.internal.flows.login import AUTHENTICATION_METHODS_SESSION_KEY
@@ -42,7 +43,7 @@ class IntentHelperTests(TestCase):
             user_id=7,
             social_account_id=42,
         )
-        intent = read_intent(self.request)
+        intent = peek_intent(self.request)
         self.assertIsNotNone(intent)
         self.assertEqual(intent["provider"], "discord")
         self.assertEqual(intent["user_id"], 7)
@@ -58,10 +59,10 @@ class IntentHelperTests(TestCase):
         )
         clear_intent(self.request)
         self.assertNotIn(REAUTH_INTENT_SESSION_KEY, self.request.session)
-        self.assertIsNone(read_intent(self.request))
+        self.assertIsNone(peek_intent(self.request))
 
     @override_settings(OAUTH_REAUTH_INTENT_TTL_SECONDS=600)
-    def test_read_returns_none_when_expired(self) -> None:
+    def test_is_intent_expired_true_past_ttl(self) -> None:
         write_intent(
             self.request,
             provider="discord",
@@ -70,12 +71,12 @@ class IntentHelperTests(TestCase):
         )
         past = (timezone.now() - timedelta(seconds=601)).isoformat()
         self.request.session[REAUTH_INTENT_SESSION_KEY]["created_at"] = past
-        self.assertIsNone(read_intent(self.request))
-        # Expired intents are auto-cleared on read.
-        self.assertNotIn(REAUTH_INTENT_SESSION_KEY, self.request.session)
+        intent = peek_intent(self.request)
+        self.assertIsNotNone(intent)
+        self.assertTrue(is_intent_expired(intent))
 
-    def test_read_returns_none_when_missing(self) -> None:
-        self.assertIsNone(read_intent(self.request))
+    def test_peek_returns_none_when_missing(self) -> None:
+        self.assertIsNone(peek_intent(self.request))
 
 
 class HandleReauthTests(TestCase):
@@ -113,7 +114,7 @@ class HandleReauthTests(TestCase):
     def test_success_stamps_recent_auth_and_clears_intent(self) -> None:
         sl = _fake_sociallogin("discord", "real-uid")
         with self.assertRaises(ImmediateHttpResponse) as ctx:
-            handle_reauth(self.request, sl, read_intent(self.request))
+            handle_reauth(self.request, sl, peek_intent(self.request))
         self._assert_redirects_to_complete(ctx.exception, "ok")
         self.assertNotIn(REAUTH_INTENT_SESSION_KEY, self.request.session)
         methods = self.request.session[AUTHENTICATION_METHODS_SESSION_KEY]
@@ -125,14 +126,14 @@ class HandleReauthTests(TestCase):
     def test_provider_mismatch_rejects(self) -> None:
         sl = _fake_sociallogin("twitch", "real-uid")
         with self.assertRaises(ImmediateHttpResponse) as ctx:
-            handle_reauth(self.request, sl, read_intent(self.request))
+            handle_reauth(self.request, sl, peek_intent(self.request))
         self._assert_redirects_to_complete(ctx.exception, "error", "provider_mismatch")
         self.assertNotIn(REAUTH_INTENT_SESSION_KEY, self.request.session)
 
     def test_account_uid_mismatch_rejects(self) -> None:
         sl = _fake_sociallogin("discord", "wrong-uid")
         with self.assertRaises(ImmediateHttpResponse) as ctx:
-            handle_reauth(self.request, sl, read_intent(self.request))
+            handle_reauth(self.request, sl, peek_intent(self.request))
         self._assert_redirects_to_complete(ctx.exception, "error", "account_mismatch")
         self.assertNotIn(REAUTH_INTENT_SESSION_KEY, self.request.session)
 
@@ -141,7 +142,7 @@ class HandleReauthTests(TestCase):
         self.request.user = other
         sl = _fake_sociallogin("discord", "real-uid")
         with self.assertRaises(ImmediateHttpResponse) as ctx:
-            handle_reauth(self.request, sl, read_intent(self.request))
+            handle_reauth(self.request, sl, peek_intent(self.request))
         self._assert_redirects_to_complete(ctx.exception, "error", "user_mismatch")
         self.assertNotIn(REAUTH_INTENT_SESSION_KEY, self.request.session)
 
@@ -149,7 +150,7 @@ class HandleReauthTests(TestCase):
         self.request.user = AnonymousUser()
         sl = _fake_sociallogin("discord", "real-uid")
         with self.assertRaises(ImmediateHttpResponse) as ctx:
-            handle_reauth(self.request, sl, read_intent(self.request))
+            handle_reauth(self.request, sl, peek_intent(self.request))
         self._assert_redirects_to_complete(ctx.exception, "error", "not_authenticated")
         self.assertNotIn(REAUTH_INTENT_SESSION_KEY, self.request.session)
 
@@ -157,7 +158,7 @@ class HandleReauthTests(TestCase):
         self.sa.delete()
         sl = _fake_sociallogin("discord", "real-uid")
         with self.assertRaises(ImmediateHttpResponse) as ctx:
-            handle_reauth(self.request, sl, read_intent(self.request))
+            handle_reauth(self.request, sl, peek_intent(self.request))
         self._assert_redirects_to_complete(ctx.exception, "error", "account_mismatch")
         self.assertNotIn(REAUTH_INTENT_SESSION_KEY, self.request.session)
 

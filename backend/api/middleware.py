@@ -6,9 +6,6 @@ import re
 from collections.abc import Callable
 from typing import Any
 
-from django.http import HttpRequest, HttpResponse
-from django.utils import timezone
-
 from api.client_ip import client_ip
 from api.models import (
     APIActivityAction,
@@ -16,6 +13,8 @@ from api.models import (
     APIActivityLog,
     APIKey,
 )
+from django.http import HttpRequest, HttpResponse
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -101,18 +100,30 @@ class APIActivityLogMiddleware:
         request: HttpRequest,
     ) -> HttpResponse:
         response = self.get_response(request)
+
+        is_logged_mutation = (
+            request.path.startswith("/api/v1/") and request.method in MUTATING_METHODS
+        )
+        # Resolve the client IP at most once per request and reuse it for both the
+        # key-usage update and the activity log; skip the work when neither needs it.
+        has_api_key = getattr(request, "api_key", None) is not None
+        client_address = (
+            client_ip(request) if has_api_key or is_logged_mutation else None
+        )
+
         # Runs for every method, not just mutations, so GET-only keys still show a
         # fresh last_used. request.api_key is bound by the authed() dependency.
-        self._update_api_key_usage(request)
+        self._update_api_key_usage(request, client_address)
 
-        if request.path.startswith("/api/v1/") and request.method in MUTATING_METHODS:
-            self._log_api_activity(request, response)
+        if is_logged_mutation:
+            self._log_api_activity(request, response, client_address)
 
         return response
 
     def _update_api_key_usage(
         self,
         request: HttpRequest,
+        client_address: str | None,
     ) -> None:
         api_key: APIKey | None = getattr(request, "api_key", None)
         if api_key is None:
@@ -120,7 +131,7 @@ class APIActivityLogMiddleware:
         try:
             APIKey.objects.filter(pk=api_key.pk).update(
                 last_used=timezone.now(),
-                last_used_ip=client_ip(request),
+                last_used_ip=client_address,
             )
         except Exception:
             logger.warning(
@@ -133,6 +144,7 @@ class APIActivityLogMiddleware:
         self,
         request: HttpRequest,
         response: HttpResponse,
+        client_address: str | None,
     ) -> None:
         # Best-effort by design: a failure to log must never break the response.
         try:
@@ -171,7 +183,7 @@ class APIActivityLogMiddleware:
                 path=request.path[:MAX_PATH_LENGTH],
                 action=_METHOD_TO_ACTION.get(method, APIActivityAction.OTHER),
                 status_code=response.status_code,
-                ip=client_ip(request) or None,
+                ip=client_address or None,
                 user_agent=ua[:MAX_USER_AGENT_LENGTH],
                 target_app=target_app,
                 target_model=target_model,

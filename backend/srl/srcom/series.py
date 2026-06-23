@@ -2,8 +2,7 @@ from typing import Iterator
 
 from srl.models import Series
 from srl.srcom.categories import sync_categories
-from srl.srcom.games import apply_game_record, sync_game
-from srl.srcom.leaderboards import sync_game_runs
+from srl.srcom.games import apply_game_record
 from srl.srcom.levels import sync_levels
 from srl.srcom.platforms import sync_platforms
 from srl.srcom.reconciliation import reconciliation_upsert_check
@@ -29,7 +28,7 @@ def import_game_metadata(
     apply_game_record(game_data)
 
     for category in game_data.categories or []:
-        sync_categories(category)
+        sync_categories(category, game_id=game_data.id)
     for level in game_data.levels or []:
         sync_levels(level)
     for variable in game_data.variables or []:
@@ -63,43 +62,3 @@ def sync_series(
         id=canonical_id,
     )
     return instance, payload
-
-
-def import_new_game(
-    game_id: str,
-    *,
-    skip_runs: bool = False,
-) -> dict:
-    """Fetch a game's metadata from SRC and queue all per-game sync tasks."""
-    raw = src_api(
-        f"{SRC_API_BASE}/games/{game_id}?embed=platforms,levels,categories,variables",
-    )
-    game_data = SrcGamesModel.model_validate(raw)
-
-    for platform in game_data.platforms:
-        sync_platforms.delay(platform.model_dump())
-
-    sync_game.delay(game_data.id)
-
-    if game_data.categories:
-        for category in game_data.categories:
-            sync_categories.delay(category.model_dump())
-
-    if game_data.levels:
-        for level in game_data.levels:
-            sync_levels.delay(level.model_dump())
-
-    if game_data.variables:
-        for variable in game_data.variables:
-            sync_variables.delay(variable.model_dump())
-
-    if not skip_runs:
-        sync_game_runs.delay(game_data.id, 0)
-
-    return {
-        "name": game_data.names.international,
-        "platforms": len(game_data.platforms),
-        "categories": len(game_data.categories or []),
-        "levels": len(game_data.levels or []),
-        "variables": len(game_data.variables or []),
-    }

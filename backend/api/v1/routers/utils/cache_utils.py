@@ -279,28 +279,6 @@ def main_stats_cache_key() -> str:
     return f"main:stats:{timestamp}"
 
 
-def main_players_runs_cache_key(
-    player: str,
-) -> str:
-    player_obj = Players.objects.filter(
-        Q(id__iexact=player) | Q(name__iexact=player) | Q(nickname__iexact=player)
-    ).first()
-    player_data = player_obj.id if player_obj else player
-
-    timestamp = _cached_timestamp(
-        f"ts:player:runs:{player_data}",
-        [
-            Runs.objects.filter(
-                run_players__player=player_data,
-                vid_status="verified",
-            ),
-            *_player_display_querysets(player_id=player_data),
-        ],
-    )
-
-    return f"player:runs:{player_data}:{timestamp}"
-
-
 def game_categories_cache_key(
     game_id: str,
 ) -> str:
@@ -339,20 +317,6 @@ def game_levels_cache_key(
     timestamp = max(timestamps) if timestamps else "None"
 
     return f"game:{game_id}:levels:{timestamp}"
-
-
-def run_cache_key(
-    run_id: str,
-) -> str:
-    timestamp = _cached_timestamp(
-        f"ts:run:{run_id}",
-        [
-            Runs.objects.filter(id=run_id),
-            *_player_display_querysets(run_id=run_id),
-        ],
-    )
-
-    return f"run:{run_id}:{timestamp}"
 
 
 def guide_cache_key(

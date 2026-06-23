@@ -1,9 +1,10 @@
 import logging
 from collections import defaultdict
+from datetime import timedelta
 
 from celery import shared_task
 from django.db import transaction
-
+from django.utils import timezone
 from srl.leaderboard.recalculation import get_leaderboard_time_column
 from srl.models import (
     Categories,
@@ -42,6 +43,8 @@ from srl.utils import points_formula, src_api, src_api_paginate
 
 logger = logging.getLogger(__name__)
 
+EXISTING_PLAYER_RESYNC_STALE_AFTER = timedelta(days=7)
+
 
 @shared_task
 def sync_game_runs(
@@ -69,7 +72,7 @@ def sync_game_runs(
         game = SrcGamesModel.model_validate(game_check)
 
         for category in game.categories or []:
-            sync_categories(category)
+            sync_categories(category, game_id=game_id)
         for level in game.levels or []:
             sync_levels(level)
         for variable in game.variables or []:
@@ -156,7 +159,6 @@ def _build_base_context(
         category_type=category_info.type,
         level_id=src_lb.level,
         level_name=level_info.name if level_info else None,
-        wr_time_secs=0.0,
         max_points=max_points,
         default_time_type=src_lb.timing,
         variable_value_map=dict(run_variables) if run_variables else {},
@@ -654,8 +656,15 @@ def sync_run(
                 run_type=default["runtype"],
             )
 
-        for pid in unique_player_ids - missing_ids:
-            sync_players(pid)
+        if existing_ids:
+            stale_cutoff = timezone.now() - EXISTING_PLAYER_RESYNC_STALE_AFTER
+            stale_player_ids = Players.objects.filter(
+                id__in=existing_ids,
+                updated_at__lt=stale_cutoff,
+                claim_status=Players.ClaimStatus.UNCLAIMED,
+            ).values_list("id", flat=True)
+            for pid in stale_player_ids:
+                sync_players(pid)
     except Exception:
         failed = True
         raise

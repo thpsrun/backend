@@ -1,14 +1,7 @@
 from typing import Annotated
 
-from django.core.exceptions import ValidationError
-from django.db.models import Case, F, IntegerField, Prefetch, Q, Value, When
-from django.http import HttpRequest
-from ninja import Query, Router, Status
-from srl.models import Categories, Games, Levels, Players, Variables, VariableValues
-from srl.timing import resolve_timing
-
 from api.permissions import authed, public_read
-from api.v1.routers.utils.embeds import parse_embeds
+from api.v1.routers.utils.embeds import InvalidEmbedsError, parse_embeds
 from api.v1.routers.utils.resolvers import game_from_path
 from api.v1.schemas.base import ErrorResponse
 from api.v1.schemas.games import (
@@ -20,6 +13,12 @@ from api.v1.schemas.games import (
 )
 from api.v1.schemas.players import extract_gradients
 from api.v1.utils import get_or_generate_id
+from django.core.exceptions import ValidationError
+from django.db.models import Case, F, IntegerField, Prefetch, Q, Value, When
+from django.http import HttpRequest
+from ninja import Query, Router, Status
+from srl.models import Categories, Games, Levels, Players, Variables, VariableValues
+from srl.timing import resolve_timing
 
 router = Router()
 
@@ -289,7 +288,16 @@ def get_all_games(
     ] = 50,
     offset: Annotated[int, Query(ge=0, description="Offset from 0")] = 0,
 ) -> Status:
-    embed_fields = parse_embeds(embed, "games")
+    try:
+        embed_fields = parse_embeds(embed, "games")
+    except InvalidEmbedsError as e:
+        return Status(
+            400,
+            ErrorResponse(
+                error=str(e),
+                details={"valid_embeds": sorted(e.valid)},
+            ),
+        )
 
     try:
         queryset = Games.objects.all().order_by("release")
@@ -457,7 +465,16 @@ def get_game(
             ),
         )
 
-    embed_fields = parse_embeds(embed, "games")
+    try:
+        embed_fields = parse_embeds(embed, "games")
+    except InvalidEmbedsError as e:
+        return Status(
+            400,
+            ErrorResponse(
+                error=str(e),
+                details={"valid_embeds": sorted(e.valid)},
+            ),
+        )
 
     try:
         queryset = Games.objects.all()

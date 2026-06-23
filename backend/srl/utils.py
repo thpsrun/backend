@@ -3,13 +3,12 @@ import logging
 import math
 import time
 from datetime import date
-from typing import TYPE_CHECKING, Iterator, TypedDict
+from typing import TYPE_CHECKING, Iterator
 
 import requests
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.db.models import Count
-
 from srl.models import RunHistory, RunVariableValues
 from srl.srcom.schema.src import SrcRunsTimes
 
@@ -212,12 +211,6 @@ def points_formula(
     except OverflowError:
         return max_points
     return min(result, max_points)
-
-
-class TimeDict(TypedDict):
-    realtime_t: int
-    realtime_noloads_t: int
-    ingame_t: int
 
 
 def time_conversion(

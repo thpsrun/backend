@@ -29,18 +29,6 @@ def write_intent(
     request.session.modified = True
 
 
-def read_intent(
-    request: HttpRequest,
-) -> dict[str, Any] | None:
-    intent = request.session.get(CONNECT_INTENT_SESSION_KEY)
-    if not intent:
-        return None
-    if is_intent_expired(intent):
-        clear_intent(request)
-        return None
-    return intent
-
-
 def peek_intent(
     request: HttpRequest,
 ) -> dict[str, Any] | None:
@@ -113,7 +101,9 @@ def _fail(
         reason=reason,
         provider=provider,
     )
-    raise _complete_redirect("error", reason)
+    # Forward provider to the popup on failure, matching the login/signup flows so the
+    # frontend can show which provider failed to connect.
+    raise _complete_redirect("error", reason, provider or "")
 
 
 def handle_connect(

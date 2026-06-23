@@ -1,6 +1,5 @@
 from django.db import transaction
 from django_redis import get_redis_connection
-
 from srl.leaderboard.recalculation import (
     build_leaderboard_metadata,
     clear_leaderboard_history,
@@ -17,7 +16,7 @@ def run_leaderboard_recompute(
     The lock-free core shared by the Celery task and the synchronous verify path. Callers are
     responsible for holding the per-variant recalc lock (see `recompute_variant_locked`).
     """
-    _, game_is_ce, *_ = build_leaderboard_metadata([leaderboard_dict])
+    game_is_ce = build_leaderboard_metadata([leaderboard_dict])
     with transaction.atomic():
         clear_leaderboard_history(leaderboard_dict)
         process_leaderboard(leaderboard_dict, dry_run=False, game_is_ce=game_is_ce)

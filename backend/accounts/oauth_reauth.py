@@ -1,5 +1,6 @@
 import logging
-from datetime import datetime, timedelta, timezone as dt_timezone
+from datetime import datetime, timedelta
+from datetime import timezone as dt_timezone
 from typing import Any, NoReturn
 
 from allauth.account.internal.flows.login import record_authentication
@@ -12,9 +13,6 @@ logger = logging.getLogger(__name__)
 
 REAUTH_INTENT_SESSION_KEY = "_oauth_reauth_intent"
 REAUTH_COMPLETE_URL_NAME = "oauth_reauth_complete"
-# Hardcoded URL path to avoid a reverse() dependency on the Task 4 URL pattern.
-# Must stay in sync with the path registered in backend/website/urls.py under
-# the name REAUTH_COMPLETE_URL_NAME.
 _REAUTH_COMPLETE_URL_PATH = "/accounts/oauth-reauth-complete/"
 
 
@@ -32,28 +30,6 @@ def write_intent(
         "created_at": datetime.now(dt_timezone.utc).isoformat(),
     }
     request.session.modified = True
-
-
-def read_intent(
-    request: HttpRequest,
-) -> dict[str, Any] | None:
-    intent = request.session.get(REAUTH_INTENT_SESSION_KEY)
-    if not intent:
-        return None
-    created_at_raw = intent.get("created_at")
-    if not isinstance(created_at_raw, str):
-        clear_intent(request)
-        return None
-    try:
-        created_at = datetime.fromisoformat(created_at_raw)
-    except ValueError:
-        clear_intent(request)
-        return None
-    ttl = timedelta(seconds=settings.OAUTH_REAUTH_INTENT_TTL_SECONDS)
-    if datetime.now(dt_timezone.utc) - created_at > ttl:
-        clear_intent(request)
-        return None
-    return intent
 
 
 def clear_intent(
@@ -85,7 +61,7 @@ def peek_intent(
 
     Use this from contexts that want to handle expiry explicitly (e.g., the
     OAuth adapter, which needs to surface `intent_expired` to the popup).
-    Use `read_intent` for the auto-clearing TTL semantics.
+    Pair it with `is_intent_expired` to decide whether to honor the intent.
     """
     intent = request.session.get(REAUTH_INTENT_SESSION_KEY)
     if not intent:

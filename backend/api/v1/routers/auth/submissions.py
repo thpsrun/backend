@@ -59,6 +59,15 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
+def _actor_user_id(
+    request: HttpRequest,
+) -> int | None:
+    """Return the acting user's pk for audit/recalc context, or None if anonymous."""
+    if getattr(request.user, "is_authenticated", False):
+        return request.user.pk
+    return None
+
+
 def _get_sync_statuses(
     run_ids: list[str],
 ) -> dict[str, list[SyncStatusSchema]]:
@@ -384,17 +393,10 @@ def update_run_status(
             ErrorResponse(error=e.message, details=None),
         )
 
+    actor_user_id = _actor_user_id(request)
     if body.status == "verified":
-        actor_user_id_for_recalc = (
-            request.user.pk
-            if getattr(request.user, "is_authenticated", False)
-            else None
-        )
-        recalculate_run_sync(run, actor_user_id=actor_user_id_for_recalc)
+        recalculate_run_sync(run, actor_user_id=actor_user_id)
 
-    actor_user_id = (
-        request.user.pk if getattr(request.user, "is_authenticated", False) else None
-    )
     sync_src_action.delay(sync_task.id, actor_user_id=actor_user_id)
 
     action_word = "verified" if body.status == "verified" else "rejected"
@@ -528,9 +530,7 @@ def update_run_players(
         payload={"players": src_players},
         moderator=player,
     )
-    actor_user_id = (
-        request.user.pk if getattr(request.user, "is_authenticated", False) else None
-    )
+    actor_user_id = _actor_user_id(request)
     sync_src_action.delay(sync_task.id, actor_user_id=actor_user_id)
 
     updated_players = _build_run_players(run)
@@ -853,12 +853,7 @@ def submit_run(
             "time_secs": time_seconds.get("time_secs"),
             "timenl_secs": time_seconds.get("timenl_secs"),
             "timeigt_secs": time_seconds.get("timeigt_secs"),
-            "primary_method": resolve_timing(
-                game,
-                category,
-                bool(level),
-                vv_objs,
-            ).primary_method,
+            "primary_method": resolved_timing.primary_method,
         }
 
         fallback_run_id, reason = _try_v2_fallback(snapshot)
