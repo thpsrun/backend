@@ -22,7 +22,7 @@ imap-tools==1.13.0
 langcodes==3.5.1
 language_data==1.4.0
 markdown==3.10.2
-pillow==12.2.0
+pillow==12.3.0
 psycopg[c]==3.3.4
 pydantic[email]==2.13.4
 python-dateutil==2.9.0.post0
