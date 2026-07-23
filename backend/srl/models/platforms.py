@@ -1,5 +1,6 @@
 from django.db import models
-from django.utils.text import slugify
+
+from srl.models.base import make_slug
 
 
 class Platforms(models.Model):
@@ -30,7 +31,7 @@ class Platforms(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.slug:
-            self.slug = slugify(self.name)
+            self.slug = make_slug(self.name)
         super().save(*args, **kwargs)
 
     def __str__(self):

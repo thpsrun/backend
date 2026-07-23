@@ -1,11 +1,6 @@
 import logging
 
-from accounts.oauth_login import (
-    _LOGIN_COMPLETE_URL_PATH,
-)
-from accounts.oauth_login import (
-    write_intent as write_login_intent,
-)
+from accounts.oauth_intent import LOGIN_FLOW
 from allauth.socialaccount.adapter import get_adapter as get_socialaccount_adapter
 from allauth.socialaccount.providers.base.constants import AuthProcess
 from django.conf import settings
@@ -88,7 +83,7 @@ def initiate_oauth_login(
         )
 
     next_url = request.build_absolute_uri(
-        f"{_LOGIN_COMPLETE_URL_PATH}?status=ok&provider={provider}",
+        f"{LOGIN_FLOW.complete_url_path}?status=ok&provider={provider}",
     )
     redirect_response = provider_obj.redirect(
         request,
@@ -105,7 +100,7 @@ def initiate_oauth_login(
             ),
         )
     authorize_url = redirect_response["Location"]
-    write_login_intent(request, provider=provider)
+    LOGIN_FLOW.write_intent(request, provider=provider)
     _log_event("oauth_login_initiated", request, provider=provider)
     return Status(
         200,

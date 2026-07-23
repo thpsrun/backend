@@ -25,6 +25,7 @@ from srl.models.variables import Variables
 from srl.srcom.v2 import is_v2_enabled
 from srl.srcom.v2.client import SrcV2Client, SrcV2Error
 from srl.srcom.v2.runs import build_submit_payload
+from srl.srcom.v2.session import refresh_bot_session
 from srl.tasks import sync_src_action
 from srl.time_parser import parse_time
 from srl.timing import resolve_timing
@@ -78,7 +79,8 @@ def _get_sync_statuses(
     """Fetch active SRC sync tasks for a batch of runs.
 
     Returns a dict keyed by run_id with lists of SyncStatusSchema.
-    Only returns pending/failed tasks (synced tasks are not shown)."""
+    Only returns pending/failed tasks (synced tasks are not shown).
+    """
     sync_tasks = SRCSyncTask.objects.filter(
         run_id__in=run_ids,
         status__in=[
@@ -182,7 +184,8 @@ def _parse_submission_date(
     """Parse an SRC submission date (YYYY-MM-DD or ISO 8601) into an aware datetime
 
     SRC keeps the raw string, but the Runs.date DateTimeField needs a real datetime so the
-    post_save notification signal can compare it against a cutoff."""
+    post_save notification signal can compare it against a cutoff.
+    """
     if not raw_date:
         return None
     parsed = parse_datetime(raw_date)
@@ -568,15 +571,21 @@ def _try_v2_fallback(
 ) -> tuple[str | None, str | None]:
     """Attempt a v2 bot-session run submission.
 
+    When the bot session is not ACTIVE, an asynchronous re-login is kicked so the fallback
+    self-heals for later submissions.
+
     Returns:
-        (src_run_id, None) on success, or (None, reason) when the fallbacl is unavailable or fails.
+        (src_run_id, None) on success, or (None, reason) when the fallback is
+        unavailable or fails.
     """
     if not is_v2_enabled():
-        return None, "unavailable (v2 disabled)"
+        return None, "is unavailable. Please try again later."
 
     bot_session = BotSession.load()
     if bot_session.status != BotSession.Status.ACTIVE:
-        return None, "unavailable (bot session not active)"
+        if bot_session.status != BotSession.Status.REFRESHING:
+            refresh_bot_session.delay()
+        return None, "is currently being reset. Please try again in a few minutes."
 
     try:
         payload = build_submit_payload(snapshot)

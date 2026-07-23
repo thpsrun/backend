@@ -6,12 +6,14 @@ import time
 from contextlib import contextmanager
 from typing import Any, Iterator
 
+from django.conf import settings
 from django.core.cache import cache
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db.models import F, Model
 
 from srl.models import ReconciliationItem, ReconciliationJob
 from srl.models.reconciliation import (
+    GameReconcileMode,
     ReconAction,
     ReconPhase,
     ReconScope,
@@ -231,7 +233,8 @@ def reconciliation_upsert_check(
     **lookup: Any,
 ) -> Any:
     """Upserts a ReconciliationItem, recording changes if they exist and starts a new one if none
-    exists."""
+    exists.
+    """
 
     job = current_job()
     if job is None:
@@ -318,7 +321,11 @@ def lock_key_for(
 def acquire_lock(
     job: ReconciliationJob,
 ) -> bool:
-    return cache.add(lock_key_for(job), str(job.id), timeout=LOCK_TTL_SECONDS)
+    """Acquire the per-target reconcile lock. Sweep jobs get a longer TTL than the default."""
+    ttl = LOCK_TTL_SECONDS
+    if job.mode in (GameReconcileMode.FULL_GAME.value, GameReconcileMode.IL.value):
+        ttl = settings.RECON_SWEEP_LOCK_TTL_SECONDS
+    return cache.add(lock_key_for(job), str(job.id), timeout=ttl)
 
 
 def release_lock(

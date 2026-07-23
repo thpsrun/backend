@@ -1,7 +1,7 @@
 from django.contrib.postgres.fields import ArrayField
 from django.db import models
 
-from srl.models.base import LeaderboardChoices, validate_allowed_subset
+from srl.models.base import LeaderboardChoices, make_slug, validate_allowed_subset
 from srl.models.games import Games
 
 
@@ -113,6 +113,11 @@ class Categories(models.Model):
     updated_at = models.DateTimeField(
         auto_now=True,
     )
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = make_slug(self.name)
+        super().save(*args, **kwargs)
 
     def clean(self) -> None:
         super().clean()

@@ -50,7 +50,7 @@ def _src_request(
     max_retries: int,
     backoff_secs: int,
 ) -> requests.Response | None:
-    """GET an SRC v1 URL over the shared session, retrying on 420/503.
+    """GET an SRC v1 URL, retrying on 420/503 and transient transport errors.
 
     The shared retry primitive behind src_api and src_api_probe. Returns the final Response whatever
     its status (each caller applies its own non-200 contract): a non-420/503 status returns
@@ -61,14 +61,31 @@ def _src_request(
     Arguments:
         url (str): The complete URL of the API endpoint being called.
         max_retries (int): Maximum number of attempts before giving up.
-        backoff_secs (int): Base per-attempt sleep on a 420/503.
+        backoff_secs (int): Base per-attempt sleep on a 420/503 or transport error.
 
     Returns:
         response (requests.Response): The final HTTP response (still 420/503 if retries ran out).
     """
     response = None
     for attempt in range(1, max_retries + 1):
-        response = _src_session.get(url, timeout=30)
+        try:
+            response = _src_session.get(url, timeout=30)
+        except (
+            requests.exceptions.ConnectionError,
+            requests.exceptions.Timeout,
+        ) as exc:
+            logger.warning(
+                "SRC transport error on attempt %d/%d for %s: %s",
+                attempt,
+                max_retries,
+                url,
+                exc,
+            )
+            if attempt == max_retries:
+                raise
+            _src_backoff_sleep(backoff_secs)
+            continue
+
         if response.status_code not in (420, 503):
             return response
 
@@ -129,11 +146,6 @@ def src_api(
 ) -> dict | list:
     """Processes a Speedrun.com API v1 GET request to return values from any of its endpoints.
 
-    Retries on 420 (Enhance Your Calm) and 503 (Service Unavailable) up to `max_retries`
-    times with a fixed `backoff_secs` sleep between attempts. Both default to the module
-    constants SRC_MAX_RETRIES / SRC_BACKOFF_SECS when not provided, so existing callers are
-    unaffected; request-path callers can pass small values to avoid stalling.
-
     Arguments:
         url (str): The complete URL of the API endpoint being called.
         raw (bool): If True, return the full JSON envelope (e.g., when pagination links or
@@ -148,25 +160,30 @@ def src_api(
 
     Raises:
         SrcRateLimited: When 420/503 persists until retries are exhausted.
-        ValueError: When the response is otherwise non-200.
+        requests.exceptions.ConnectionError | requests.exceptions.Timeout: When a transient
+            transport failure persists until retries are exhausted.
+        ValueError: When the response is otherwise non-200, or no response was obtained.
     """
     retries: int = SRC_MAX_RETRIES if max_retries is None else max_retries
     backoff: int = SRC_BACKOFF_SECS if backoff_secs is None else backoff_secs
 
     response = _src_request(url, retries, backoff)
 
-    if response.status_code in (420, 503):
-        raise SrcRateLimited(
-            f"SRC API rate limit exceeded after {retries} retries ({url})"
-        )
+    if isinstance(response, requests.Response):
+        if response.status_code in (420, 503):
+            raise SrcRateLimited(
+                f"SRC API rate limit exceeded after {retries} retries ({url})"
+            )
 
-    if response.status_code != 200:
-        raise ValueError(
-            f"SRC API request failed with status code {response.status_code}"
-        )
+        if response.status_code != 200:
+            raise ValueError(
+                f"SRC API request failed with status code {response.status_code}"
+            )
 
-    payload = response.json()
-    return payload if raw else payload["data"]
+        payload = response.json()
+        return payload if raw else payload["data"]
+
+    raise ValueError(f"SRC API returned no response ({url})")
 
 
 def src_api_probe(
@@ -188,10 +205,13 @@ def src_api_probe(
     """
     response = _src_request(url, SRC_MAX_RETRIES, SRC_BACKOFF_SECS)
 
-    if response.status_code != 200:
-        return response.status_code, None
+    if isinstance(response, requests.Response):
+        if response.status_code != 200:
+            return response.status_code, None
 
-    return response.status_code, response.json()
+        return response.status_code, response.json()
+
+    return 503, None
 
 
 def src_api_paginate(

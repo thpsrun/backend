@@ -1,11 +1,6 @@
 import logging
 
-from accounts.oauth_signup import (
-    _SIGNUP_COMPLETE_URL_PATH,
-)
-from accounts.oauth_signup import (
-    write_intent as write_signup_intent,
-)
+from accounts.oauth_intent import SIGNUP_FLOW
 from allauth.socialaccount.adapter import get_adapter as get_socialaccount_adapter
 from allauth.socialaccount.providers.base.constants import AuthProcess
 from django.conf import settings
@@ -88,7 +83,7 @@ def initiate_oauth_signup(
         )
 
     next_url = request.build_absolute_uri(
-        f"{_SIGNUP_COMPLETE_URL_PATH}?status=ok&provider={provider}",
+        f"{SIGNUP_FLOW.complete_url_path}?status=ok&provider={provider}",
     )
     redirect_response = provider_obj.redirect(
         request,
@@ -105,7 +100,7 @@ def initiate_oauth_signup(
             ),
         )
     authorize_url = redirect_response["Location"]
-    write_signup_intent(request, provider=provider)
+    SIGNUP_FLOW.write_intent(request, provider=provider)
     _log_event("oauth_signup_initiated", request, provider=provider)
     return Status(
         200,

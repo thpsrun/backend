@@ -69,7 +69,8 @@ def get_run_players(
 ) -> list[dict]:
     """Get all players for a run as a list of dicts, ordered by their participation order.
 
-    This is always included in run responses (not an embed)."""
+    This is always included in run responses (not an embed).
+    """
     run_players = sorted(run.run_players.all(), key=lambda rp: rp.order)
 
     players_list = []
@@ -99,7 +100,8 @@ def get_run_variables(
     """Get variable_id:value_id mapping for a run.
 
     This is always included in run responses (not an embed).
-    Returns the through table data as {variable_id: value_id} pairs."""
+    Returns the through table data as {variable_id: value_id} pairs.
+    """
     variable_mapping: dict[str, str] = {}
 
     run_variable_values = run.runvariablevalues_set.all()
@@ -118,7 +120,8 @@ def apply_run_embeds(
     """Apply requested embeds to a run instance.
 
     This is the most complex embed function of all of the endpoints due to the
-    complex relations it will have with other models."""
+    complex relations it will have with other models.
+    """
     embeds = {}
 
     if "game" in embed_fields and run.game:
@@ -167,7 +170,8 @@ def normalize_time_fields(
     """Normalize RTA/LRT/IGT display strings from their `*_secs` source of truth.
 
     Consolidates logic that transforms the `_*secs` times into display strings that can be properly
-    digested on the frontend or through the API."""
+    digested on the frontend or through the API.
+    """
     time_pairs = (
         ("time", "time_secs"),
         ("timenl", "timenl_secs"),

@@ -1,10 +1,83 @@
 from api.v1.routers.resources.categories import router as categories_router
+from api.v1.routers.utils.resolvers import category_by_slug
 from django.core.exceptions import ValidationError
 from django.test import TestCase
 from ninja.testing import TestClient
 from srl.models import Categories, Games, LeaderboardChoices, Platforms, Variables
 
 from tests.test_auth import AuthTestBase
+
+
+class CategorySlugCollisionTest(TestCase):
+    @classmethod
+    def setUpTestData(
+        cls,
+    ) -> None:
+        cls.game = Games.objects.create(
+            id="thug2t",
+            name="THUG2 Test",
+            slug="thug2t",
+            twitch="THUG2 Test",
+            release="2004-01-01",
+            boxart="https://speedrun.com/thug2t/cover",
+            defaulttime="rta",
+            idefaulttime="rta",
+            pointsmax=1000,
+            ipointsmax=100,
+        )
+        # No explicit slug: both auto-slug to "classic", reproducing the collision.
+        cls.fg_classic = Categories.objects.create(
+            id="fgclassic",
+            game=cls.game,
+            name="Classic",
+            type="per-game",
+            url="https://speedrun.com/thug2t#classic",
+        )
+        cls.il_classic = Categories.objects.create(
+            id="ilclassic",
+            game=cls.game,
+            name="Classic",
+            type="per-level",
+            url="https://speedrun.com/thug2t#classic-il",
+        )
+
+    def test_colliding_categories_share_slug(
+        self,
+    ) -> None:
+        self.assertEqual(self.fg_classic.slug, "classic")
+        self.assertEqual(self.il_classic.slug, "classic")
+
+    def test_resolver_prefers_per_game(
+        self,
+    ) -> None:
+        category = category_by_slug(
+            self.game,
+            "classic",
+            Categories.CategoryType.PER_GAME,
+        )
+        self.assertIsNotNone(category)
+        self.assertEqual(category.id, "fgclassic")
+
+    def test_resolver_prefers_per_level(
+        self,
+    ) -> None:
+        category = category_by_slug(
+            self.game,
+            "classic",
+            Categories.CategoryType.PER_LEVEL,
+        )
+        self.assertIsNotNone(category)
+        self.assertEqual(category.id, "ilclassic")
+
+    def test_resolver_returns_none_when_absent(
+        self,
+    ) -> None:
+        category = category_by_slug(
+            self.game,
+            "does-not-exist",
+            Categories.CategoryType.PER_GAME,
+        )
+        self.assertIsNone(category)
 
 
 class CategoriesReadTest(TestCase):

@@ -1,15 +1,7 @@
 from datetime import timedelta
 from importlib import import_module
 
-from accounts.oauth_reauth import (
-    REAUTH_COMPLETE_URL_NAME,
-    REAUTH_INTENT_SESSION_KEY,
-    clear_intent,
-    handle_reauth,
-    is_intent_expired,
-    peek_intent,
-    write_intent,
-)
+from accounts.oauth_intent import REAUTH_FLOW, handle_reauth
 from allauth.account.internal.flows.login import AUTHENTICATION_METHODS_SESSION_KEY
 from allauth.account.internal.flows.reauthentication import did_recently_authenticate
 from allauth.core.exceptions import ImmediateHttpResponse
@@ -19,6 +11,13 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.test import RequestFactory, TestCase, override_settings
 from django.utils import timezone
+
+REAUTH_INTENT_SESSION_KEY = REAUTH_FLOW.session_key
+REAUTH_COMPLETE_URL_NAME = REAUTH_FLOW.complete_url_name
+write_intent = REAUTH_FLOW.write_intent
+peek_intent = REAUTH_FLOW.peek_intent
+clear_intent = REAUTH_FLOW.clear_intent
+is_intent_expired = REAUTH_FLOW.is_intent_expired
 
 User = get_user_model()
 
@@ -178,6 +177,12 @@ class HandleReauthTests(TestCase):
             )
         self._assert_redirects_to_complete(ctx.exception, "error", "intent_expired")
         self.assertNotIn(REAUTH_INTENT_SESSION_KEY, self.request.session)
+
+    def test_provider_mismatch_forwards_provider(self) -> None:
+        sl = _fake_sociallogin("twitch", "real-uid")
+        with self.assertRaises(ImmediateHttpResponse) as ctx:
+            handle_reauth(self.request, sl, peek_intent(self.request))
+        self.assertIn("provider=discord", ctx.exception.response["Location"])
 
     def test_url_name_constant_exported(self) -> None:
         self.assertEqual(REAUTH_COMPLETE_URL_NAME, "oauth_reauth_complete")

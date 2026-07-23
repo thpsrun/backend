@@ -3,6 +3,29 @@ from typing import Any
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models.fields.files import ImageFieldFile
+from django.utils.text import slugify
+
+_SLUG_SYMBOL_EXEMPTIONS: dict[str, str] = {
+    "+": "-plus",
+    "&": "-and",
+    "/": "-",
+}
+
+
+def make_slug(
+    name: str,
+) -> str:
+    """Slugify a name, preserving symbols that bare slugify would otherwise drop.
+
+    Arguments:
+        name (str): The human-readable name to slugify.
+
+    Returns:
+        slug (str): The slugified value with symbol substitutions applied.
+    """
+    for symbol, replacement in _SLUG_SYMBOL_EXEMPTIONS.items():
+        name = name.replace(symbol, replacement)
+    return slugify(name)
 
 
 class LeaderboardChoices(models.TextChoices):

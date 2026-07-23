@@ -240,7 +240,8 @@ def _key_scope_admits(
     target: Any | None,
 ) -> bool:
     """Verifies differences between scopes and games, ensuring that the user has no powers than
-    they had requested."""
+    they had requested.
+    """
     caps: list[str] = list(key.scope_capabilities or [])
     if caps and capability not in caps:
         return False

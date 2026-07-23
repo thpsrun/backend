@@ -1,9 +1,11 @@
 import asyncio
 import html
 import json
+import logging
+import math
 import re
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import sentry_sdk
 from celery import shared_task
@@ -12,6 +14,13 @@ from django_redis import get_redis_connection
 from imap_tools import AND, MailBox
 from speedruncompy.api import SpeedrunClient
 from speedruncompy.endpoints import PutAuthLogin
+
+from srl.srcom.v2 import is_v2_enabled
+
+if TYPE_CHECKING:
+    from srl.models import BotSession
+
+logger = logging.getLogger(__name__)
 
 _LOCK_KEY = "srcv2:bot_session:refresh"
 _LOCK_TTL_SECONDS = 120
@@ -22,14 +31,30 @@ def _refresh_lock() -> "object":
     return conn.lock(_LOCK_KEY, timeout=_LOCK_TTL_SECONDS, blocking_timeout=0)
 
 
-def _within_cooldown() -> bool:
-    from srl.models import BotSession
+def cooldown_remaining_seconds(
+    bs: "BotSession | None" = None,
+) -> int:
+    """Seconds left before another bot-session refresh is permitted.
 
-    bs = BotSession.load()
+    Shared by the beat task (to decide whether to no-op) and the admin refresh endpoint (to tell the
+    operator the queued task will be skipped for a bit).
+
+    Arguments:
+        bs (BotSession | None): An already-loaded session to re-use and check.
+
+    Returns:
+        remaining (int): Whole seconds (rounded up) until the refresh cooldown elapses, or 0
+            when no cooldown is currently active.
+    """
+    if bs is None:
+        from srl.models import BotSession
+
+        bs = BotSession.load()
     if not bs.last_refresh_attempt_at:
-        return False
-    cooldown = timedelta(seconds=settings.SRC_BOT_REFRESH_COOLDOWN)
-    return datetime.now(timezone.utc) - bs.last_refresh_attempt_at < cooldown
+        return 0
+    elapsed = (datetime.now(timezone.utc) - bs.last_refresh_attempt_at).total_seconds()
+    remaining = settings.SRC_BOT_REFRESH_COOLDOWN - elapsed
+    return math.ceil(remaining) if remaining > 0 else 0
 
 
 def _extract_2fa_code(
@@ -64,7 +89,14 @@ def _extract_2fa_code(
     return None
 
 
-def _fetch_2fa_code() -> Optional[str]:
+def _fetch_2fa_code() -> tuple[Optional[str], dict[str, int]]:
+    """Fetch the SRC 2FA login code from the bot mailbox, with diagnostics.
+
+    Returns:
+        result (tuple[str | None, dict[str, int]]): The extracted 2FA code (None when none was
+            found), paired with a diagnostics dict carrying the `unseen_fetched`,
+            `subject_matched`, and `code_extracted` counts.
+    """
     host = settings.SRC_BOT_MAILBOX_IMAP_HOST
     port = settings.SRC_BOT_MAILBOX_PORT
     user = settings.SRC_BOT_MAILBOX_USER
@@ -76,6 +108,9 @@ def _fetch_2fa_code() -> Optional[str]:
     )
     timeout = settings.SRC_BOT_2FA_WAIT_TIMEOUT
 
+    diag = {"unseen_fetched": 0, "subject_matched": 0, "code_extracted": 0}
+    code: Optional[str] = None
+
     with MailBox(host, port=port).login(user, pwd) as box:
         box.idle.wait(timeout=timeout)
         candidates = list(
@@ -85,28 +120,96 @@ def _fetch_2fa_code() -> Optional[str]:
                 limit=5,
             ),
         )
+        diag["unseen_fetched"] = len(candidates)
         for msg in candidates:
             if not subject_pattern.search(msg.subject or ""):
                 continue
+            diag["subject_matched"] += 1
             body = msg.text or msg.html or ""
-            code = _extract_2fa_code(body)
-            if code:
+            extracted = _extract_2fa_code(body)
+            if not extracted:
+                continue
+            diag["code_extracted"] += 1
+            # Keep the first usable code and mark only that message Seen; the loop keeps going
+            # purely so the diagnostic counts reflect the whole batch.
+            if code is None:
+                code = extracted
                 if msg.uid:
                     box.flag(msg.uid, "\\Seen", True)
-                return code
-        return None
+
+        if diag["unseen_fetched"] == 0:
+            # No unseen sender mail at all is the exact shape of the July 2026 outage, so surface
+            # recent sender metadata (never bodies) to tell a human-read code email apart from a
+            # renamed subject line.
+            for msg in box.fetch(
+                AND(from_=sender),
+                reverse=True,
+                limit=5,
+                mark_seen=False,
+                headers_only=True,
+            ):
+                logger.warning(
+                    "2FA mailbox recent message ignored: date=%s flags=%s subject=%r",
+                    msg.date,
+                    msg.flags,
+                    msg.subject,
+                )
+
+    logger.info(
+        "2FA mailbox scan: unseen_fetched=%d subject_matched=%d code_extracted=%d",
+        diag["unseen_fetched"],
+        diag["subject_matched"],
+        diag["code_extracted"],
+    )
+    return code, diag
+
+
+def _record_refresh_failure(
+    bs: "BotSession",
+    stage: str,
+) -> None:
+    """Record a soft (non-exception) refresh failure and trip the breaker at 3.
+
+    Arguments:
+        bs (BotSession): The singleton session row to mark LOCKED_OUT and bump.
+        stage (str): Short name of the failing stage, surfaced in the breaker reason
+            (e.g. `no_2fa_code`).
+    """
+    from srl.models import BotSession
+
+    bs.status = BotSession.Status.LOCKED_OUT
+    bs.consecutive_refresh_failures = (bs.consecutive_refresh_failures or 0) + 1
+    bs.save(update_fields=["status", "consecutive_refresh_failures"])
+    if bs.consecutive_refresh_failures >= 3:
+        from srl.srcom.v2.errors import ErrorCategory
+
+        trip_circuit_breaker(
+            reason=(f"3+ consecutive refresh_bot_session failures at stage '{stage}'"),
+            category=ErrorCategory.AUTH,
+        )
 
 
 @shared_task(name="srl.srcom.v2.refresh_bot_session")
 def refresh_bot_session() -> None:
+    """Re-login the SRC bot account and refresh the shared v2 session."""
     from srl.models import BotSession
 
     lock = _refresh_lock()
     if not lock.acquire():
+        logger.info(
+            "refresh_bot_session skipped: another refresh is already in progress.",
+        )
         return
 
     try:
-        if _within_cooldown():
+        remaining = cooldown_remaining_seconds()
+        if remaining > 0:
+            logger.info(
+                "refresh_bot_session skipped: within cooldown, %d s remaining "
+                "(SRC_BOT_REFRESH_COOLDOWN=%d s)",
+                remaining,
+                settings.SRC_BOT_REFRESH_COOLDOWN,
+            )
             return
 
         bs = BotSession.load()
@@ -123,11 +226,18 @@ def refresh_bot_session() -> None:
                 _client=client,
             ).perform_sync()
 
-            if not result.loggedIn and getattr(result, "tokenChallengeSent", False):
-                code = _fetch_2fa_code()
+            token_challenge_sent = getattr(result, "tokenChallengeSent", False)
+            if not result.loggedIn and token_challenge_sent:
+                code, mailbox_diag = _fetch_2fa_code()
                 if not code:
-                    bs.status = BotSession.Status.LOCKED_OUT
-                    bs.save(update_fields=["status"])
+                    logger.warning(
+                        "refresh_bot_session failed: no 2FA code found "
+                        "(unseen_fetched=%d subject_matched=%d code_extracted=%d)",
+                        mailbox_diag["unseen_fetched"],
+                        mailbox_diag["subject_matched"],
+                        mailbox_diag["code_extracted"],
+                    )
+                    _record_refresh_failure(bs, stage="no_2fa_code")
                     return
                 result = PutAuthLogin(
                     settings.SRC_BOT_USERNAME,
@@ -135,10 +245,21 @@ def refresh_bot_session() -> None:
                     code,
                     _client=client,
                 ).perform_sync()
-
-            if not result.loggedIn:
-                bs.status = BotSession.Status.LOCKED_OUT
-                bs.save(update_fields=["status"])
+                if not result.loggedIn:
+                    logger.warning(
+                        "refresh_bot_session failed: second login (with 2FA "
+                        "code) returned loggedIn=false",
+                    )
+                    _record_refresh_failure(bs, stage="second_login_failed")
+                    return
+            elif not result.loggedIn:
+                logger.warning(
+                    "refresh_bot_session failed: first login returned "
+                    "loggedIn=%s tokenChallengeSent=%s",
+                    result.loggedIn,
+                    token_challenge_sent,
+                )
+                _record_refresh_failure(bs, stage="first_login_no_challenge")
                 return
 
             # We only need the csrfToken from the response, and not the entire pydantic
@@ -147,19 +268,28 @@ def refresh_bot_session() -> None:
                 client.POST("GetSession", {}),
             )
             if http_status != 200:
-                bs.status = BotSession.Status.LOCKED_OUT
-                bs.save(update_fields=["status"])
+                logger.warning(
+                    "refresh_bot_session failed: GetSession returned HTTP %s",
+                    http_status,
+                )
+                _record_refresh_failure(bs, stage="getsession_http")
                 return
             try:
                 session_payload = json.loads(raw_bytes)
             except json.JSONDecodeError:
-                bs.status = BotSession.Status.LOCKED_OUT
-                bs.save(update_fields=["status"])
+                logger.warning(
+                    "refresh_bot_session failed: GetSession response was not "
+                    "valid JSON",
+                )
+                _record_refresh_failure(bs, stage="getsession_json_decode")
                 return
             csrf = (session_payload.get("session", {}).get("csrfToken", "")) or ""
             if not csrf:
-                bs.status = BotSession.Status.LOCKED_OUT
-                bs.save(update_fields=["status"])
+                logger.warning(
+                    "refresh_bot_session failed: GetSession response had an "
+                    "empty csrfToken",
+                )
+                _record_refresh_failure(bs, stage="empty_csrf")
                 return
 
             # speedruncompy's PHPSESSID property uses a filter, but it may return nothing...
@@ -171,8 +301,11 @@ def refresh_bot_session() -> None:
                         phpsessid = cookie.value
                         break
             if not phpsessid:
-                bs.status = BotSession.Status.LOCKED_OUT
-                bs.save(update_fields=["status"])
+                logger.warning(
+                    "refresh_bot_session failed: no PHPSESSID cookie in the "
+                    "session cookie jar",
+                )
+                _record_refresh_failure(bs, stage="missing_phpsessid")
                 return
             bs.set_phpsessid(phpsessid)
             bs.csrf_token = csrf
@@ -198,11 +331,20 @@ def refresh_bot_session() -> None:
                 from srl.srcom.v2 import invalidate_v2_enabled_cache
 
                 invalidate_v2_enabled_cache()
+            logger.info(
+                "refresh_bot_session succeeded: bot session ACTIVE, "
+                "consecutive_refresh_failures reset to 0",
+            )
         except Exception as exc:
             bs.status = BotSession.Status.LOCKED_OUT
             bs.consecutive_refresh_failures = (bs.consecutive_refresh_failures or 0) + 1
             bs.save(
                 update_fields=["status", "consecutive_refresh_failures"],
+            )
+            logger.exception(
+                "refresh_bot_session failed with an unexpected exception "
+                "(consecutive_refresh_failures=%d)",
+                bs.consecutive_refresh_failures,
             )
             if bs.consecutive_refresh_failures >= 3:
                 from srl.srcom.v2.errors import ErrorCategory
@@ -217,6 +359,43 @@ def refresh_bot_session() -> None:
             lock.release()
         except Exception:
             pass
+
+
+@shared_task(name="srl.srcom.v2.keepalive_bot_session")
+def keepalive_bot_session() -> None:
+    """Periodically re-establish the bot session before it lapses."""
+    from srl.models import BotSession
+
+    if not is_v2_enabled():
+        logger.debug("keepalive_bot_session: v2 disabled, nothing to do")
+        return
+
+    bs = BotSession.load()
+    if bs.status == BotSession.Status.REFRESHING:
+        logger.debug(
+            "keepalive_bot_session: a refresh is already in progress "
+            "(status REFRESHING), leaving it alone",
+        )
+        return
+
+    if bs.status == BotSession.Status.ACTIVE and bs.validated_at is not None:
+        ttl = timedelta(hours=settings.SRC_BOT_SESSION_TTL_HOURS)
+        if datetime.now(timezone.utc) - bs.validated_at < ttl:
+            logger.debug(
+                "keepalive_bot_session: session still fresh (validated_at "
+                "within SRC_BOT_SESSION_TTL_HOURS=%d h), skipping",
+                settings.SRC_BOT_SESSION_TTL_HOURS,
+            )
+            return
+
+    # refresh_bot_session is Redis-locked and cooldown-gated, so this is safe to fire on every
+    # tick; it no-ops when a refresh already ran recently.
+    logger.info(
+        "keepalive_bot_session: session stale or unusable (status=%s), "
+        "queueing refresh_bot_session",
+        bs.status,
+    )
+    refresh_bot_session.delay()
 
 
 def trip_circuit_breaker(

@@ -170,7 +170,8 @@ class PlayerEntry(Schema):
 
     For rel=user, provide the player's name as it appears in the
     database. The player is looked up by name and must exist locally.
-    For rel=guest, provide a display name (no DB lookup)."""
+    For rel=guest, provide a display name (no DB lookup).
+    """
 
     rel: Literal["user", "guest"]
     name: str = Field(

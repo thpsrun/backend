@@ -24,7 +24,6 @@ from srl.models import (
 )
 from srl.srcom.categories import sync_categories
 from srl.srcom.games import sync_game
-from srl.srcom.leaderboards import sync_single_run
 from srl.srcom.levels import sync_levels
 from srl.srcom.players import sync_players
 from srl.srcom.reconciliation import reconciliation_upsert_check
@@ -187,6 +186,9 @@ def _call_sync_single_run(
     success_reason: str,
     run_payload: dict[str, Any] | None = None,
 ) -> str:
+    # Lazy import to avoid a circular import error.
+    from srl.srcom.leaderboards import sync_single_run
+
     try:
         sync_single_run(run_id, run_payload=run_payload)
     except Exception as exc:
@@ -264,7 +266,8 @@ def _src_run_unchanged(
 
     Compares only the fields create_run_default writes from SRC. Derived fields and the
     player/value tables are not compared. If a validation error occurs or another hicup comes up,
-    then we will just assume the run needs to be re-applied to the local DB."""
+    then we will just assume the run needs to be re-applied to the local DB.
+    """
     try:
         model = SrcRunsModel.model_validate(payload)
     except Exception:

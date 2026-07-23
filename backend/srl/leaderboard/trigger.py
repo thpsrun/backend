@@ -35,7 +35,7 @@ def _wr_check(
     if current_wr_time is None:
         return True
 
-    return run_time < current_wr_time
+    return run_time <= current_wr_time
 
 
 def recalculate_run(

@@ -208,6 +208,50 @@ class ModelTest(TestCase):
     ) -> None:
         self.assertTrue(Categories.objects.filter(id="category").exists())
 
+    def test_category_slug_autopopulates_from_name(
+        self,
+    ) -> None:
+        """Categories created without an explicit slug must auto-slugify their name."""
+        category = Categories.objects.create(
+            id="noslugcat",
+            game=self.games,
+            name="Story - All Goals",
+            type="per-game",
+            url="https://speedrun.com/",
+        )
+        self.assertEqual(category.slug, "story-all-goals")
+
+    def test_category_slug_maps_symbols(
+        self,
+    ) -> None:
+        """Symbols bare slugify would drop (+, &, /) must map to readable tokens."""
+        category = Categories.objects.create(
+            id="symcat",
+            game=self.games,
+            name="Any% NG+",
+            type="per-game",
+            url="https://speedrun.com/",
+        )
+        self.assertEqual(category.slug, "any-ng-plus")
+
+    def test_variable_value_slug_avoids_symbol_collision(
+        self,
+    ) -> None:
+        """ "NG" and "NG+" must not collapse onto the same slug."""
+        ng = VariableValues.objects.create(
+            var=self.variables,
+            name="NG",
+            value="vng",
+        )
+        ng_plus = VariableValues.objects.create(
+            var=self.variables,
+            name="NG+",
+            value="vngp",
+        )
+        self.assertEqual(ng.slug, "ng")
+        self.assertEqual(ng_plus.slug, "ng-plus")
+        self.assertNotEqual(ng.slug, ng_plus.slug)
+
     def test_levels(
         self,
     ) -> None:

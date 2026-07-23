@@ -375,7 +375,8 @@ class SrcLeaderboardRun(BaseModel):
 
 class SrcLeaderboardEmbeddedPlayer(BaseModel):
     """Permissive shape for embedded leaderboard player entries to better guard against guest users
-    within the SRC context."""
+    within the SRC context.
+    """
 
     rel: str | None = None
     id: str | None = None

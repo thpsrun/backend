@@ -36,20 +36,36 @@ class ReconItemPhase(models.TextChoices):
     P3 = "P3", "Phase 3"
 
 
+class GameReconcileMode(models.TextChoices):
+    """Selects which run set a reconcile job processes for a game."""
+
+    RECENT = "recent", "Recent verified runs"
+    FULL_GAME = "full_game", "All full-game (main) runs"
+    IL = "il", "All individual-level runs"
+
+
 class ReconAction(models.TextChoices):
-    CREATED = "CREATED", "Created"
-    UPDATED = "UPDATED", "Updated"
-    SKIPPED_LOCAL_WINS = "SKIPPED_LOCAL_WINS", "Skipped (local wins)"
-    SKIPPED_NO_CHANGE = "SKIPPED_NO_CHANGE", "Skipped (no change)"
-    FAILED = "FAILED", "Failed"
+    """Outcome of a single reconciliation item record."""
+
+    CREATED = "created", "Created"
+    UPDATED = "updated", "Updated"
+    SKIPPED_LOCAL_WINS = "skipped_local_wins", "Skipped (local wins)"
+    SKIPPED_NO_CHANGE = "skipped_no_change", "Skipped (no change)"
+    MISSING_ON_SRC = "missing_on_src", "Missing on SRC"
+    FAILED = "failed", "Failed"
 
     @property
     def bucket(self) -> str | None:
+        """Return the summary bucket name for this action, or None if unrecognised."""
         if self == ReconAction.CREATED:
             return "created"
         if self == ReconAction.UPDATED:
             return "updated"
-        if self in (ReconAction.SKIPPED_LOCAL_WINS, ReconAction.SKIPPED_NO_CHANGE):
+        if self in (
+            ReconAction.SKIPPED_LOCAL_WINS,
+            ReconAction.SKIPPED_NO_CHANGE,
+            ReconAction.MISSING_ON_SRC,
+        ):
             return "skipped"
         if self == ReconAction.FAILED:
             return "failed"
@@ -61,6 +77,12 @@ class ReconciliationJob(models.Model):
     scope = models.CharField(max_length=16, choices=ReconScope.choices)
     target_id = models.CharField(max_length=128, blank=True)
     target_descriptor = models.JSONField(default=dict, blank=True)
+    mode = models.CharField(
+        max_length=16,
+        choices=GameReconcileMode.choices,
+        default=GameReconcileMode.RECENT,
+    )
+    run_limit = models.PositiveIntegerField(null=True, blank=True)
     source_of_truth = models.CharField(
         max_length=16,
         choices=ReconSourceOfTruth.choices,

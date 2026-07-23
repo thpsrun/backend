@@ -9,6 +9,7 @@ from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.db.models import F, Prefetch, QuerySet
 from django.db.models.functions import Coalesce
+
 from srl.models import (
     Categories,
     Games,
@@ -140,8 +141,18 @@ def _build_event_stream(
         effective_date = run.effective_date  # type: ignore
 
         events.append((effective_date, "ADD", 0, run))
-        if is_obsolete and obsoleted_at is not None and obsoleted_at > effective_date:
-            events.append((obsoleted_at, "REMOVE", 1, run))
+        if is_obsolete:
+            # An obsolete run must always be removed from the active pool so it can never
+            # suppress or out-rank a current run. Use its recorded obsoleted_at when that is
+            # a valid later timestamp; otherwise remove it at its own effective date (a
+            # zero-duration history row that backfill_obsoleted_at refines later). Without
+            # this, an obsolete run with a NULL obsoleted_at would linger as a permanent WR.
+            remove_date = (
+                obsoleted_at
+                if obsoleted_at is not None and obsoleted_at > effective_date
+                else effective_date
+            )
+            events.append((remove_date, "REMOVE", 1, run))
 
     events.sort(key=lambda e: (e[0], e[2]))
     return events
@@ -152,6 +163,7 @@ class _WalkerState:
     runtype: str
     is_ce: bool
     max_points: int
+    time_col: str
 
     active_pool: dict[str, tuple[Runs, float]] = field(default_factory=dict)
     active_entries: dict[str, tuple["RunHistory", float]] = field(default_factory=dict)
@@ -283,7 +295,10 @@ def _handle_add(
     run: Runs,
     event_date: datetime,
 ) -> None:
-    run_time = float(run.p_time_secs or 0.0)
+    # Rank strictly by the board's primary timing method. A run without a time in that
+    # column is not ranked here (no cross-method fallback), so e.g. an IGT-only run never
+    # leaks onto an RTA board. Display-side p_time_secs may still fall back; ranking does not.
+    run_time = float(getattr(run, state.time_col, None) or 0.0)
     if not run_time:
         return
 
@@ -675,6 +690,7 @@ def process_leaderboard(
         runtype=runtype,
         is_ce=is_ce,
         max_points=max_points,
+        time_col=get_leaderboard_time_column(leaderboard),
     )
 
     events = _build_event_stream(runs)
@@ -738,7 +754,8 @@ def _assign_places(
     Recalculations usually occur during reconciliation, point changes, or something else major;
     because of this, this shouldn't run super often. The API has ways to handle this properly, but
     when you are dealing with lot of data (e.g. schema conversion), this is needed to properly
-    wire and set things up."""
+    wire and set things up.
+    """
     ranked = sorted(
         (
             (run, run_time)

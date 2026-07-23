@@ -14,6 +14,8 @@ class BotSessionResponse(Schema):
     last_severe_error_category: str
     queued_edit_count: int
     failed_edit_count: int
+    refresh_queued: bool | None = None
+    cooldown_seconds_remaining: int | None = None
 
     class Config:
         json_schema_extra = {
@@ -28,6 +30,8 @@ class BotSessionResponse(Schema):
                 "last_severe_error_category": "",
                 "queued_edit_count": 0,
                 "failed_edit_count": 0,
+                "refresh_queued": True,
+                "cooldown_seconds_remaining": None,
             },
         }
 

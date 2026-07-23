@@ -1,8 +1,7 @@
 import hashlib
 import logging
 
-from accounts.oauth_connect import write_intent as write_connect_intent
-from accounts.oauth_reauth import write_intent
+from accounts.oauth_intent import CONNECT_FLOW, REAUTH_FLOW
 from allauth.account.adapter import get_adapter
 from allauth.account.internal.flows.reauthentication import did_recently_authenticate
 from allauth.mfa.models import Authenticator
@@ -428,7 +427,7 @@ def initiate_oauth_reauth(
             ),
         )
     authorize_url = redirect_response["Location"]
-    write_intent(
+    REAUTH_FLOW.write_intent(
         request,
         provider=provider,
         user_id=user.pk,
@@ -512,7 +511,7 @@ def initiate_oauth_connect(
             ),
         )
     authorize_url = redirect_response["Location"]
-    write_connect_intent(
+    CONNECT_FLOW.write_intent(
         request,
         provider=provider,
         user_id=user.pk,

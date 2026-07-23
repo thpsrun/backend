@@ -56,7 +56,8 @@ def sync_src_action(
     """Execute an SRC v1 API sync operation (verify/reject/change-players) with retry.
 
     On retryable failures (420, 503, connection errors), re-queues itself with exponential
-    backoff. After max_attempts, marks the task as failed and reports to Sentry."""
+    backoff. After max_attempts, marks the task as failed and reports to Sentry.
+    """
 
     with actor_from_user_id(actor_user_id):
         try:
@@ -370,7 +371,8 @@ def replay_failed_edits() -> int:
 
     Tasks older than SRC_V2_REPLAY_MAX_AGE_DAYS are intentionally skipped; stale
     edits should be reviewed individually. Also no-ops if the v2 kill switch is
-    still off, otherwise the re-queued tasks would fail immediately."""
+    still off, otherwise the re-queued tasks would fail immediately.
+    """
 
     if not is_v2_enabled():
         return 0

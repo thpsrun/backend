@@ -1,8 +1,7 @@
 from django.contrib.postgres.fields import ArrayField
 from django.db import models
-from django.utils.text import slugify
 
-from srl.models.base import LeaderboardChoices, validate_allowed_subset
+from srl.models.base import LeaderboardChoices, make_slug, validate_allowed_subset
 from srl.models.variables import Variables
 
 
@@ -95,7 +94,7 @@ class VariableValues(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.slug:
-            self.slug = slugify(self.name)
+            self.slug = make_slug(self.name)
         super().save(*args, **kwargs)
 
     def clean(

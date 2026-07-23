@@ -80,7 +80,8 @@ def _dispatch_rebackfill_on_commit(
     actor_user_id: int | None,
 ) -> None:
     """Defer Celery dispatch until the originating transaction commits so the
-    worker doesn't read stale rows."""
+    worker doesn't read stale rows.
+    """
 
     transaction.on_commit(
         lambda: rebackfill_game_runs.delay(

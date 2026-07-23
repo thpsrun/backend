@@ -47,76 +47,25 @@ logger = logging.getLogger(__name__)
 EXISTING_PLAYER_RESYNC_STALE_AFTER = timedelta(days=7)
 
 
-@shared_task
-def sync_game_runs(
+def _sync_game_structure(
     game_id: str,
-    reset: int = 0,
-    progress_key: str | None = None,
-) -> None:
-    dispatched = 0
-    try:
-        if reset == 1:
-            with transaction.atomic():
-                Runs.objects.filter(game=game_id).delete()
-                VariableValues.objects.filter(var__game__id=game_id).delete()
-                Variables.objects.filter(game=game_id).delete()
-                Categories.objects.filter(game=game_id).delete()
-                Levels.objects.filter(game=game_id).delete()
+) -> SrcGamesModel | None:
+    """Sync a game's categories, levels, and variables from SRC. Returns the SRC game model."""
+    game_check = src_api(
+        f"https://speedrun.com/api/v1/games/"
+        f"{game_id}?embed=platforms,levels,categories,variables"
+    )
+    if not isinstance(game_check, dict):
+        return None
 
-        game_check = src_api(
-            f"https://speedrun.com/api/v1/games/"
-            f"{game_id}?embed=platforms,levels,categories,variables"
-        )
-        if not isinstance(game_check, dict):
-            return
-
-        game = SrcGamesModel.model_validate(game_check)
-
-        for category in game.categories or []:
-            sync_categories(category, game_id=game_id)
-        for level in game.levels or []:
-            sync_levels(level)
-        for variable in game.variables or []:
-            sync_variables(variable)
-
-        variables = game.variables or []
-        for category in game.categories or []:
-            is_il = category.type == "per-level"
-            level_iter = game.levels if (is_il and game.levels) else [None]
-
-            for level in level_iter:
-                combos = build_leaderboard_combos(
-                    variables=variables,
-                    category_id=category.id,
-                    is_il=is_il,
-                    level_id=level.id if level else None,
-                )
-                for combo in combos:
-                    check_cancelled()
-                    lb_data = create_leaderboard_link(
-                        game_id=game.id,
-                        category_id=category.id,
-                        il_id=level.id if level else None,
-                        var_combo=combo if combo else None,
-                    )
-                    if lb_data:
-                        sync_leaderboards.delay(
-                            lb_data,
-                            progress_key=progress_key,
-                        )
-                        dispatched += 1
-    finally:
-        if progress_key:
-            bump(
-                progress_key,
-                "lb_total",
-                dispatched,
-            )
-            bump(
-                progress_key,
-                "games_enumerated",
-                1,
-            )
+    game = SrcGamesModel.model_validate(game_check)
+    for category in game.categories or []:
+        sync_categories(category, game_id=game_id)
+    for level in game.levels or []:
+        sync_levels(level)
+    for variable in game.variables or []:
+        sync_variables(variable)
+    return game
 
 
 def _build_base_context(
@@ -167,38 +116,6 @@ def _build_base_context(
         lrt_fix=lrt_fix_check,
         runs_data=src_lb.runs[0],
     )
-
-
-@shared_task
-def sync_leaderboards(
-    leaderboard_data: dict,
-    progress_key: str | None = None,
-) -> None:
-    failed = False
-    try:
-        src_lb = SrcLeaderboardModel.model_validate(leaderboard_data)
-        if not src_lb.runs:
-            return
-        if progress_key:
-            bump(
-                progress_key,
-                "runs_total",
-                len(src_lb.runs),
-            )
-        base_context = _build_base_context(src_lb)
-        for lb_run in src_lb.runs:
-            check_cancelled()
-            run_context = base_context.model_copy(update={"runs_data": lb_run})
-            sync_run.delay(
-                run_context.model_dump(),
-                progress_key=progress_key,
-            )
-    except Exception:
-        failed = True
-        raise
-    finally:
-        if progress_key:
-            bump(progress_key, "lb_failed" if failed else "lb_done")
 
 
 def _passes_scope_filter(
@@ -359,21 +276,39 @@ def _ensure_level_for_obsolete_run(
     return Levels.objects.filter(id=src_run.level).exists()
 
 
-def _persist_obsolete_run(
+def _build_run_defaults(
     src_run: SrcRunsModel,
     game_info: Games,
-) -> bool:
-    """Insert a verified obsolete run + its players + var values. Returns True if inserted."""
+) -> dict:
+    """Build Runs upsert defaults from a bare SRC run payload (no leaderboard needed)."""
     lrt_fix_check = game_info.defaulttime == "lrt" or game_info.idefaulttime == "lrt"
     default = create_run_default(
         src_run.model_dump(),
         place=0,
         lrtfix=lrt_fix_check,
     )
-    default["points"] = 0
-    default["obsolete"] = True
     if src_run.level:
         default["level_id"] = src_run.level
+    return default
+
+
+def _write_run_record(
+    src_run: SrcRunsModel,
+    default: dict,
+) -> Runs:
+    """Upsert a Runs row plus its players and variable values from a bare run payload."""
+    # Ensure every referenced player exists locally before joining; a missing player would
+    # otherwise raise an IntegrityError and abort the whole sweep (mirrors sync_run).
+    user_player_ids = [
+        p.id for p in src_run.players if p is not None and p.id and p.rel == "user"
+    ]
+    existing_ids = set(
+        Players.objects.filter(id__in=set(user_player_ids)).values_list(
+            "id", flat=True
+        ),
+    )
+    for pid in set(user_player_ids) - existing_ids:
+        sync_players(pid)
 
     with transaction.atomic():
         run_obj = reconciliation_upsert_check(
@@ -401,7 +336,121 @@ def _persist_obsolete_run(
                 variable_id=var_id,
                 value_id=val_id,
             )
+    return run_obj
+
+
+def _persist_obsolete_run(
+    src_run: SrcRunsModel,
+    game_info: Games,
+) -> bool:
+    """Insert a verified obsolete run + its players + var values. Returns True if inserted."""
+    default = _build_run_defaults(src_run, game_info)
+    default["points"] = 0
+    default["obsolete"] = True
+    _write_run_record(src_run, default)
     return True
+
+
+def _reconcile_run_from_payload(
+    src_run: SrcRunsModel,
+    game_info: Games,
+) -> Runs:
+    """Refresh a run's metadata from SRC while preserving its place, points, and obsolete flag."""
+    default = _build_run_defaults(src_run, game_info)
+    default.pop("place", None)
+    return _write_run_record(src_run, default)
+
+
+@shared_task
+def sync_game_runs(
+    game_id: str,
+    reset: int = 0,
+    progress_key: str | None = None,
+) -> None:
+    dispatched = 0
+    try:
+        if reset == 1:
+            with transaction.atomic():
+                Runs.objects.filter(game=game_id).delete()
+                VariableValues.objects.filter(var__game__id=game_id).delete()
+                Variables.objects.filter(game=game_id).delete()
+                Categories.objects.filter(game=game_id).delete()
+                Levels.objects.filter(game=game_id).delete()
+
+        game = _sync_game_structure(game_id)
+        if game is None:
+            return
+
+        variables = game.variables or []
+        for category in game.categories or []:
+            is_il = category.type == "per-level"
+            level_iter = game.levels if (is_il and game.levels) else [None]
+
+            for level in level_iter:
+                combos = build_leaderboard_combos(
+                    variables=variables,
+                    category_id=category.id,
+                    is_il=is_il,
+                    level_id=level.id if level else None,
+                )
+                for combo in combos:
+                    check_cancelled()
+                    lb_data = create_leaderboard_link(
+                        game_id=game.id,
+                        category_id=category.id,
+                        il_id=level.id if level else None,
+                        var_combo=combo if combo else None,
+                    )
+                    if lb_data:
+                        sync_leaderboards.delay(
+                            lb_data,
+                            progress_key=progress_key,
+                        )
+                        dispatched += 1
+    finally:
+        if progress_key:
+            bump(
+                progress_key,
+                "lb_total",
+                dispatched,
+            )
+            bump(
+                progress_key,
+                "games_enumerated",
+                1,
+            )
+
+
+@shared_task
+def sync_leaderboards(
+    leaderboard_data: dict,
+    progress_key: str | None = None,
+) -> None:
+    failed = False
+    try:
+        src_lb = SrcLeaderboardModel.model_validate(leaderboard_data)
+        if not src_lb.runs:
+            return
+        if progress_key:
+            bump(
+                progress_key,
+                "runs_total",
+                len(src_lb.runs),
+            )
+        base_context = _build_base_context(src_lb)
+        for lb_run in src_lb.runs:
+            check_cancelled()
+            run_context = base_context.model_copy(update={"runs_data": lb_run})
+            sync_run.delay(
+                run_context.model_dump(),
+                progress_key=progress_key,
+            )
+    except Exception:
+        failed = True
+        raise
+    finally:
+        if progress_key:
+            bump(progress_key, "lb_failed" if failed else "lb_done")
 
 
 @shared_task(pydantic=True)

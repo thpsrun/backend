@@ -4,29 +4,11 @@ from django.shortcuts import render
 from django.urls import reverse
 from django.views.decorators.http import require_GET
 
-from accounts.oauth_connect import (
-    clear_intent as clear_connect_intent,
-)
-from accounts.oauth_connect import (
-    peek_intent as peek_connect_intent,
-)
-from accounts.oauth_login import (
-    clear_intent as clear_login_intent,
-)
-from accounts.oauth_login import (
-    peek_intent as peek_login_intent,
-)
-from accounts.oauth_reauth import (
-    clear_intent as clear_reauth_intent,
-)
-from accounts.oauth_reauth import (
-    peek_intent as peek_reauth_intent,
-)
-from accounts.oauth_signup import (
-    clear_intent as clear_signup_intent,
-)
-from accounts.oauth_signup import (
-    peek_intent as peek_signup_intent,
+from accounts.oauth_intent import (
+    CONNECT_FLOW,
+    LOGIN_FLOW,
+    REAUTH_FLOW,
+    SIGNUP_FLOW,
 )
 
 ALLOWED_STATUSES = frozenset({"ok", "error", "cancelled"})
@@ -183,23 +165,23 @@ def oauth_login_complete(
 def socialaccount_login_cancelled(
     request: HttpRequest,
 ) -> HttpResponse:
-    if peek_connect_intent(request) is not None:
-        clear_connect_intent(request)
+    if CONNECT_FLOW.peek_intent(request) is not None:
+        CONNECT_FLOW.clear_intent(request)
         return HttpResponseRedirect(
             f"{reverse('oauth_connect_complete')}?status=cancelled",
         )
-    if peek_reauth_intent(request) is not None:
-        clear_reauth_intent(request)
+    if REAUTH_FLOW.peek_intent(request) is not None:
+        REAUTH_FLOW.clear_intent(request)
         return HttpResponseRedirect(
             f"{reverse('oauth_reauth_complete')}?status=cancelled",
         )
-    if peek_signup_intent(request) is not None:
-        clear_signup_intent(request)
+    if SIGNUP_FLOW.peek_intent(request) is not None:
+        SIGNUP_FLOW.clear_intent(request)
         return HttpResponseRedirect(
             f"{reverse('oauth_signup_complete')}?status=cancelled",
         )
-    if peek_login_intent(request) is not None:
-        clear_login_intent(request)
+    if LOGIN_FLOW.peek_intent(request) is not None:
+        LOGIN_FLOW.clear_intent(request)
         return HttpResponseRedirect(
             f"{reverse('oauth_login_complete')}?status=cancelled",
         )
@@ -210,23 +192,23 @@ def socialaccount_login_cancelled(
 def socialaccount_login_error(
     request: HttpRequest,
 ) -> HttpResponse:
-    if peek_connect_intent(request) is not None:
-        clear_connect_intent(request)
+    if CONNECT_FLOW.peek_intent(request) is not None:
+        CONNECT_FLOW.clear_intent(request)
         return HttpResponseRedirect(
             f"{reverse('oauth_connect_complete')}?status=error&reason=provider_error",
         )
-    if peek_reauth_intent(request) is not None:
-        clear_reauth_intent(request)
+    if REAUTH_FLOW.peek_intent(request) is not None:
+        REAUTH_FLOW.clear_intent(request)
         return HttpResponseRedirect(
             f"{reverse('oauth_reauth_complete')}?status=error&reason=provider_error",
         )
-    if peek_signup_intent(request) is not None:
-        clear_signup_intent(request)
+    if SIGNUP_FLOW.peek_intent(request) is not None:
+        SIGNUP_FLOW.clear_intent(request)
         return HttpResponseRedirect(
             f"{reverse('oauth_signup_complete')}?status=error&reason=provider_error",
         )
-    if peek_login_intent(request) is not None:
-        clear_login_intent(request)
+    if LOGIN_FLOW.peek_intent(request) is not None:
+        LOGIN_FLOW.clear_intent(request)
         return HttpResponseRedirect(
             f"{reverse('oauth_login_complete')}?status=error&reason=provider_error",
         )
