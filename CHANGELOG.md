@@ -1,3 +1,42 @@
+### v4.4
+###### July 27, 2026
+*   Added
+    *   Added the ability to declare a timing method as optional.
+        *   When optional, the timing method will stil appear on the frontend when submitting runs and on the leaderboards; however, that timing method will not be needed.
+        *   This should not raise up timing method errors, from the fuzzy testing I did.
+            *   That said, I definitely probably missed something in my testing (I am still working on some different testing methods for edge cases ;w;).
+    *   Added some N+1 protections in several parts of the API.
+    *   Added an additional check where, if a `Categories`, `Runs`, or `Players` object is not available in the API for some reason, then it will perform an SRC check to validate if it exists before returning an error.
+        *   If it does exist, then it is added to the local database.
+        *   Note: The most recent validated runs (~25) are returned to the database, however this is a stop gap if it is an older run or player.
+    *   Added a check that only refreshes player data states if they are both unclaimed and haven't been updated in 7 days.
+    *   Added more capabilities to the SRC API calls to allow for more granular control over retries and backoff timings.
+    *   Added Celery timeouts to sweep tasks, since they will sometimes get stuck depending on SRC API shenanigans.
+    *   Added a new lock system to reconciliation tasks and sweeps to prevent tasks from doubling up on each other.
+    *   Added additional logging to the bot reauthentication to better let admins know if there is an issue.
+        *   Before it was silently failing, which made it hard to know that SRC changed their subject line slightly.
+    *   Added some new defaults and tasks related to reauthentication and how often they should occur as well as how often reconciliaiton tasks should occur.
+
+*   Fixed
+    *   Fixed an issue where changing the player(s) credited on a verified run would not recalculate the leaderboard, leaving the previous player's slower runs stranded as obsolete and the new player's slower runs incorrectly active until a later sync repaired them.
+    *   Fixed an issue where a leaderboard recalculation could crash with a duplicate `RunHistory` error (and leave that board's points broken) when a run entered the rebuild while a concurrent verify or sync was running.
+    *   Fixed an issue where categories could be re-checked in some situations, resulting in extra API calls or no reason.
+    *   Fixed an issue where the database rows would stay locked in some situations, resulting in an error.
+    *   Fixed an issue where, if `RunPlayers` is changed, then it would not properly re-check the current database to de-duplicate runs, leaving stale runs and times on the leaderboard.
+    *   Fixed an issue where newly (or re-imported) `Categories`, `Variables`, and `VariableValues` containing a special character like `+` or `&` would improperly slugify them, causing issues on the frontend in terms of how to separate them.
+    *   Fixed an issue where archived `Categories`, `Levels`, `Variables`, and `VariableValues` would still appear on the main leaderboards.
+    *   Fixed an issue where a new run that ties the world record would cause the older world record to lose its streak bonus.
+    *   Fixed an issue where SRC decided to randomly change their subject line for the bot reauth email.
+
+*   Changed
+    *   Changed a lot of the OAuth coding to be consolidated.
+
+*   Removed
+    *   Removed remnants of code related to a different phased approach to reconciliation.
+        *   Essentially, I was making it too complicated. I tried to do several sweeps of a leaderboard to catch current, orphane, and obsolete runs, and it just ran poorly overall and ran into a lot of rate limiting issues.
+            *   If v2 GET calls are added, I might revisit... But, we don't need it on thps.run.
+***
+
 ### v4.3.2.1
 ###### June 21, 2026
 *   Fixed an issue where approving a runs on thps.run would not have runs properly obsoleted in some cases.

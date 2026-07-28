@@ -20,9 +20,11 @@ class VariableValueSchema(BaseEmbedSchema):
         slug (str): URL-friendly version.
         defaulttime (str | None): Most-specific timing override. When set, takes
             precedence over the parent variable, the category, and the game.
-        required_methods (list[TimingMethodType] | None): When set, narrows allowed methods for
+        allowed_methods (list[TimingMethodType] | None): When set, narrows allowed methods for
             runs with this value. Must be a non-empty subset of the parent variable's effective
             allowed methods. Null inherits.
+        required_methods (list[TimingMethodType] | None): When set, the subset of allowed
+            methods a run with this value MUST supply. Null inherits.
         archive (bool): Whether this value is archived/hidden.
         rules (str | None): Specific rules for this value choice.
         variable (dict | None): Variable this value belongs to - included with ?embed=variable.
@@ -35,6 +37,7 @@ class VariableValueSchema(BaseEmbedSchema):
                 "name": "PC",
                 "slug": "pc",
                 "defaulttime": None,
+                "allowed_methods": None,
                 "required_methods": None,
                 "archive": False,
                 "rules": None,
@@ -55,12 +58,19 @@ class VariableValueSchema(BaseEmbedSchema):
         default=None,
         description="Most-specific timing override; takes precedence over variable/category/game",
     )
-    required_methods: list[TimingMethodType] | None = Field(
+    allowed_methods: list[TimingMethodType] | None = Field(
         default=None,
         description=(
             "When set, narrows allowed methods for runs with this value. "
             "Must be a non-empty subset of the parent variable's effective allowed methods. "
             "Null inherits."
+        ),
+    )
+    required_methods: list[TimingMethodType] | None = Field(
+        default=None,
+        description=(
+            "When set, the subset of allowed methods a run with this value MUST supply "
+            "(the rest are optional). Must include the primary. Null inherits."
         ),
     )
     archive: bool = Field(default=False, description="Hidden from listings")
@@ -91,9 +101,11 @@ class VariableBaseSchema(SlugMixin, BaseEmbedSchema):
         defaulttime (str | None): Variable-level timing override. When set, takes
             precedence over the category and game timing methods. When null, the
             variable inherits its category's (or game's) timing.
-        required_methods (list[TimingMethodType] | None): When set, narrows allowed methods for
+        allowed_methods (list[TimingMethodType] | None): When set, narrows allowed methods for
             runs that include this variable. Must be a non-empty subset of the parent
             (category/game). Null inherits.
+        required_methods (list[TimingMethodType] | None): When set, the subset of allowed
+            methods a run that includes this variable MUST supply. Null inherits.
         archive (bool): Whether variable is archived/hidden.
     """
 
@@ -108,11 +120,18 @@ class VariableBaseSchema(SlugMixin, BaseEmbedSchema):
         default=None,
         description="Variable-level timing override; takes precedence over category and game",
     )
-    required_methods: list[TimingMethodType] | None = Field(
+    allowed_methods: list[TimingMethodType] | None = Field(
         default=None,
         description=(
             "When set, narrows allowed methods for runs that include this variable. "
             "Must be a non-empty subset of the parent (category/game). Null inherits."
+        ),
+    )
+    required_methods: list[TimingMethodType] | None = Field(
+        default=None,
+        description=(
+            "When set, the subset of allowed methods a run that includes this variable "
+            "MUST supply (the rest are optional). Must include the primary. Null inherits."
         ),
     )
     archive: bool = Field(default=False, description="Hidden from listings")
@@ -136,6 +155,7 @@ class VariableSchema(VariableBaseSchema):
                 "slug": "platform",
                 "scope": "full-game",
                 "defaulttime": None,
+                "allowed_methods": None,
                 "required_methods": None,
                 "archive": False,
             },
@@ -201,9 +221,13 @@ class VariableCreateSchema(BaseEmbedSchema):
         None, description="If not applying to all categories"
     )
     level_id: str | None = Field(None, description="If scope=single-level")
-    required_methods: list[TimingMethodType] | None = Field(
+    allowed_methods: list[TimingMethodType] | None = Field(
         default=None,
         description="Allowed timing methods; null inherits.",
+    )
+    required_methods: list[TimingMethodType] | None = Field(
+        default=None,
+        description="Required timing methods; null inherits, must be a subset of allowed.",
     )
 
 
@@ -227,6 +251,7 @@ class VariableUpdateSchema(BaseEmbedSchema):
     archive: bool | None = None
     category_id: str | None = None
     level_id: str | None = None
+    allowed_methods: list[TimingMethodType] | None = None
     required_methods: list[TimingMethodType] | None = None
 
 
@@ -265,9 +290,13 @@ class VariableValueCreateSchema(BaseEmbedSchema):
     )
     archive: bool = Field(default=False, description="Hidden from listings")
     rules: str | None = Field(default=None, max_length=5000)
-    required_methods: list[TimingMethodType] | None = Field(
+    allowed_methods: list[TimingMethodType] | None = Field(
         default=None,
         description="Allowed timing methods; null inherits.",
+    )
+    required_methods: list[TimingMethodType] | None = Field(
+        default=None,
+        description="Required timing methods; null inherits, must be a subset of allowed.",
     )
 
     @field_validator("rules", mode="after")
@@ -303,6 +332,7 @@ class VariableValueUpdateSchema(BaseEmbedSchema):
     defaulttime: TimingMethodType | None = None
     archive: bool | None = None
     rules: str | None = Field(default=None, max_length=5000)
+    allowed_methods: list[TimingMethodType] | None = None
     required_methods: list[TimingMethodType] | None = None
 
     @field_validator("rules", mode="after")

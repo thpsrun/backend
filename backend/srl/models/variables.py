@@ -77,7 +77,7 @@ class Variables(models.Model):
             "Precedence: Variable > Category > Game."
         ),
     )
-    required_methods = ArrayField(
+    allowed_methods = ArrayField(
         base_field=models.CharField(
             max_length=20,
             choices=LeaderboardChoices.choices,
@@ -90,6 +90,20 @@ class Variables(models.Model):
             "When set, narrows the timing methods allowed for runs that include this "
             "variable. Must be a non-empty subset of the parent (category/game). Null "
             "inherits from a higher level."
+        ),
+    )
+    required_methods = ArrayField(
+        base_field=models.CharField(
+            max_length=20,
+            choices=LeaderboardChoices.choices,
+        ),
+        null=True,
+        blank=True,
+        default=None,
+        verbose_name="Required Timing Methods",
+        help_text=(
+            "When set, the subset of allowed methods a run MUST supply (the rest are "
+            "optional). Must include the primary. Null inherits."
         ),
     )
     level = models.ForeignKey(
@@ -140,19 +154,19 @@ class Variables(models.Model):
     def _resolved_parent_allowed(
         self,
     ) -> list[str] | None:
-        if self.cat is not None and self.cat.required_methods is not None:
-            return list(self.cat.required_methods)
+        if self.cat is not None and self.cat.allowed_methods is not None:
+            return list(self.cat.allowed_methods)
         if self.game is None:
             return None
         if self.cat is not None:
             return list(
-                self.game.required_methods_il
+                self.game.allowed_methods_il
                 if self.cat.type == "per-level"
-                else self.game.required_methods_fg
+                else self.game.allowed_methods_fg
             )
         is_il = self.scope in ("all-levels", "single-level")
         return list(
-            self.game.required_methods_il if is_il else self.game.required_methods_fg
+            self.game.allowed_methods_il if is_il else self.game.allowed_methods_fg
         )
 
     def _resolved_parent_primary(

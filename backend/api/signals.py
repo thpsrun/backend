@@ -6,9 +6,6 @@ from datetime import datetime
 from datetime import timezone as dt_tz
 from typing import Any
 
-from api.backability import is_key_backable
-from api.models import APIKey, APIKeyRevokedReason
-from api.v1.routers.utils.cache_utils import _HISTORY_CACHE_PREFIX
 from auditlog.context import get_actor
 from auditlog.models import GameAuditEvent
 from auditlog.recorders import record_event
@@ -30,17 +27,23 @@ from srl.models.games import Games
 from srl.models.players import Players
 from srl.tasks import rebackfill_game_runs
 
+from api.backability import is_key_backable
+from api.models import APIKey, APIKeyRevokedReason
+from api.v1.routers.utils.cache_utils import _HISTORY_CACHE_PREFIX
+
 logger = logging.getLogger(__name__)
 
 _GAME_TIMING_FIELDS = frozenset(
     {
         "defaulttime",
         "idefaulttime",
+        "allowed_methods_fg",
+        "allowed_methods_il",
         "required_methods_fg",
         "required_methods_il",
     },
 )
-_CHILD_TIMING_FIELDS = frozenset({"defaulttime", "required_methods"})
+_CHILD_TIMING_FIELDS = frozenset({"defaulttime", "allowed_methods", "required_methods"})
 
 _GRADIENT_FIELDS = ("gradient_1", "gradient_2", "gradient_3")
 

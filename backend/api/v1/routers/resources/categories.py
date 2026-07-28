@@ -46,16 +46,11 @@ def apply_category_embeds(
     all_variables: list[Variables] | None = None,
     values_by_var: dict[str, list[VariableValues]] | None = None,
 ) -> dict:
-    """Apply embeds to a category instance.
-
-    When all_variables and values_by_var are provided (batch mode),
-    filters in Python to avoid per-category DB queries.
-    """
+    """Apply embeds to a category instance."""
     embeds = {}
 
-    if "game" in embed_fields:
-        if category.game:
-            embeds["game"] = serialize_game_embed(category.game)
+    if "game" in embed_fields and category.game:
+        embeds["game"] = serialize_game_embed(category.game)
 
     if "variables" in embed_fields or "values" in embed_fields:
         if all_variables is not None:
@@ -85,6 +80,8 @@ def apply_category_embeds(
                 "slug": var.slug,
                 "scope": var.scope,
                 "archive": var.archive,
+                "allowed_methods": var.allowed_methods,
+                "required_methods": var.required_methods,
             }
 
             if "values" in embed_fields:
@@ -103,6 +100,7 @@ def apply_category_embeds(
                         "archive": val.archive,
                         "rules": val.rules,
                         "defaulttime": val.defaulttime,
+                        "allowed_methods": val.allowed_methods,
                         "required_methods": val.required_methods,
                     }
                     for val in values

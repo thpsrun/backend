@@ -41,17 +41,14 @@ def apply_variable_embeds(
     """Apply requested embeds to a variable instance."""
     embeds = {}
 
-    if "game" in embed_fields:
-        if variable.game:
-            embeds["game"] = serialize_game_embed(variable.game)
+    if "game" in embed_fields and variable.game:
+        embeds["game"] = serialize_game_embed(variable.game)
 
-    if "category" in embed_fields:
-        if variable.cat:
-            embeds["category"] = serialize_category_embed(variable.cat)
+    if "category" in embed_fields and variable.cat:
+        embeds["category"] = serialize_category_embed(variable.cat)
 
-    if "level" in embed_fields:
-        if variable.level:
-            embeds["level"] = serialize_level_embed(variable.level)
+    if "level" in embed_fields and variable.level:
+        embeds["level"] = serialize_level_embed(variable.level)
 
     return embeds
 
@@ -63,16 +60,15 @@ def apply_value_embeds(
     """Apply requested embeds to a variable value instance."""
     embeds = {}
 
-    if "variable" in embed_fields:
-        if value.var:
-            embeds["variable"] = {
-                "id": value.var.id,
-                "name": value.var.name,
-                "slug": value.var.slug,
-                "scope": value.var.scope,
-                "defaulttime": value.var.defaulttime,
-                "archive": value.var.archive,
-            }
+    if "variable" in embed_fields and value.var:
+        embeds["variable"] = {
+            "id": value.var.id,
+            "name": value.var.name,
+            "slug": value.var.slug,
+            "scope": value.var.scope,
+            "defaulttime": value.var.defaulttime,
+            "archive": value.var.archive,
+        }
 
     return embeds
 
@@ -350,7 +346,7 @@ def create_value(
             archive=value_data.archive,
             rules=value_data.rules,
             defaulttime=value_data.defaulttime,
-            required_methods=value_data.required_methods,
+            allowed_methods=value_data.allowed_methods,
         )
         try:
             new_value.full_clean()

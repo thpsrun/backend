@@ -149,6 +149,7 @@ def _build_cat_embed(
                     "archive": val.archive,
                     "rules": val.rules,
                     "defaulttime": val.defaulttime,
+                    "allowed_methods": val.allowed_methods,
                     "required_methods": val.required_methods,
                 }
                 for val in var.variablevalues_set.all()  # type: ignore
@@ -162,6 +163,7 @@ def _build_cat_embed(
                     "scope": var.scope,
                     "archive": var.archive,
                     "defaulttime": var.defaulttime,
+                    "allowed_methods": var.allowed_methods,
                     "required_methods": var.required_methods,
                     "values": values,
                 }
@@ -187,6 +189,7 @@ def _build_categories_embed(
                     "appear_on_main": cat.appear_on_main,
                     "archive": cat.archive,
                     "defaulttime": cat.defaulttime,
+                    "allowed_methods": cat.allowed_methods,
                     "required_methods": cat.required_methods,
                     "variables": _build_cat_embed(
                         game,
@@ -424,7 +427,9 @@ def resolve_timing_methods(
     return Status(
         200,
         ResolveTimingResponse(
+            resolved_allowed_methods=resolved.allowed_methods,
             resolved_required_methods=resolved.required_methods,
+            resolved_optional_methods=resolved.optional_methods,
             resolved_primary_method=resolved.primary_method,
         ),
     )
@@ -578,6 +583,12 @@ def create_game(
 
         create_data = game_data.model_dump(exclude_unset=True)
         create_data["id"] = game_id
+
+        for scope in ("fg", "il"):
+            allowed_key = f"allowed_methods_{scope}"
+            required_key = f"required_methods_{scope}"
+            if allowed_key in create_data and required_key not in create_data:
+                create_data[required_key] = list(create_data[allowed_key])
         game = Games(**create_data)
         try:
             game.full_clean()
@@ -645,8 +656,22 @@ def update_game(
                 ),
             )
 
-        for attr, value in game_data.model_dump(exclude_unset=True).items():
+        update_data = game_data.model_dump(exclude_unset=True)
+        for attr, value in update_data.items():
             setattr(game, attr, value)
+
+        for scope, primary_attr in (("fg", "defaulttime"), ("il", "idefaulttime")):
+            allowed_key = f"allowed_methods_{scope}"
+            required_key = f"required_methods_{scope}"
+            if allowed_key in update_data and required_key not in update_data:
+                new_allowed = getattr(game, allowed_key) or []
+                reconciled = [
+                    m for m in (getattr(game, required_key) or []) if m in new_allowed
+                ]
+                primary = getattr(game, primary_attr)
+                if primary and primary in new_allowed and primary not in reconciled:
+                    reconciled.append(primary)
+                setattr(game, required_key, reconciled)
 
         try:
             game.full_clean()

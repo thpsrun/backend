@@ -60,7 +60,7 @@ class VariableValues(models.Model):
             "Precedence: VariableValue > Variable > Category > Game."
         ),
     )
-    required_methods = ArrayField(
+    allowed_methods = ArrayField(
         base_field=models.CharField(
             max_length=20,
             choices=LeaderboardChoices.choices,
@@ -73,6 +73,20 @@ class VariableValues(models.Model):
             "When set, narrows the timing methods allowed for runs with this value. "
             "Must be a non-empty subset of the parent variable's effective allowed methods. "
             "Null inherits from a higher level."
+        ),
+    )
+    required_methods = ArrayField(
+        base_field=models.CharField(
+            max_length=20,
+            choices=LeaderboardChoices.choices,
+        ),
+        null=True,
+        blank=True,
+        default=None,
+        verbose_name="Required Timing Methods",
+        help_text=(
+            "When set, the subset of allowed methods a run MUST supply (the rest are "
+            "optional). Must include the primary. Null inherits."
         ),
     )
     archive = models.BooleanField(
@@ -114,8 +128,8 @@ class VariableValues(models.Model):
     ) -> list[str] | None:
         if self.var is None:
             return None
-        if self.var.required_methods is not None:
-            return list(self.var.required_methods)
+        if self.var.allowed_methods is not None:
+            return list(self.var.allowed_methods)
         return self.var._resolved_parent_allowed()
 
     def _resolved_parent_primary(

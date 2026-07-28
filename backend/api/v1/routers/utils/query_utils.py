@@ -1,14 +1,6 @@
 from datetime import date as date_type
 from typing import Any
 
-from api.v1.routers.utils import (
-    main_pbs_cache_key,
-    main_records_cache_key,
-    main_stats_cache_key,
-    main_wrs_cache_key,
-)
-from api.v1.schemas.players import extract_gradients
-from api.v1.schemas.runs import compute_run_subcategory
 from django.core.cache import caches
 from django.core.files.storage import default_storage
 from django.db.models import (
@@ -27,6 +19,15 @@ from django.db.models.expressions import Expression
 from django.db.models.functions import TruncDate
 from django.utils import timezone
 from srl.models import Games, Players, RunHistory, RunPlayers, Runs, RunVariableValues
+
+from api.v1.routers.utils import (
+    main_pbs_cache_key,
+    main_records_cache_key,
+    main_stats_cache_key,
+    main_wrs_cache_key,
+)
+from api.v1.schemas.players import extract_gradients
+from api.v1.schemas.runs import compute_run_subcategory
 
 
 def _value_timing_subquery() -> Subquery:
@@ -91,35 +92,31 @@ def _primary_time_secs_expr() -> Expression:
 
 
 def _value_allowed_subquery() -> Subquery:
-    """Subquery returning the first value-level `required_methods` for a run."""
+    """Subquery returning the first value-level `allowed_methods` for a run."""
     return Subquery(
         RunVariableValues.objects.filter(
             run=OuterRef("pk"),
-            value__required_methods__isnull=False,
+            value__allowed_methods__isnull=False,
         )
         .order_by("variable_id")
-        .values("value__required_methods")[:1],
+        .values("value__allowed_methods")[:1],
     )
 
 
 def _variable_allowed_subquery() -> Subquery:
-    """Subquery returning the first variable-level `required_methods` for a run."""
+    """Subquery returning the first variable-level `allowed_methods` for a run."""
     return Subquery(
         RunVariableValues.objects.filter(
             run=OuterRef("pk"),
-            variable__required_methods__isnull=False,
+            variable__allowed_methods__isnull=False,
         )
         .order_by("variable_id")
-        .values("variable__required_methods")[:1],
+        .values("variable__allowed_methods")[:1],
     )
 
 
 def _resolved_allowed_methods_expr() -> Expression:
-    """Build a Case expression that resolves a run's allowed timing methods.
-
-    Honors VariableValue > Variable > Category > Game precedence. Requires the
-    queryset to be annotated with `_val_allowed` and `_var_allowed`.
-    """
+    """Build a Case expression that resolves a run's allowed timing methods."""
     return Case(
         When(
             _val_allowed__isnull=False,
@@ -130,14 +127,14 @@ def _resolved_allowed_methods_expr() -> Expression:
             then=F("_var_allowed"),
         ),
         When(
-            category__required_methods__isnull=False,
-            then=F("category__required_methods"),
+            category__allowed_methods__isnull=False,
+            then=F("category__allowed_methods"),
         ),
         When(
             runtype="il",
-            then=F("game__required_methods_il"),
+            then=F("game__allowed_methods_il"),
         ),
-        default=F("game__required_methods_fg"),
+        default=F("game__allowed_methods_fg"),
     )
 
 
@@ -147,7 +144,7 @@ def annotate_resolved_allowed(
     """Annotate a Runs queryset with `resolved_allowed` (list of timing methods).
 
     Resolves the VariableValue > Variable > Category > Game precedence chain
-    at the SQL layer, mirroring `Runs._resolved_required_methods()`.
+    at the SQL layer, mirroring `Runs._resolved_allowed_methods()`.
     """
     return qs.annotate(
         _val_allowed=_value_allowed_subquery(),

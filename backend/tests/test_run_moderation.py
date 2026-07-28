@@ -24,7 +24,7 @@ User = CustomUser
 
 
 class ApplyModerationTests(TestCase):
-    run: Runs  # pyright: ignore[reportIncompatibleVariableOverride]
+    run: Runs
 
     def setUp(
         self,
@@ -65,7 +65,7 @@ class ApplyModerationTests(TestCase):
             user=self.runner_user,
             claim_status=Players.ClaimStatus.CLAIMED,
         )
-        self.run = Runs.objects.create(  # type: ignore[assignment]
+        self.run = Runs.objects.create(  # type: ignore
             id="run01",
             game=self.game,
             runtype="main",
@@ -107,13 +107,12 @@ class ApplyModerationTests(TestCase):
         self.user.encrypted_api_key = None
         self.user.save(update_fields=["encrypted_api_key"])
         action = ModeratorActionIn(action="verify")
-        with self.assertRaises(ModerationError) as ctx:
-            with transaction.atomic():
-                _apply_moderation(
-                    run=self.run,
-                    action_in=action,
-                    actor_player=self.player,
-                )
+        with self.assertRaises(ModerationError) as ctx, transaction.atomic():
+            _apply_moderation(
+                run=self.run,
+                action_in=action,
+                actor_player=self.player,
+            )
         self.assertEqual(ctx.exception.code, 403)
 
     def test_verify_fails_if_run_already_verified(
@@ -122,26 +121,24 @@ class ApplyModerationTests(TestCase):
         self.run.vid_status = "verified"
         self.run.save(update_fields=["vid_status"])
         action = ModeratorActionIn(action="verify")
-        with self.assertRaises(ModerationError) as ctx:
-            with transaction.atomic():
-                _apply_moderation(
-                    run=self.run,
-                    action_in=action,
-                    actor_player=self.player,
-                )
+        with self.assertRaises(ModerationError) as ctx, transaction.atomic():
+            _apply_moderation(
+                run=self.run,
+                action_in=action,
+                actor_player=self.player,
+            )
         self.assertEqual(ctx.exception.code, 400)
 
     def test_reject_requires_reason(
         self,
     ) -> None:
         action = ModeratorActionIn(action="reject", reason=None)
-        with self.assertRaises(ModerationError) as ctx:
-            with transaction.atomic():
-                _apply_moderation(
-                    run=self.run,
-                    action_in=action,
-                    actor_player=self.player,
-                )
+        with self.assertRaises(ModerationError) as ctx, transaction.atomic():
+            _apply_moderation(
+                run=self.run,
+                action_in=action,
+                actor_player=self.player,
+            )
         self.assertEqual(ctx.exception.code, 400)
 
     def test_reject_payload_includes_reason(
@@ -182,26 +179,24 @@ class ApplyModerationTests(TestCase):
         self,
     ) -> None:
         action = ModeratorActionIn(action="review", notes=None)
-        with self.assertRaises(ModerationError) as ctx:
-            with transaction.atomic():
-                _apply_moderation(
-                    run=self.run,
-                    action_in=action,
-                    actor_player=self.player,
-                )
+        with self.assertRaises(ModerationError) as ctx, transaction.atomic():
+            _apply_moderation(
+                run=self.run,
+                action_in=action,
+                actor_player=self.player,
+            )
         self.assertEqual(ctx.exception.code, 400)
 
     def test_review_blank_notes_rejected(
         self,
     ) -> None:
         action = ModeratorActionIn(action="review", notes="   ")
-        with self.assertRaises(ModerationError) as ctx:
-            with transaction.atomic():
-                _apply_moderation(
-                    run=self.run,
-                    action_in=action,
-                    actor_player=self.player,
-                )
+        with self.assertRaises(ModerationError) as ctx, transaction.atomic():
+            _apply_moderation(
+                run=self.run,
+                action_in=action,
+                actor_player=self.player,
+            )
         self.assertEqual(ctx.exception.code, 400)
 
     def test_review_allowed_when_already_in_review(
@@ -227,13 +222,12 @@ class ApplyModerationTests(TestCase):
         self.run.vid_status = "verified"
         self.run.save(update_fields=["vid_status"])
         action = ModeratorActionIn(action="review", notes="too late")
-        with self.assertRaises(ModerationError) as ctx:
-            with transaction.atomic():
-                _apply_moderation(
-                    run=self.run,
-                    action_in=action,
-                    actor_player=self.player,
-                )
+        with self.assertRaises(ModerationError) as ctx, transaction.atomic():
+            _apply_moderation(
+                run=self.run,
+                action_in=action,
+                actor_player=self.player,
+            )
         self.assertEqual(ctx.exception.code, 409)
 
     def test_review_blocked_when_no_runner_attached(
@@ -241,13 +235,12 @@ class ApplyModerationTests(TestCase):
     ) -> None:
         self.run.players.clear()
         action = ModeratorActionIn(action="review", notes="please reupload")
-        with self.assertRaises(ModerationError) as ctx:
-            with transaction.atomic():
-                _apply_moderation(
-                    run=self.run,
-                    action_in=action,
-                    actor_player=self.player,
-                )
+        with self.assertRaises(ModerationError) as ctx, transaction.atomic():
+            _apply_moderation(
+                run=self.run,
+                action_in=action,
+                actor_player=self.player,
+            )
         self.assertEqual(ctx.exception.code, 409)
 
     def test_review_blocked_when_runner_unclaimed(
@@ -257,13 +250,12 @@ class ApplyModerationTests(TestCase):
         self.runner.claim_status = Players.ClaimStatus.UNCLAIMED
         self.runner.save(update_fields=["user", "claim_status"])
         action = ModeratorActionIn(action="review", notes="please reupload")
-        with self.assertRaises(ModerationError) as ctx:
-            with transaction.atomic():
-                _apply_moderation(
-                    run=self.run,
-                    action_in=action,
-                    actor_player=self.player,
-                )
+        with self.assertRaises(ModerationError) as ctx, transaction.atomic():
+            _apply_moderation(
+                run=self.run,
+                action_in=action,
+                actor_player=self.player,
+            )
         self.assertEqual(ctx.exception.code, 409)
 
     def test_review_blocked_when_runner_user_missing(
@@ -272,13 +264,12 @@ class ApplyModerationTests(TestCase):
         self.runner.user = None
         self.runner.save(update_fields=["user"])
         action = ModeratorActionIn(action="review", notes="please reupload")
-        with self.assertRaises(ModerationError) as ctx:
-            with transaction.atomic():
-                _apply_moderation(
-                    run=self.run,
-                    action_in=action,
-                    actor_player=self.player,
-                )
+        with self.assertRaises(ModerationError) as ctx, transaction.atomic():
+            _apply_moderation(
+                run=self.run,
+                action_in=action,
+                actor_player=self.player,
+            )
         self.assertEqual(ctx.exception.code, 409)
 
     def test_review_blocked_when_runner_claim_status_deleted(
@@ -287,13 +278,12 @@ class ApplyModerationTests(TestCase):
         self.runner.claim_status = Players.ClaimStatus.DELETED
         self.runner.save(update_fields=["claim_status"])
         action = ModeratorActionIn(action="review", notes="please reupload")
-        with self.assertRaises(ModerationError) as ctx:
-            with transaction.atomic():
-                _apply_moderation(
-                    run=self.run,
-                    action_in=action,
-                    actor_player=self.player,
-                )
+        with self.assertRaises(ModerationError) as ctx, transaction.atomic():
+            _apply_moderation(
+                run=self.run,
+                action_in=action,
+                actor_player=self.player,
+            )
         self.assertEqual(ctx.exception.code, 409)
 
     def test_review_allowed_when_at_least_one_claimed_runner(
@@ -400,8 +390,8 @@ class UpdateRunModeratorActionTests(TestCase):
             idefaulttime="rta",
             pointsmax=1000,
             ipointsmax=100,
-            required_methods_fg=[LeaderboardChoices.REALTIME],
-            required_methods_il=[LeaderboardChoices.REALTIME],
+            allowed_methods_fg=[LeaderboardChoices.REALTIME],
+            allowed_methods_il=[LeaderboardChoices.REALTIME],
         )
         self.mod_game.moderators.add(self.mod_player)
 
@@ -416,7 +406,7 @@ class UpdateRunModeratorActionTests(TestCase):
             user=self.runner_user,
             claim_status=Players.ClaimStatus.CLAIMED,
         )
-        self.run = Runs.objects.create(  # type: ignore[assignment]
+        self.run = Runs.objects.create(  # type: ignore
             id="modrun",
             game=self.mod_game,
             runtype="main",

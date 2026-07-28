@@ -168,8 +168,8 @@ class RunsWriteTest(AuthTestBase):
         cls,
     ) -> None:
         super().setUpTestData()
-        cls.game.required_methods_fg = [LeaderboardChoices.REALTIME]
-        cls.game.required_methods_il = [LeaderboardChoices.REALTIME]
+        cls.game.allowed_methods_fg = [LeaderboardChoices.REALTIME]
+        cls.game.allowed_methods_il = [LeaderboardChoices.REALTIME]
         cls.game.save()
         cls.category = Categories.objects.create(
             id="cat1",
@@ -465,11 +465,11 @@ class RunResolutionAndValidation(TestCase):
             idefaulttime=LeaderboardChoices.REALTIME,
             pointsmax=1000,
             ipointsmax=250,
-            required_methods_fg=[
+            allowed_methods_fg=[
                 LeaderboardChoices.REALTIME,
                 LeaderboardChoices.INGAME,
             ],
-            required_methods_il=[LeaderboardChoices.REALTIME],
+            allowed_methods_il=[LeaderboardChoices.REALTIME],
         )
         cls.cat = Categories.objects.create(
             id="runcat1",
@@ -502,24 +502,33 @@ class RunResolutionAndValidation(TestCase):
         defaults.update(kwargs)
         return Runs(**defaults)
 
+    def _make_run_with_times(
+        self,
+        game: Games | None = None,
+        **kwargs,
+    ) -> Runs:
+        if game is None:
+            game = Games.objects.get(pk=self.game.pk)
+        return self._new_run(game=game, **kwargs)
+
     def test_resolved_allowed_falls_back_to_game(
         self,
     ) -> None:
         run = self._new_run()
         self.assertEqual(
-            sorted(run._resolved_required_methods()),
+            sorted(run._resolved_allowed_methods()),
             sorted([LeaderboardChoices.REALTIME, LeaderboardChoices.INGAME]),
         )
 
     def test_resolved_allowed_uses_category_when_set(
         self,
     ) -> None:
-        self.cat.required_methods = [LeaderboardChoices.REALTIME]
+        self.cat.allowed_methods = [LeaderboardChoices.REALTIME]
         self.cat.defaulttime = LeaderboardChoices.REALTIME
         self.cat.save()
         run = self._new_run()
         self.assertEqual(
-            run._resolved_required_methods(),
+            run._resolved_allowed_methods(),
             [LeaderboardChoices.REALTIME],
         )
 
@@ -528,21 +537,21 @@ class RunResolutionAndValidation(TestCase):
     ) -> None:
         run = self._new_run(runtype="il", timeigt_secs=0.0)
         self.assertEqual(
-            run._resolved_required_methods(),
+            run._resolved_allowed_methods(),
             [LeaderboardChoices.REALTIME],
         )
 
-    def test_validate_allowed_method_data_passes_when_all_present(
+    def test_validate_required_method_data_passes_when_all_present(
         self,
     ) -> None:
-        self._new_run().validate_allowed_method_data()
+        self._new_run().validate_required_method_data()
 
-    def test_validate_allowed_method_data_rejects_missing(
+    def test_validate_required_method_data_rejects_missing(
         self,
     ) -> None:
         run = self._new_run(timeigt_secs=0.0)
         with self.assertRaises(ValidationError) as cm:
-            run.validate_allowed_method_data()
+            run.validate_required_method_data()
         self.assertIn("missing", str(cm.exception).lower())
 
     def test_defensive_fallback_when_primary_value_is_zero(
@@ -551,6 +560,40 @@ class RunResolutionAndValidation(TestCase):
         run = self._new_run(timeigt_secs=0.0)
         self.assertEqual(run._primary_timing_method(), LeaderboardChoices.INGAME)
         self.assertEqual(run.p_time_secs, 60.0)
+
+    def test_optional_method_omitted_is_valid_and_unflagged(
+        self,
+    ) -> None:
+        """A run missing an allowed-but-optional method validates and is not flagged."""
+        game = Games.objects.get(pk=self.game.pk)
+        game.allowed_methods_fg = [
+            LeaderboardChoices.REALTIME,
+            LeaderboardChoices.INGAME,
+        ]
+        game.required_methods_fg = [LeaderboardChoices.REALTIME]
+        game.defaulttime = LeaderboardChoices.REALTIME
+        game.save()
+        run = self._make_run_with_times(game=game, time_secs=100.0, timeigt_secs=0)
+        run.validate_required_method_data()  # must NOT raise
+        self.assertEqual(run.missing_required_methods(), [])
+
+    def test_required_method_omitted_still_fails(
+        self,
+    ) -> None:
+        """A run missing a strictly-required method still raises."""
+        game = Games.objects.get(pk=self.game.pk)
+        game.allowed_methods_fg = [
+            LeaderboardChoices.REALTIME,
+            LeaderboardChoices.INGAME,
+        ]
+        game.required_methods_fg = [
+            LeaderboardChoices.REALTIME,
+            LeaderboardChoices.INGAME,
+        ]
+        game.save()
+        run = self._make_run_with_times(game=game, time_secs=100.0, timeigt_secs=0)
+        with self.assertRaises(ValidationError):
+            run.validate_required_method_data()
 
 
 class ResolvedAllowedSQL(TestCase):
@@ -570,11 +613,11 @@ class ResolvedAllowedSQL(TestCase):
             idefaulttime=LeaderboardChoices.REALTIME,
             pointsmax=1000,
             ipointsmax=250,
-            required_methods_fg=[
+            allowed_methods_fg=[
                 LeaderboardChoices.REALTIME,
                 LeaderboardChoices.INGAME,
             ],
-            required_methods_il=[LeaderboardChoices.REALTIME],
+            allowed_methods_il=[LeaderboardChoices.REALTIME],
         )
         cls.cat = Categories.objects.create(
             id="sqlcat1",
@@ -583,7 +626,7 @@ class ResolvedAllowedSQL(TestCase):
             type="per-game",
             url="https://example.com/any",
             game=cls.game,
-            required_methods=[LeaderboardChoices.REALTIME],
+            allowed_methods=[LeaderboardChoices.REALTIME],
             defaulttime=LeaderboardChoices.REALTIME,
         )
         cls.run_obj = Runs.objects.create(
@@ -615,7 +658,7 @@ class ResolvedAllowedSQL(TestCase):
     ) -> None:
         from api.v1.routers.utils.query_utils import annotate_resolved_allowed
 
-        self.cat.required_methods = None
+        self.cat.allowed_methods = None
         self.cat.save()
         qs = annotate_resolved_allowed(Runs.objects.filter(game=self.game))
         row = qs.first()
@@ -629,7 +672,7 @@ class ResolvedAllowedSQL(TestCase):
     ) -> None:
         from api.v1.routers.utils.query_utils import annotate_resolved_allowed
 
-        self.cat.required_methods = None
+        self.cat.allowed_methods = None
         self.cat.save()
         self.run_obj.runtype = "il"
         self.run_obj.save()
@@ -663,11 +706,11 @@ class RunsTimingSubmission(AuthTestBase):
             idefaulttime=LeaderboardChoices.REALTIME,
             pointsmax=1000,
             ipointsmax=250,
-            required_methods_fg=[
+            allowed_methods_fg=[
                 LeaderboardChoices.REALTIME,
                 LeaderboardChoices.INGAME,
             ],
-            required_methods_il=[LeaderboardChoices.REALTIME],
+            allowed_methods_il=[LeaderboardChoices.REALTIME],
         )
         self.game2.platforms.add(self.platform2)
         self.cat2 = Categories.objects.create(
@@ -701,7 +744,7 @@ class RunsTimingSubmission(AuthTestBase):
         data = response.json()
         self.assertEqual(data["error"], "Run timing validation failed")
 
-    def test_post_run_with_all_required_methods_accepted(
+    def test_post_run_with_all_allowed_methods_accepted(
         self,
     ) -> None:
         # game2 requires both REALTIME and INGAME; submit both > 0 - expect 201.
@@ -805,7 +848,7 @@ class RunSchemaTimingFields(TestCase):
 
         fields = RunBaseSchema.model_fields
         self.assertIn("resolved_primary_method", fields)
-        self.assertIn("resolved_required_methods", fields)
+        self.assertIn("resolved_allowed_methods", fields)
 
 
 class BackfillRunPrimary(TestCase):
@@ -825,11 +868,11 @@ class BackfillRunPrimary(TestCase):
             idefaulttime=LeaderboardChoices.INGAME,
             pointsmax=1000,
             ipointsmax=250,
-            required_methods_fg=[
+            allowed_methods_fg=[
                 LeaderboardChoices.REALTIME,
                 LeaderboardChoices.INGAME,
             ],
-            required_methods_il=[
+            allowed_methods_il=[
                 LeaderboardChoices.REALTIME,
                 LeaderboardChoices.INGAME,
             ],
@@ -926,11 +969,11 @@ class BackfillRunPrimary(TestCase):
             idefaulttime=LeaderboardChoices.INGAME,
             pointsmax=1000,
             ipointsmax=250,
-            required_methods_fg=[
+            allowed_methods_fg=[
                 LeaderboardChoices.REALTIME,
                 LeaderboardChoices.INGAME,
             ],
-            required_methods_il=[
+            allowed_methods_il=[
                 LeaderboardChoices.REALTIME,
                 LeaderboardChoices.INGAME,
             ],

@@ -61,18 +61,21 @@ def validate_allowed_subset(
     parent_allowed: list[str] | None,
     parent_primary: str | None,
     child_relation_name: str,
-    child_allowed_attr: str = "required_methods",
+    child_allowed_attr: str = "allowed_methods",
     child_id_attr: str = "id",
 ) -> None:
-    """Validate `instance` required_methods/defaulttime against its parent's window
-    and ensure none of its children's required_methods escape this instance's window.
+    """Validate `instance` allowed_methods/required_methods/defaulttime against its parent's window
+    and ensure none of its children's allowed_methods escape this instance's window.
 
-    Raises ValidationError if any constraint fails. Shared by Categories,
-    Variables, and VariableValues `clean()` implementations.
+    Also validates that, when set, `required_methods` is a non-empty subset of the effective allowed
+    window and includes the effective primary method (the primary can never be optional).
+
+    Raises ValidationError if any constraint fails. Shared by Categories, Variables, and
+    VariableValues `clean()` implementations.
 
     Arguments:
-        instance (Any): The model being validated. Must expose `required_methods`,
-            `defaulttime`, and `pk`.
+        instance (Any): The model being validated. Must expose `allowed_methods`,
+            `required_methods`, `defaulttime`, and `pk`.
         parent_allowed (list[str] | None): The resolved parent's methods (or None for inherit).
         parent_primary (str | None): The resolved parent's primary timing method (or None).
         child_relation_name (str): Reverse manager name on `instance` (e.g.
@@ -81,39 +84,61 @@ def validate_allowed_subset(
         child_id_attr (str): Attribute on the child to surface in error messages.
     """
     errors: dict = {}
-    required_methods = getattr(instance, "required_methods", None)
+    allowed_methods = getattr(instance, "allowed_methods", None)
     defaulttime = getattr(instance, "defaulttime", None)
+    required = getattr(instance, "required_methods", None)
 
-    if required_methods is not None:
-        if len(required_methods) == 0:
-            errors["required_methods"] = "Cannot be an empty list; use null to inherit."
-        elif parent_allowed is not None and not set(required_methods) <= set(
+    if allowed_methods is not None:
+        if len(allowed_methods) == 0:
+            errors["allowed_methods"] = "Cannot be an empty list; use null to inherit."
+        elif parent_allowed is not None and not set(allowed_methods) <= set(
             parent_allowed,
         ):
-            errors["required_methods"] = (
+            errors["allowed_methods"] = (
                 f"Must be a subset of the parent's allowed methods "
                 f"({list(parent_allowed)})."
             )
         elif (
             defaulttime is None
             and parent_primary is not None
-            and parent_primary not in required_methods
+            and parent_primary not in allowed_methods
         ):
             errors["defaulttime"] = (
                 f"Inherited primary ({parent_primary}) is not in the narrowed "
-                f"required_methods; set defaulttime explicitly."
+                f"allowed_methods; set defaulttime explicitly."
             )
 
     if defaulttime is not None:
-        effective_allowed = required_methods or parent_allowed
+        effective_allowed = allowed_methods or parent_allowed
         if effective_allowed is not None and defaulttime not in effective_allowed:
             errors["defaulttime"] = (
-                f"defaulttime ({defaulttime}) must be one of required_methods "
+                f"defaulttime ({defaulttime}) must be one of allowed_methods "
                 f"({list(effective_allowed)})."
             )
 
-    if instance.pk and required_methods is not None and child_relation_name:
-        allowed_set = set(required_methods)
+    if required is not None:
+        if len(required) == 0:
+            errors["required_methods"] = "Cannot be an empty list; use null to inherit."
+        else:
+            effective_allowed = (
+                getattr(instance, "allowed_methods", None) or parent_allowed
+            )
+            if effective_allowed is not None and not set(required) <= set(
+                effective_allowed
+            ):
+                errors["required_methods"] = (
+                    f"Must be a subset of the effective allowed methods "
+                    f"({list(effective_allowed)})."
+                )
+            effective_primary = defaulttime or parent_primary
+            if effective_primary is not None and effective_primary not in required:
+                errors["required_methods"] = (
+                    f"Must include the primary method ({effective_primary}); "
+                    f"the primary can never be optional."
+                )
+
+    if instance.pk and allowed_methods is not None and child_relation_name:
+        allowed_set = set(allowed_methods)
         manager = getattr(instance, child_relation_name, None)
         if manager is not None:
             filter_kwargs = {f"{child_allowed_attr}__isnull": False}
@@ -124,13 +149,28 @@ def validate_allowed_subset(
                 if not set(getattr(child, child_allowed_attr)).issubset(allowed_set)
             ]
             if offenders:
-                errors["required_methods"] = (
+                errors["allowed_methods"] = (
                     f"Cannot narrow: children rely on removed methods. "
                     f"Offending ids: {offenders}"
                 )
 
+            # Reject narrowing when a child's explicit required_methods would be stranded
+            # outside the new window, even if the child's own allowed_methods is null/inherited.
+            required_offenders = [
+                getattr(child, child_id_attr)
+                for child in manager.filter(required_methods__isnull=False)
+                if not set(child.required_methods).issubset(allowed_set)
+            ]
+            if required_offenders:
+                msg = (
+                    f"Cannot narrow: children have required_methods outside the new "
+                    f"window. Offending ids: {required_offenders}"
+                )
+                existing = errors.get("allowed_methods")
+                errors["allowed_methods"] = f"{existing} {msg}" if existing else msg
+
     # Validate any children's defaulttime is still in this instance's effective allowed window.
-    effective_window = required_methods or parent_allowed
+    effective_window = allowed_methods or parent_allowed
     if instance.pk and effective_window is not None and child_relation_name:
         manager = getattr(instance, child_relation_name, None)
         if manager is not None:
@@ -142,15 +182,15 @@ def validate_allowed_subset(
                 if child.defaulttime not in window_set
             ]
             if bad_default:
-                errors.setdefault("required_methods", "")
+                errors.setdefault("allowed_methods", "")
                 msg = (
                     f"Cannot narrow: children have defaulttime outside the new "
                     f"window. Offending ids: {bad_default}"
                 )
-                if errors["required_methods"]:
-                    errors["required_methods"] = f"{errors['required_methods']} {msg}"
+                if errors["allowed_methods"]:
+                    errors["allowed_methods"] = f"{errors['allowed_methods']} {msg}"
                 else:
-                    errors["required_methods"] = msg
+                    errors["allowed_methods"] = msg
 
     if errors:
         raise ValidationError(errors)

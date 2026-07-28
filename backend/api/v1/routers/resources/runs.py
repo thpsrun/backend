@@ -1,5 +1,34 @@
 from typing import Annotated, Literal
 
+from django.core.exceptions import ValidationError
+from django.db import transaction
+from django.db.models import Q
+from django.http import HttpRequest
+from ninja import Query, Router, Status
+from srl.leaderboard.trigger import recalculate_run
+from srl.models import (
+    Categories,
+    Games,
+    Levels,
+    Platforms,
+    Players,
+    RunPlayers,
+    Runs,
+    RunVariableValues,
+    SRCSyncTask,
+    Variables,
+    VariableValues,
+)
+from srl.srcom.v2 import is_v2_enabled
+from srl.srcom.v2.runs import (
+    build_settings_payload,
+    compute_v2_eligible_diff,
+    snapshot_run,
+)
+from srl.tasks import sync_src_action, sync_src_settings
+from srl.time_parser import parse_time
+from srl.utils import convert_time
+
 from api.permissions import (
     actor_capability_check,
     actor_game_check,
@@ -32,34 +61,6 @@ from api.v1.schemas.runs import (
     RunUpdateSchema,
 )
 from api.v1.utils import get_or_generate_id
-from django.core.exceptions import ValidationError
-from django.db import transaction
-from django.db.models import Q
-from django.http import HttpRequest
-from ninja import Query, Router, Status
-from srl.leaderboard.trigger import recalculate_run
-from srl.models import (
-    Categories,
-    Games,
-    Levels,
-    Platforms,
-    Players,
-    RunPlayers,
-    Runs,
-    RunVariableValues,
-    SRCSyncTask,
-    Variables,
-    VariableValues,
-)
-from srl.srcom.v2 import is_v2_enabled
-from srl.srcom.v2.runs import (
-    build_settings_payload,
-    compute_v2_eligible_diff,
-    snapshot_run,
-)
-from srl.tasks import sync_src_action, sync_src_settings
-from srl.time_parser import parse_time
-from srl.utils import convert_time
 
 router = Router()
 
@@ -117,11 +118,7 @@ def apply_run_embeds(
     run: Runs,
     embed_fields: list[str],
 ) -> dict:
-    """Apply requested embeds to a run instance.
-
-    This is the most complex embed function of all of the endpoints due to the
-    complex relations it will have with other models.
-    """
+    """Apply requested embeds to a run instance."""
     embeds = {}
 
     if "game" in embed_fields and run.game:
@@ -736,9 +733,11 @@ def create_run(
                     RunVariableValues.objects.bulk_create(rvv_objs)
 
             try:
-                run.validate_allowed_method_data()
+                run.validate_required_method_data()
             except ValidationError:
-                raise
+                raise ValidationError(
+                    "Run is missing required method data for its category and level"
+                )
 
         refetched_run = (
             Runs.objects.filter(id=run.id)
@@ -1060,9 +1059,11 @@ def update_run(
                 )
 
             try:
-                run.validate_allowed_method_data(ignore=preexisting_missing)
+                run.validate_required_method_data(ignore=preexisting_missing)
             except ValidationError:
-                raise
+                raise ValidationError(
+                    "Run is missing required method data for its category and level"
+                )
 
             run.save()
 
