@@ -287,10 +287,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "accounts.purge_user_data_exports",
         "schedule": crontab(hour=2, minute=0),
     },
-    # "prune-api-activity-log-daily": {
-    #    "task": "srl.tasks.prune_api_activity_log",
-    #    "schedule": crontab(hour=3, minute=15),
-    # },
+    "prune-api-activity-log-daily": {
+        "task": "srl.tasks.prune_api_activity_log",
+        "schedule": crontab(hour=3, minute=0),
+    },
     "dispatch-run-discovery-1min": {
         "task": "srl.tasks.dispatch_run_discovery",
         "schedule": crontab(minute="*"),
@@ -310,6 +310,10 @@ CELERY_BEAT_SCHEDULE = {
     "sweep-unranked-verified-10min": {
         "task": "srl.tasks.sweep_unranked_verified_runs",
         "schedule": crontab(minute="*/10"),
+    },
+    "keepalive-bot-session-30min": {
+        "task": "srl.srcom.v2.keepalive_bot_session",
+        "schedule": crontab(minute="*/30"),
     },
 }
 
@@ -369,6 +373,9 @@ OAUTH_SIGNUP_INTENT_TTL_SECONDS = int(
     os.getenv("OAUTH_SIGNUP_INTENT_TTL_SECONDS", "600")
 )
 OAUTH_LOGIN_INTENT_TTL_SECONDS = int(os.getenv("OAUTH_LOGIN_INTENT_TTL_SECONDS", "600"))
+OAUTH_CONNECT_INTENT_TTL_SECONDS = int(
+    os.getenv("OAUTH_CONNECT_INTENT_TTL_SECONDS", "600")
+)
 
 # CLOUDFLARE TURNSTILE
 # Site key is read by the frontend; backend stores it so a future config endpoint can
@@ -463,6 +470,7 @@ SRC_BOT_MAILBOX_APP_PASSWORD = os.getenv(
 )
 SRC_BOT_REFRESH_COOLDOWN = int(os.getenv("SRC_BOT_REFRESH_COOLDOWN", "30"))
 SRC_BOT_2FA_WAIT_TIMEOUT = int(os.getenv("SRC_BOT_2FA_WAIT_TIMEOUT", "90"))
+SRC_BOT_SESSION_TTL_HOURS = int(os.getenv("SRC_BOT_SESSION_TTL_HOURS", "24"))
 SRC_V2_USER_AGENT_SUFFIX = os.getenv(
     "SRC_V2_USER_AGENT_SUFFIX",
     "thps.run-bot",
@@ -478,3 +486,13 @@ SRC_DISCOVERY_PER_GAME_LIMIT = int(
 
 # Reconciliation: how many recent verified runs a routine GAME reconcile inspects.
 RECON_RECENT_RUN_LIMIT = int(os.getenv("RECON_RECENT_RUN_LIMIT", "20"))
+RECON_SWEEP_LIMIT_MAX = int(os.getenv("RECON_SWEEP_LIMIT_MAX", "200"))
+RECON_SWEEP_TIME_LIMIT_SECONDS = int(
+    os.getenv("RECON_SWEEP_TIME_LIMIT_SECONDS", str(6 * 60 * 60))
+)
+RECON_SWEEP_SOFT_TIME_LIMIT_SECONDS = int(
+    os.getenv("RECON_SWEEP_SOFT_TIME_LIMIT_SECONDS", str(6 * 60 * 60 - 5 * 60))
+)
+RECON_SWEEP_LOCK_TTL_SECONDS = int(
+    os.getenv("RECON_SWEEP_LOCK_TTL_SECONDS", str(7 * 60 * 60))
+)

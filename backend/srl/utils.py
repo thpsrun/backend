@@ -1,9 +1,10 @@
 import calendar
 import logging
 import math
+import random
 import time
 from datetime import date
-from typing import TYPE_CHECKING, Iterator, TypedDict
+from typing import TYPE_CHECKING, Iterator
 
 import requests
 from dateutil.relativedelta import relativedelta
@@ -19,7 +20,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 SRC_HEADERS = {
-    "User-Agent": "thps.run/4.0 (https://thps.run; automation@thps.run)",
+    "User-Agent": "thps.run; (https://thps.run; automation@thps.run)",
 }
 SRC_MAX_RETRIES = 10
 SRC_BACKOFF_SECS = 60
@@ -27,6 +28,78 @@ SRC_BACKOFF_SECS = 60
 
 class SrcRateLimited(ValueError):
     """Raised when SRC keeps returning 420/503 until retries are exhausted."""
+
+
+_src_session = requests.Session()
+_src_session.headers.update(SRC_HEADERS)
+
+
+def _src_backoff_sleep(
+    backoff_secs: int,
+) -> None:
+    """Sleep `backoff_secs` plus a random interval so all workers don't retry at the same time.
+
+    Arguments:
+        backoff_secs (int): Base per-attempt sleep; randomness is addded after.
+    """
+    time.sleep(backoff_secs + random.uniform(0, backoff_secs * 0.1))
+
+
+def _src_request(
+    url: str,
+    max_retries: int,
+    backoff_secs: int,
+) -> requests.Response | None:
+    """GET an SRC v1 URL, retrying on 420/503 and transient transport errors.
+
+    The shared retry primitive behind src_api and src_api_probe. Returns the final Response whatever
+    its status (each caller applies its own non-200 contract): a non-420/503 status returns
+    immediately; a 420 (Enhance Your Calm) / 503 sleeps a random amount of  `backoff_secs` and
+    retries up to `max_retries` attempts, returning the last rate-limited Response once they are
+    all exhausted.
+
+    Arguments:
+        url (str): The complete URL of the API endpoint being called.
+        max_retries (int): Maximum number of attempts before giving up.
+        backoff_secs (int): Base per-attempt sleep on a 420/503 or transport error.
+
+    Returns:
+        response (requests.Response): The final HTTP response (still 420/503 if retries ran out).
+    """
+    response = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = _src_session.get(url, timeout=30)
+        except (
+            requests.exceptions.ConnectionError,
+            requests.exceptions.Timeout,
+        ) as exc:
+            logger.warning(
+                "SRC transport error on attempt %d/%d for %s: %s",
+                attempt,
+                max_retries,
+                url,
+                exc,
+            )
+            if attempt == max_retries:
+                raise
+            _src_backoff_sleep(backoff_secs)
+            continue
+
+        if response.status_code not in (420, 503):
+            return response
+
+        logger.warning(
+            "SRC rate limit (%s) on attempt %d/%d, sleeping ~%ds: %s",
+            response.status_code,
+            attempt,
+            max_retries,
+            backoff_secs,
+            url,
+        )
+        _src_backoff_sleep(backoff_secs)
+
+    return response
 
 
 def convert_time(
@@ -73,11 +146,6 @@ def src_api(
 ) -> dict | list:
     """Processes a Speedrun.com API v1 GET request to return values from any of its endpoints.
 
-    Retries on 420 (Enhance Your Calm) and 503 (Service Unavailable) up to `max_retries`
-    times with a fixed `backoff_secs` sleep between attempts. Both default to the module
-    constants SRC_MAX_RETRIES / SRC_BACKOFF_SECS when not provided, so existing callers are
-    unaffected; request-path callers can pass small values to avoid stalling.
-
     Arguments:
         url (str): The complete URL of the API endpoint being called.
         raw (bool): If True, return the full JSON envelope (e.g., when pagination links or
@@ -92,38 +160,30 @@ def src_api(
 
     Raises:
         SrcRateLimited: When 420/503 persists until retries are exhausted.
-        ValueError: When the response is otherwise non-200.
+        requests.exceptions.ConnectionError | requests.exceptions.Timeout: When a transient
+            transport failure persists until retries are exhausted.
+        ValueError: When the response is otherwise non-200, or no response was obtained.
     """
     retries: int = SRC_MAX_RETRIES if max_retries is None else max_retries
     backoff: int = SRC_BACKOFF_SECS if backoff_secs is None else backoff_secs
 
-    response = None
-    for attempt in range(1, retries + 1):
-        response = requests.get(url, headers=SRC_HEADERS, timeout=30)
-        if response.status_code not in (420, 503):
-            break
+    response = _src_request(url, retries, backoff)
 
-        logger.warning(
-            "SRC rate limit (%s) on attempt %d/%d, sleeping %ds: %s",
-            response.status_code,
-            attempt,
-            retries,
-            backoff,
-            url,
-        )
-        time.sleep(backoff)
-    else:
-        raise SrcRateLimited(
-            f"SRC API rate limit exceeded after {retries} retries ({url})"
-        )
+    if isinstance(response, requests.Response):
+        if response.status_code in (420, 503):
+            raise SrcRateLimited(
+                f"SRC API rate limit exceeded after {retries} retries ({url})"
+            )
 
-    if response.status_code != 200:
-        raise ValueError(
-            f"SRC API request failed with status code {response.status_code}"
-        )
+        if response.status_code != 200:
+            raise ValueError(
+                f"SRC API request failed with status code {response.status_code}"
+            )
 
-    payload = response.json()
-    return payload if raw else payload["data"]
+        payload = response.json()
+        return payload if raw else payload["data"]
+
+    raise ValueError(f"SRC API returned no response ({url})")
 
 
 def src_api_probe(
@@ -143,26 +203,15 @@ def src_api_probe(
         tuple[int, dict | None]: The final HTTP status code and, on a 200, the JSON
             envelope (otherwise None).
     """
-    response = None
-    for attempt in range(1, SRC_MAX_RETRIES + 1):
-        response = requests.get(url, headers=SRC_HEADERS, timeout=30)
-        if response.status_code not in (420, 503):
-            break
+    response = _src_request(url, SRC_MAX_RETRIES, SRC_BACKOFF_SECS)
 
-        logger.warning(
-            "SRC rate limit (%s) on attempt %d/%d, sleeping %ds: %s",
-            response.status_code,
-            attempt,
-            SRC_MAX_RETRIES,
-            SRC_BACKOFF_SECS,
-            url,
-        )
-        time.sleep(SRC_BACKOFF_SECS)
+    if isinstance(response, requests.Response):
+        if response.status_code != 200:
+            return response.status_code, None
 
-    if response.status_code != 200:
-        return response.status_code, None
+        return response.status_code, response.json()
 
-    return response.status_code, response.json()
+    return 503, None
 
 
 def src_api_paginate(
@@ -212,12 +261,6 @@ def points_formula(
     except OverflowError:
         return max_points
     return min(result, max_points)
-
-
-class TimeDict(TypedDict):
-    realtime_t: int
-    realtime_noloads_t: int
-    ingame_t: int
 
 
 def time_conversion(

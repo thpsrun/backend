@@ -35,7 +35,7 @@ def _wr_check(
     if current_wr_time is None:
         return True
 
-    return run_time < current_wr_time
+    return run_time <= current_wr_time
 
 
 def recalculate_run(
@@ -132,3 +132,34 @@ def recalculate_run_sync(
 
     if with_streaks:
         recalculate_streaks_task.si(leaderboard, actor_user_id=actor_user_id).delay()
+
+
+def recalculate_run_after_player_change(
+    run: Runs,
+    old_player_ids: list[str],
+    new_player_ids: list[str],
+    actor_user_id: int | None = None,
+) -> None:
+    """Re-dedup obsolescence across the old and new players, then dispatch a recalc, after a swap.
+
+    Arguments:
+        run (Runs): The run whose credited players just changed (already swapped in the DB).
+        old_player_ids (list[str]): Player IDs credited to the run before the swap.
+        new_player_ids (list[str]): Player IDs credited to the run after the swap.
+        actor_user_id (int | None): Optional user id to attribute the recalc to in the audit log.
+    """
+    from srl.srcom.utils import apply_player_obsolescence
+
+    if run.vid_status != "verified":
+        return
+
+    leaderboard = resolve_leaderboard(run)
+    apply_player_obsolescence(
+        game_id=leaderboard["game_id"],
+        category_id=leaderboard["category_id"],
+        variable_value_map=leaderboard["variable_value_map"],
+        player_ids=list(set(old_player_ids) | set(new_player_ids)),
+        run_type=leaderboard["runtype"],
+        level_id=leaderboard["level_id"],
+    )
+    recalculate_run(run, cause="change_players", actor_user_id=actor_user_id)

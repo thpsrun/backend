@@ -290,15 +290,28 @@ class Runs(models.Model):
     ) -> str:
         return self._resolved_timing().primary_method
 
+    def _resolved_allowed_methods(
+        self,
+    ) -> list[str]:
+        """Return the allowed timing-method window this run recognizes (display fallback)."""
+        return self._resolved_timing().allowed_methods
+
     def _resolved_required_methods(
         self,
     ) -> list[str]:
+        """Return the strict timing methods this run must supply data for."""
         return self._resolved_timing().required_methods
+
+    def _resolved_optional_methods(
+        self,
+    ) -> list[str]:
+        """Return the allowed-but-optional timing methods for this run."""
+        return self._resolved_timing().optional_methods
 
     def missing_required_methods(
         self,
     ) -> list[str]:
-        """Return resolved required timing methods that are missing or zero on this run."""
+        """Return resolved strictly-required timing methods that are missing or zero."""
         missing: list[str] = []
         for method in self._resolved_required_methods():
             _, secs_field = self._TIMING_FIELD_MAP[method]
@@ -307,23 +320,24 @@ class Runs(models.Model):
                 missing.append(method)
         return missing
 
-    def validate_allowed_method_data(
+    def validate_required_method_data(
         self,
         *,
         ignore: set[str] | None = None,
     ) -> None:
-        """Enforce that the run has data for every resolved "allowed" timing method.
+        """Enforce that the run has data for every resolved strictly-"required" timing method.
 
-        Resolves the `Game` -> `Category` -> `Variable` -> `VariableValue` chain to resolve if
-        the run has the `required_methods`. Missing or zero values on any resolved method
-        will raise a ValidationError. Methods in `ignore` (gaps that already existed before an
-        edit) are not enforced, so an unrelated update is not blocked by a pre-existing timing
-        gap it did not introduce.
+        Resolves the `Game` -> `Category` -> `Variable` -> `VariableValue` chain to resolve the
+        run's `required_methods` (the strict subset of `allowed_methods`). Missing or zero
+        values on any resolved required method will raise a ValidationError. Allowed-but-not-
+        required methods are optional and are not enforced here. Methods in `ignore` (gaps that
+        already existed before an edit) are not enforced, so an unrelated update is not blocked
+        by a pre-existing timing gap it did not introduce.
         """
         ignore = ignore or set()
-        allowed = self._resolved_required_methods()
+        required = self._resolved_required_methods()
         missing: list[str] = []
-        for method in allowed:
+        for method in required:
             if method in ignore:
                 continue
             _, secs_field = self._TIMING_FIELD_MAP[method]
@@ -332,7 +346,7 @@ class Runs(models.Model):
                 missing.append(method)
         if missing:
             raise ValidationError(
-                f"Run requires the following timing methods: {allowed}. "
+                f"Run requires the following timing methods: {required}. "
                 f"Missing or zero: {missing}",
             )
 
@@ -381,7 +395,7 @@ class Runs(models.Model):
         secs_value = getattr(self, secs_field)
         if secs_value and secs_value > 0:
             return getattr(self, field)
-        for candidate in self._resolved_required_methods():
+        for candidate in self._resolved_allowed_methods():
             cand_field, cand_secs = self._TIMING_FIELD_MAP[candidate]
             cand_value = getattr(self, cand_secs)
             if cand_value and cand_value > 0:
@@ -397,7 +411,7 @@ class Runs(models.Model):
         value = getattr(self, secs_field)
         if value and value > 0:
             return value
-        for candidate in self._resolved_required_methods():
+        for candidate in self._resolved_allowed_methods():
             _, cand_secs = self._TIMING_FIELD_MAP[candidate]
             cand_value = getattr(self, cand_secs)
             if cand_value and cand_value > 0:

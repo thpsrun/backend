@@ -3,7 +3,6 @@ import os
 from celery import shared_task
 from django.conf import settings
 from django.db import transaction
-
 from srl.models import Games, Players
 from srl.srcom._static_fetch import (
     StaticAssetDownloadError,
@@ -79,8 +78,7 @@ def apply_game_record(
             id=src_game.id,
         )
 
-        for plat in src_game.platforms:
-            game.platforms.add(plat.id)
+        game.platforms.add(*[plat.id for plat in src_game.platforms])
 
         game.moderators.set(
             Players.objects.filter(id__in=src_game.moderators.keys()),

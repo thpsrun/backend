@@ -6,7 +6,6 @@ from api.v1.routers.utils.cache_utils import _HISTORY_CACHE_PREFIX
 from django.core.cache import caches
 from django.core.management.base import BaseCommand
 from django.db import transaction
-
 from srl.leaderboard.recalculation import (
     build_leaderboard_metadata,
     clear_leaderboard_history,
@@ -243,7 +242,7 @@ class Command(BaseCommand):
         if not variants:
             return
 
-        _, game_is_ce, *_ = build_leaderboard_metadata(variants)
+        game_is_ce = build_leaderboard_metadata(variants)
 
         total_entries = 0
         with disable_history_signals():

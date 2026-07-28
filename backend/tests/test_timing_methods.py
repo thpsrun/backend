@@ -20,6 +20,7 @@ from srl.models import (
     VariableValues,
 )
 from srl.models.base import LeaderboardChoices
+from srl.timing import resolve_timing
 
 
 class RecalcPerRunPrimaryTest(TestCase):
@@ -39,11 +40,11 @@ class RecalcPerRunPrimaryTest(TestCase):
             idefaulttime=LeaderboardChoices.INGAME,
             pointsmax=1000,
             ipointsmax=250,
-            required_methods_fg=[
+            allowed_methods_fg=[
                 LeaderboardChoices.REALTIME,
                 LeaderboardChoices.INGAME,
             ],
-            required_methods_il=[LeaderboardChoices.INGAME],
+            allowed_methods_il=[LeaderboardChoices.INGAME],
         )
         cls.category = Categories.objects.create(
             id="reccat1",
@@ -131,11 +132,11 @@ class LbsRunDictMethodsTest(TestCase):
             idefaulttime=LeaderboardChoices.INGAME,
             pointsmax=1000,
             ipointsmax=250,
-            required_methods_fg=[
+            allowed_methods_fg=[
                 LeaderboardChoices.REALTIME,
                 LeaderboardChoices.INGAME,
             ],
-            required_methods_il=[
+            allowed_methods_il=[
                 LeaderboardChoices.REALTIME,
                 LeaderboardChoices.INGAME,
             ],
@@ -155,7 +156,7 @@ class LbsRunDictMethodsTest(TestCase):
             type="per-game",
             url="https://example.com/100",
             game=cls.game,
-            required_methods=[LeaderboardChoices.INGAME],
+            allowed_methods=[LeaderboardChoices.INGAME],
         )
         cls.player = Players.objects.create(
             id="lbspl1",
@@ -233,11 +234,11 @@ class CacheKeyTimingConfigTest(TestCase):
             idefaulttime=LeaderboardChoices.REALTIME,
             pointsmax=1000,
             ipointsmax=250,
-            required_methods_fg=[
+            allowed_methods_fg=[
                 LeaderboardChoices.REALTIME,
                 LeaderboardChoices.INGAME,
             ],
-            required_methods_il=[LeaderboardChoices.REALTIME],
+            allowed_methods_il=[LeaderboardChoices.REALTIME],
         )
         cls.category = Categories.objects.create(
             id="ckcat1",
@@ -253,23 +254,23 @@ class CacheKeyTimingConfigTest(TestCase):
     ) -> None:
         caches["default"].clear()
 
-    def test_game_leaderboard_cache_key_changes_on_required_methods_save(
+    def test_game_leaderboard_cache_key_changes_on_allowed_methods_save(
         self,
     ) -> None:
         before = game_leaderboard_cache_key(self.game.id)
-        # Modify required_methods (no Run touched). Without the spec change,
+        # Modify allowed_methods (no Run touched). Without the spec change,
         # the key is unchanged.
-        self.game.required_methods_fg = [LeaderboardChoices.REALTIME]
+        self.game.allowed_methods_fg = [LeaderboardChoices.REALTIME]
         self.game.save()
         caches["default"].clear()  # flush per-ts cache
         after = game_leaderboard_cache_key(self.game.id)
         self.assertNotEqual(before, after)
 
-    def test_lbs_runs_cache_key_changes_on_category_required_methods_save(
+    def test_lbs_runs_cache_key_changes_on_category_allowed_methods_save(
         self,
     ) -> None:
         before = lbs_runs_cache_key(self.game.id, self.category.id)
-        self.category.required_methods = [LeaderboardChoices.REALTIME]
+        self.category.allowed_methods = [LeaderboardChoices.REALTIME]
         self.category.save()
         caches["default"].clear()
         after = lbs_runs_cache_key(self.game.id, self.category.id)
@@ -299,11 +300,11 @@ class GameTimingRecalcSignalTest(TestCase):
             idefaulttime=LeaderboardChoices.REALTIME,
             pointsmax=1000,
             ipointsmax=250,
-            required_methods_fg=[
+            allowed_methods_fg=[
                 LeaderboardChoices.REALTIME,
                 LeaderboardChoices.INGAME,
             ],
-            required_methods_il=[LeaderboardChoices.REALTIME],
+            allowed_methods_il=[LeaderboardChoices.REALTIME],
         )
 
     @patch("api.signals.rebackfill_game_runs.delay")
@@ -321,14 +322,14 @@ class GameTimingRecalcSignalTest(TestCase):
         )
 
     @patch("api.signals.rebackfill_game_runs.delay")
-    def test_required_methods_change_fires_rebackfill(
+    def test_allowed_methods_change_fires_rebackfill(
         self,
         mock_rebackfill,
     ) -> None:
-        # required_methods can flip which fallback timing column a run reads,
+        # allowed_methods can flip which fallback timing column a run reads,
         # so it goes through the same rebackfill+recalc chain.
         with self.captureOnCommitCallbacks(execute=True):
-            self.game.required_methods_fg = [LeaderboardChoices.REALTIME]
+            self.game.allowed_methods_fg = [LeaderboardChoices.REALTIME]
             self.game.save()
         mock_rebackfill.assert_called_once_with(
             self.game.slug,
@@ -370,11 +371,11 @@ class ChildTimingRecalcSignalTest(TestCase):
             idefaulttime=LeaderboardChoices.REALTIME,
             pointsmax=1000,
             ipointsmax=250,
-            required_methods_fg=[
+            allowed_methods_fg=[
                 LeaderboardChoices.REALTIME,
                 LeaderboardChoices.INGAME,
             ],
-            required_methods_il=[LeaderboardChoices.REALTIME],
+            allowed_methods_il=[LeaderboardChoices.REALTIME],
         )
 
     @patch("api.signals.rebackfill_game_runs.delay")
@@ -401,7 +402,7 @@ class ChildTimingRecalcSignalTest(TestCase):
         )
 
     @patch("api.signals.rebackfill_game_runs.delay")
-    def test_category_required_methods_change_fires_rebackfill(
+    def test_category_allowed_methods_change_fires_rebackfill(
         self,
         mock_rebackfill,
     ) -> None:
@@ -415,7 +416,7 @@ class ChildTimingRecalcSignalTest(TestCase):
         )
         mock_rebackfill.reset_mock()
         with self.captureOnCommitCallbacks(execute=True):
-            cat.required_methods = [LeaderboardChoices.INGAME]
+            cat.allowed_methods = [LeaderboardChoices.INGAME]
             cat.save()
         mock_rebackfill.assert_called_once_with(
             self.game.slug,
@@ -475,3 +476,70 @@ class ChildTimingRecalcSignalTest(TestCase):
             triggered_by=ANY,
             actor_user_id=ANY,
         )
+
+
+class ResolveTimingOptionalTest(TestCase):
+    """Resolver must resolve `required` independently and derive `optional = allowed - required`."""
+
+    def test_backfilled_required_equals_allowed_optional_empty(
+        self,
+    ) -> None:
+        """After backfill, required mirrors allowed and nothing is optional."""
+        game = Games.objects.create(
+            id="topt1",
+            name="Opt Game",
+            slug="opt-game",
+            release="2000-01-01",
+            boxart="https://example.com/b",
+            defaulttime=LeaderboardChoices.REALTIME,
+            idefaulttime=LeaderboardChoices.REALTIME,
+            allowed_methods_fg=[LeaderboardChoices.REALTIME, LeaderboardChoices.INGAME],
+            allowed_methods_il=[LeaderboardChoices.REALTIME],
+            required_methods_fg=[
+                LeaderboardChoices.REALTIME,
+                LeaderboardChoices.INGAME,
+            ],
+            required_methods_il=[LeaderboardChoices.REALTIME],
+        )
+        resolved = resolve_timing(game, None, is_il=False, variable_values=[])
+        self.assertEqual(sorted(resolved.allowed_methods), ["igt", "rta"])
+        self.assertEqual(sorted(resolved.required_methods), ["igt", "rta"])
+        self.assertEqual(resolved.optional_methods, [])
+        self.assertEqual(resolved.primary_method, "rta")
+
+    def test_required_subset_makes_remainder_optional(
+        self,
+    ) -> None:
+        """A required subset of allowed yields the complement as optional."""
+        game = Games.objects.create(
+            id="topt2",
+            name="Opt Game 2",
+            slug="opt-game-2",
+            release="2000-01-01",
+            boxart="https://example.com/b",
+            defaulttime=LeaderboardChoices.REALTIME,
+            idefaulttime=LeaderboardChoices.REALTIME,
+            allowed_methods_fg=[LeaderboardChoices.REALTIME, LeaderboardChoices.INGAME],
+            allowed_methods_il=[LeaderboardChoices.REALTIME],
+            required_methods_fg=[LeaderboardChoices.REALTIME],
+            required_methods_il=[LeaderboardChoices.REALTIME],
+        )
+        resolved = resolve_timing(game, None, is_il=False, variable_values=[])
+        self.assertEqual(resolved.required_methods, ["rta"])
+        self.assertEqual(resolved.optional_methods, ["igt"])
+
+    def test_default_required_mirrors_default_allowed(
+        self,
+    ) -> None:
+        """A freshly created game with only defaults set has required == allowed (parity)."""
+        game = Games.objects.create(
+            id="topt3",
+            name="Opt Game 3",
+            slug="opt-game-3",
+            release="2000-01-01",
+            boxart="https://example.com/b",
+            defaulttime=LeaderboardChoices.REALTIME,
+            idefaulttime=LeaderboardChoices.REALTIME,
+        )
+        self.assertEqual(game.required_methods_fg, game.allowed_methods_fg)
+        self.assertEqual(game.required_methods_il, game.allowed_methods_il)

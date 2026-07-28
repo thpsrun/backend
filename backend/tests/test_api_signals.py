@@ -304,11 +304,11 @@ class RebackfillSignalTest(TestCase):
             idefaulttime=LeaderboardChoices.REALTIME,
             pointsmax=1000,
             ipointsmax=250,
-            required_methods_fg=[
+            allowed_methods_fg=[
                 LeaderboardChoices.REALTIME,
                 LeaderboardChoices.INGAME,
             ],
-            required_methods_il=[LeaderboardChoices.REALTIME],
+            allowed_methods_il=[LeaderboardChoices.REALTIME],
         )
 
     @patch("api.signals.rebackfill_game_runs.delay")

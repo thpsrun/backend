@@ -1,5 +1,7 @@
-from accounts.oauth_reauth import REAUTH_INTENT_SESSION_KEY
+from accounts.oauth_intent import REAUTH_FLOW
 from django.test import TestCase, override_settings
+
+REAUTH_INTENT_SESSION_KEY = REAUTH_FLOW.session_key
 
 
 @override_settings(FRONTEND_URL="https://example.test")

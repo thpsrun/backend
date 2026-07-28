@@ -7,7 +7,6 @@ from api.v1.routers.utils.cache_utils import _HISTORY_CACHE_PREFIX
 from django.core.cache import caches
 from django.core.management.base import BaseCommand
 from django.db import transaction
-
 from srl.leaderboard.recalculation import (
     build_leaderboard_metadata,
     enumerate_leaderboard_variants,
@@ -110,7 +109,7 @@ class Command(BaseCommand):
             total_leaderboards = len(leaderboards)
             self.stdout.write(f"Found {total_leaderboards} leaderboards to process.\n")
 
-            _, game_is_ce, *_ = build_leaderboard_metadata(leaderboards)
+            game_is_ce = build_leaderboard_metadata(leaderboards)
 
             game_ids = {lb["game_id"] for lb in leaderboards}
             game_slugs: dict[str, str] = {}

@@ -31,7 +31,8 @@ def sanitize_markdown_source(
         - empty/whitespace input -> raise ValueError (required field)
         - non-empty input that bleach strips to empty -> raise ValueError
 
-    Use for required markdown fields where the field must always have content."""
+    Use for required markdown fields where the field must always have content.
+    """
 
     if not value or not value.strip():
         raise ValueError("content is empty after stripping HTML")
@@ -58,7 +59,8 @@ def sanitize_optional_markdown(
           (caller submitted markup with no allowed content, e.g. only <script> tags)
 
     Use for optional markdown fields where None means "unchanged" and "" means
-    "explicitly cleared"."""
+    "explicitly cleared".
+    """
 
     if value is None:
         return None

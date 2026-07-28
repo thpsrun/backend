@@ -70,7 +70,8 @@ def get_run_players(
 ) -> list[dict]:
     """Get all players for a run as a list of dicts, ordered by their participation order.
 
-    This is always included in run responses (not an embed)."""
+    This is always included in run responses (not an embed).
+    """
     run_players = sorted(run.run_players.all(), key=lambda rp: rp.order)
 
     players_list = []
@@ -100,7 +101,8 @@ def get_run_variables(
     """Get variable_id:value_id mapping for a run.
 
     This is always included in run responses (not an embed).
-    Returns the through table data as {variable_id: value_id} pairs."""
+    Returns the through table data as {variable_id: value_id} pairs.
+    """
     variable_mapping: dict[str, str] = {}
 
     run_variable_values = run.runvariablevalues_set.all()
@@ -116,10 +118,7 @@ def apply_run_embeds(
     run: Runs,
     embed_fields: list[str],
 ) -> dict:
-    """Apply requested embeds to a run instance.
-
-    This is the most complex embed function of all of the endpoints due to the
-    complex relations it will have with other models."""
+    """Apply requested embeds to a run instance."""
     embeds = {}
 
     if "game" in embed_fields and run.game:
@@ -168,7 +167,8 @@ def normalize_time_fields(
     """Normalize RTA/LRT/IGT display strings from their `*_secs` source of truth.
 
     Consolidates logic that transforms the `_*secs` times into display strings that can be properly
-    digested on the frontend or through the API."""
+    digested on the frontend or through the API.
+    """
     time_pairs = (
         ("time", "time_secs"),
         ("timenl", "timenl_secs"),
@@ -288,7 +288,16 @@ def get_all_runs(
         Query(ge=0, description="Offset from 0"),
     ] = 0,
 ) -> Status:
-    embed_fields = parse_embeds(embed, "runs")
+    try:
+        embed_fields = parse_embeds(embed, "runs")
+    except InvalidEmbedsError as e:
+        return Status(
+            400,
+            ErrorResponse(
+                error=str(e),
+                details={"valid_embeds": sorted(e.valid)},
+            ),
+        )
 
     try:
         queryset = (
@@ -724,9 +733,11 @@ def create_run(
                     RunVariableValues.objects.bulk_create(rvv_objs)
 
             try:
-                run.validate_allowed_method_data()
+                run.validate_required_method_data()
             except ValidationError:
-                raise
+                raise ValidationError(
+                    "Run is missing required method data for its category and level"
+                )
 
         refetched_run = (
             Runs.objects.filter(id=run.id)
@@ -1048,9 +1059,11 @@ def update_run(
                 )
 
             try:
-                run.validate_allowed_method_data(ignore=preexisting_missing)
+                run.validate_required_method_data(ignore=preexisting_missing)
             except ValidationError:
-                raise
+                raise ValidationError(
+                    "Run is missing required method data for its category and level"
+                )
 
             run.save()
 

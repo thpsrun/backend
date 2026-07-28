@@ -7,6 +7,7 @@ from srl.models import Categories, Games, Levels
 
 from api.permissions import public_read
 from api.v1.routers.utils import check_cache_query, history_cache_key, query_wr_history
+from api.v1.routers.utils.resolvers import category_by_slug
 from api.v1.schemas.base import ErrorResponse
 
 router = Router()
@@ -98,10 +99,11 @@ def get_fg_wr_history(
             ),
         )
 
-    category = Categories.objects.filter(
-        game=game,
-        slug__iexact=category_slug,
-    ).first()
+    category = category_by_slug(
+        game,
+        category_slug,
+        Categories.CategoryType.PER_GAME,
+    )
     if not category:
         return Status(
             404,
@@ -222,10 +224,11 @@ def get_il_wr_history(
             ErrorResponse(error="Level not found", details=None),
         )
 
-    category = Categories.objects.filter(
-        game=game,
-        slug__iexact=category_slug,
-    ).first()
+    category = category_by_slug(
+        game,
+        category_slug,
+        Categories.CategoryType.PER_LEVEL,
+    )
     if not category:
         return Status(
             404,

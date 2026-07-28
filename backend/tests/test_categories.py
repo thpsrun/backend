@@ -1,10 +1,83 @@
 from api.v1.routers.resources.categories import router as categories_router
+from api.v1.routers.utils.resolvers import category_by_slug
 from django.core.exceptions import ValidationError
 from django.test import TestCase
 from ninja.testing import TestClient
 from srl.models import Categories, Games, LeaderboardChoices, Platforms, Variables
 
 from tests.test_auth import AuthTestBase
+
+
+class CategorySlugCollisionTest(TestCase):
+    @classmethod
+    def setUpTestData(
+        cls,
+    ) -> None:
+        cls.game = Games.objects.create(
+            id="thug2t",
+            name="THUG2 Test",
+            slug="thug2t",
+            twitch="THUG2 Test",
+            release="2004-01-01",
+            boxart="https://speedrun.com/thug2t/cover",
+            defaulttime="rta",
+            idefaulttime="rta",
+            pointsmax=1000,
+            ipointsmax=100,
+        )
+        # No explicit slug: both auto-slug to "classic", reproducing the collision.
+        cls.fg_classic = Categories.objects.create(
+            id="fgclassic",
+            game=cls.game,
+            name="Classic",
+            type="per-game",
+            url="https://speedrun.com/thug2t#classic",
+        )
+        cls.il_classic = Categories.objects.create(
+            id="ilclassic",
+            game=cls.game,
+            name="Classic",
+            type="per-level",
+            url="https://speedrun.com/thug2t#classic-il",
+        )
+
+    def test_colliding_categories_share_slug(
+        self,
+    ) -> None:
+        self.assertEqual(self.fg_classic.slug, "classic")
+        self.assertEqual(self.il_classic.slug, "classic")
+
+    def test_resolver_prefers_per_game(
+        self,
+    ) -> None:
+        category = category_by_slug(
+            self.game,
+            "classic",
+            Categories.CategoryType.PER_GAME,
+        )
+        self.assertIsNotNone(category)
+        self.assertEqual(category.id, "fgclassic")
+
+    def test_resolver_prefers_per_level(
+        self,
+    ) -> None:
+        category = category_by_slug(
+            self.game,
+            "classic",
+            Categories.CategoryType.PER_LEVEL,
+        )
+        self.assertIsNotNone(category)
+        self.assertEqual(category.id, "ilclassic")
+
+    def test_resolver_returns_none_when_absent(
+        self,
+    ) -> None:
+        category = category_by_slug(
+            self.game,
+            "does-not-exist",
+            Categories.CategoryType.PER_GAME,
+        )
+        self.assertIsNone(category)
 
 
 class CategoriesReadTest(TestCase):
@@ -209,11 +282,11 @@ class CategoryTimingClean(TestCase):
             idefaulttime=LeaderboardChoices.REALTIME,
             pointsmax=1000,
             ipointsmax=250,
-            required_methods_fg=[
+            allowed_methods_fg=[
                 LeaderboardChoices.REALTIME,
                 LeaderboardChoices.INGAME,
             ],
-            required_methods_il=[
+            allowed_methods_il=[
                 LeaderboardChoices.REALTIME,
             ],
         )
@@ -230,37 +303,37 @@ class CategoryTimingClean(TestCase):
             "url": "https://example.com/any",
             "game": self.game,
             "defaulttime": None,
-            "required_methods": None,
+            "allowed_methods": None,
         }
         defaults.update(kwargs)
         return Categories(**defaults)
 
-    def test_required_methods_must_be_subset_of_game_fg(
+    def test_allowed_methods_must_be_subset_of_game_fg(
         self,
     ) -> None:
         c = self._make(
-            required_methods=[LeaderboardChoices.REALTIME_NOLOADS],
+            allowed_methods=[LeaderboardChoices.REALTIME_NOLOADS],
         )
         with self.assertRaises(ValidationError) as cm:
             c.full_clean()
-        self.assertIn("required_methods", cm.exception.message_dict)
+        self.assertIn("allowed_methods", cm.exception.message_dict)
 
-    def test_required_methods_must_be_subset_of_game_il_for_il_category(
+    def test_allowed_methods_must_be_subset_of_game_il_for_il_category(
         self,
     ) -> None:
         c = self._make(
             type="per-level",
-            required_methods=[LeaderboardChoices.INGAME],
+            allowed_methods=[LeaderboardChoices.INGAME],
         )
         with self.assertRaises(ValidationError) as cm:
             c.full_clean()
-        self.assertIn("required_methods", cm.exception.message_dict)
+        self.assertIn("allowed_methods", cm.exception.message_dict)
 
     def test_explicit_primary_required_when_narrowing_excludes_inherited(
         self,
     ) -> None:
         c = self._make(
-            required_methods=[LeaderboardChoices.REALTIME],
+            allowed_methods=[LeaderboardChoices.REALTIME],
             defaulttime=None,
         )
         with self.assertRaises(ValidationError) as cm:
@@ -271,26 +344,87 @@ class CategoryTimingClean(TestCase):
         self,
     ) -> None:
         c = self._make(
-            required_methods=[LeaderboardChoices.REALTIME],
+            allowed_methods=[LeaderboardChoices.REALTIME],
             defaulttime=LeaderboardChoices.REALTIME,
         )
         c.full_clean()
 
-    def test_explicit_defaulttime_must_be_in_required_methods(
+    def test_explicit_defaulttime_must_be_in_allowed_methods(
         self,
     ) -> None:
         c = self._make(
-            required_methods=[LeaderboardChoices.REALTIME],
+            allowed_methods=[LeaderboardChoices.REALTIME],
             defaulttime=LeaderboardChoices.INGAME,
         )
         with self.assertRaises(ValidationError) as cm:
             c.full_clean()
         self.assertIn("defaulttime", cm.exception.message_dict)
 
-    def test_empty_required_methods_list_rejected(
+    def test_empty_allowed_methods_list_rejected(
         self,
     ) -> None:
-        c = self._make(required_methods=[])
+        c = self._make(allowed_methods=[])
+        with self.assertRaises(ValidationError) as cm:
+            c.full_clean()
+        self.assertIn("allowed_methods", cm.exception.message_dict)
+
+    def test_null_allowed_methods_inherits_silently(
+        self,
+    ) -> None:
+        self._make(allowed_methods=None).full_clean()
+
+    def test_narrowing_allowed_rejected_when_child_required_stranded(
+        self,
+    ) -> None:
+        # A child variable that inherits allowed_methods (null) but sets required_methods
+        # explicitly must not be stranded when the category narrows its allowed window.
+        cat = self._make(
+            id="ctchild",
+            allowed_methods=[LeaderboardChoices.REALTIME, LeaderboardChoices.INGAME],
+            defaulttime=LeaderboardChoices.REALTIME,
+        )
+        cat.save()
+        Variables.objects.create(
+            id="vchild1",
+            name="Child Var",
+            slug="child-var",
+            game=self.game,
+            cat=cat,
+            scope="full-game",
+            allowed_methods=None,
+            required_methods=[LeaderboardChoices.REALTIME, LeaderboardChoices.INGAME],
+        )
+        cat.allowed_methods = [LeaderboardChoices.REALTIME]
+        with self.assertRaises(ValidationError) as cm:
+            cat.full_clean()
+        self.assertIn("allowed_methods", cm.exception.message_dict)
+
+    def test_required_methods_must_be_subset_of_effective_allowed(
+        self,
+    ) -> None:
+        c = self._make(
+            allowed_methods=[
+                LeaderboardChoices.REALTIME,
+                LeaderboardChoices.INGAME,
+            ],
+            required_methods=[LeaderboardChoices.REALTIME_NOLOADS],
+        )
+        with self.assertRaises(ValidationError) as cm:
+            c.full_clean()
+        self.assertIn("required_methods", cm.exception.message_dict)
+
+    def test_required_methods_must_include_inherited_primary(
+        self,
+    ) -> None:
+        # game.defaulttime is INGAME (inherited primary); excluding it from
+        # required_methods must be rejected.
+        c = self._make(
+            allowed_methods=[
+                LeaderboardChoices.REALTIME,
+                LeaderboardChoices.INGAME,
+            ],
+            required_methods=[LeaderboardChoices.REALTIME],
+        )
         with self.assertRaises(ValidationError) as cm:
             c.full_clean()
         self.assertIn("required_methods", cm.exception.message_dict)
@@ -318,11 +452,11 @@ class CategoryNarrowingCascade(TestCase):
             idefaulttime=LeaderboardChoices.REALTIME,
             pointsmax=1000,
             ipointsmax=250,
-            required_methods_fg=[
+            allowed_methods_fg=[
                 LeaderboardChoices.REALTIME,
                 LeaderboardChoices.INGAME,
             ],
-            required_methods_il=[
+            allowed_methods_il=[
                 LeaderboardChoices.REALTIME,
                 LeaderboardChoices.INGAME,
             ],
@@ -342,18 +476,18 @@ class CategoryNarrowingCascade(TestCase):
             scope="full-game",
             game=cls.game,
             cat=cls.cat,
-            required_methods=[LeaderboardChoices.INGAME],
+            allowed_methods=[LeaderboardChoices.INGAME],
             defaulttime=LeaderboardChoices.INGAME,
         )
 
     def test_category_narrowing_rejected_if_variable_uses_removed_method(
         self,
     ) -> None:
-        self.cat.required_methods = [LeaderboardChoices.REALTIME]
+        self.cat.allowed_methods = [LeaderboardChoices.REALTIME]
         self.cat.defaulttime = LeaderboardChoices.REALTIME
         with self.assertRaises(ValidationError) as cm:
             self.cat.full_clean()
-        self.assertIn("required_methods", cm.exception.message_dict)
+        self.assertIn("allowed_methods", cm.exception.message_dict)
 
 
 class CategorySchemaTimingFields(TestCase):
@@ -365,4 +499,4 @@ class CategorySchemaTimingFields(TestCase):
 
         fields = CategoryBaseSchema.model_fields
         self.assertIn("defaulttime", fields)
-        self.assertIn("required_methods", fields)
+        self.assertIn("allowed_methods", fields)

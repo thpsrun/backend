@@ -6,7 +6,7 @@ from django.http import HttpRequest
 from ninja import Router, Status
 from srl.models import BotSession, SRCSyncTask
 from srl.srcom.v2 import is_v2_enabled
-from srl.srcom.v2.session import refresh_bot_session
+from srl.srcom.v2.session import cooldown_remaining_seconds, refresh_bot_session
 from srl.tasks import replay_failed_edits
 
 from api.permissions import authed
@@ -40,8 +40,20 @@ def _edit_run_count(
 
 def _to_response(
     bs: BotSession,
+    refresh_queued: bool | None = None,
+    cooldown_seconds_remaining: int | None = None,
 ) -> BotSessionResponse:
-    """Build the BotSessionResponse for a BotSession row."""
+    """Build the BotSessionResponse for a BotSession row.
+
+    Arguments:
+        bs (BotSession): The singleton session row to serialize.
+        refresh_queued (bool | None): True when this response follows a refresh.
+        cooldown_seconds_remaining (int | None): Seconds until a queued refresh is allowed to run,
+            or None when no cooldown is active.
+
+    Returns:
+        response (BotSessionResponse): The serialized session status.
+    """
     return BotSessionResponse(
         status=bs.status,
         validated_at=bs.validated_at,
@@ -53,6 +65,8 @@ def _to_response(
         last_severe_error_category=bs.last_severe_error_category,
         queued_edit_count=_edit_run_count(SRCSyncTask.Status.PENDING),
         failed_edit_count=_edit_run_count(SRCSyncTask.Status.FAILED),
+        refresh_queued=refresh_queued,
+        cooldown_seconds_remaining=cooldown_seconds_remaining,
     )
 
 
@@ -87,15 +101,26 @@ def get_bot_session(
     },
     summary="Trigger v2 Bot Session Refresh",
     description=(
-        "Queues an asynchronous refresh_bot_session() run on Celery and "
-        "returns the current (pre-refresh) session status immediately. "
+        "Queues an asynchronous refresh_bot_session() run on Celery and returns the current "
+        "(pre-refresh) session status immediately. Response also sets refresh_queued=true and, "
+        "when a cooldown is active, cooldown_seconds_remaining (the queued run no-ops until it "
+        "elapses)."
     ),
 )
 def post_refresh(
     request: HttpRequest,
 ) -> Status:
     refresh_bot_session.delay()
-    return Status(200, _to_response(BotSession.load()))
+    bs = BotSession.load()
+    remaining = cooldown_remaining_seconds(bs)
+    return Status(
+        200,
+        _to_response(
+            bs,
+            refresh_queued=True,
+            cooldown_seconds_remaining=remaining or None,
+        ),
+    )
 
 
 @router.put(
@@ -125,9 +150,8 @@ def put_kill_switch(
 
     replay_queued_count = 0
     if not was_effective_enabled and now_effective_enabled:
-        # Any off->on transition clears the breaker, regardless of
-        # whether the admin sent override=True or override=null while
-        # the env default is True.
+        # Any off->on transition clears the breaker, regardless of whether the admin sent
+        # override=True or override=null while the env default is True.
         if bs.disabled_by_circuit_breaker:
             bs.disabled_by_circuit_breaker = False
             bs.save(update_fields=["disabled_by_circuit_breaker"])

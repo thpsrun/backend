@@ -1,6 +1,7 @@
 from collections import defaultdict
 from uuid import UUID
 
+from django.conf import settings
 from django.db.models import Count
 from django.http import HttpRequest
 from django.shortcuts import get_object_or_404
@@ -13,9 +14,11 @@ from srl.srcom.reconciliation import acquire_lock, lock_holder, release_lock
 from srl.tasks import run_bounded_game_reconciliation
 
 from api.permissions import authed
+from api.v1.routers.utils.resolvers import resolve_game_or_none
 from api.v1.schemas.reconciliation import (
     CancelConflictOut,
     ConflictOut,
+    GameReconcileMode,
     ItemListOut,
     JobDetailOut,
     JobListOut,
@@ -36,12 +39,6 @@ _BREAKDOWN_BUCKETS = ("created", "updated", "skipped", "failed")
 def _compute_breakdown(
     job: ReconciliationJob,
 ) -> dict[str, dict[str, int]]:
-    """Group ReconciliationItem rows by (record_type, action) and reshape into
-    {record_type: {created, updated, skipped, failed}}. Each record_type that
-    has any items appears as a key; buckets always contain all four counters.
-
-    Both SKIPPED_LOCAL_WINS and SKIPPED_NO_CHANGE map to the "skipped" bucket
-    via ReconAction.bucket, so we accumulate with += rather than =."""
     rows = job.items.values("record_type", "action").annotate(n=Count("id"))
 
     breakdown: dict[str, dict[str, int]] = defaultdict(
@@ -62,6 +59,11 @@ def _compute_breakdown(
 def _job_to_out(
     job: ReconciliationJob,
 ) -> dict:
+    """Serialize a ReconciliationJob to a dict matching JobOut.
+
+    Returns:
+        out (dict): All fields required by the JobOut schema, including mode and run_limit.
+    """
     return {
         "id": job.id,
         "scope": job.scope,
@@ -77,6 +79,8 @@ def _job_to_out(
         "finished_at": job.finished_at,
         "error_summary": job.error_summary,
         "celery_task_id": job.celery_task_id,
+        "mode": job.mode,
+        "run_limit": job.run_limit,
     }
 
 
@@ -104,9 +108,33 @@ def start_reconciliation(
     if payload.scope != ReconcileScope.GAME:
         raise HttpError(422, "Only GAME-scope reconciliation is supported.")
 
+    # target_id may arrive as either the SRC game id or its slug (the admin UI sends the slug).
+    # Resolve it to the local Games row and persist the canonical SRC id: SRC's `?game=` filter and
+    # _build_base_context both require the real id, and a slug leaks through SRC's filter as the
+    # global recent feed.
+    game = resolve_game_or_none(payload.target_id or "")
+    if game is None:
+        raise HttpError(
+            422,
+            f"No local game matches target_id '{payload.target_id}'.",
+        )
+
+    # Validate and resolve the per-request run limit. Only meaningful for RECENT mode;
+    # sweep modes (full_game/il) enumerate all local runs so a limit makes no sense.
+    run_limit: int | None = None
+    if payload.mode == GameReconcileMode.RECENT and payload.limit is not None:
+        if payload.limit < 1 or payload.limit > settings.RECON_SWEEP_LIMIT_MAX:
+            raise HttpError(
+                422,
+                f"limit must be between 1 and {settings.RECON_SWEEP_LIMIT_MAX}.",
+            )
+        run_limit = payload.limit
+
     job = ReconciliationJob.objects.create(
         scope=payload.scope.value,
-        target_id=payload.target_id or "",
+        target_id=game.id,
+        mode=payload.mode.value,
+        run_limit=run_limit,
         target_descriptor=(
             payload.target_descriptor.model_dump() if payload.target_descriptor else {}
         ),
@@ -216,7 +244,9 @@ def list_items(
     if phase:
         qs = qs.filter(phase=phase)
     if action:
-        qs = qs.filter(action=action)
+        # Actions are stored lowercase since migration 0060; normalize so clients
+        # still speaking the old uppercase values keep matching.
+        qs = qs.filter(action=action.lower())
     if record_type:
         qs = qs.filter(record_type=record_type)
     total = qs.count()

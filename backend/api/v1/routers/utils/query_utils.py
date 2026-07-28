@@ -27,7 +27,7 @@ from api.v1.routers.utils import (
     main_wrs_cache_key,
 )
 from api.v1.schemas.players import extract_gradients
-from api.v1.schemas.runs import PlayerRunEmbedSchema, compute_run_subcategory
+from api.v1.schemas.runs import compute_run_subcategory
 
 
 def _value_timing_subquery() -> Subquery:
@@ -92,35 +92,31 @@ def _primary_time_secs_expr() -> Expression:
 
 
 def _value_allowed_subquery() -> Subquery:
-    """Subquery returning the first value-level `required_methods` for a run."""
+    """Subquery returning the first value-level `allowed_methods` for a run."""
     return Subquery(
         RunVariableValues.objects.filter(
             run=OuterRef("pk"),
-            value__required_methods__isnull=False,
+            value__allowed_methods__isnull=False,
         )
         .order_by("variable_id")
-        .values("value__required_methods")[:1],
+        .values("value__allowed_methods")[:1],
     )
 
 
 def _variable_allowed_subquery() -> Subquery:
-    """Subquery returning the first variable-level `required_methods` for a run."""
+    """Subquery returning the first variable-level `allowed_methods` for a run."""
     return Subquery(
         RunVariableValues.objects.filter(
             run=OuterRef("pk"),
-            variable__required_methods__isnull=False,
+            variable__allowed_methods__isnull=False,
         )
         .order_by("variable_id")
-        .values("variable__required_methods")[:1],
+        .values("variable__allowed_methods")[:1],
     )
 
 
 def _resolved_allowed_methods_expr() -> Expression:
-    """Build a Case expression that resolves a run's allowed timing methods.
-
-    Honors VariableValue > Variable > Category > Game precedence. Requires the
-    queryset to be annotated with `_val_allowed` and `_var_allowed`.
-    """
+    """Build a Case expression that resolves a run's allowed timing methods."""
     return Case(
         When(
             _val_allowed__isnull=False,
@@ -131,14 +127,14 @@ def _resolved_allowed_methods_expr() -> Expression:
             then=F("_var_allowed"),
         ),
         When(
-            category__required_methods__isnull=False,
-            then=F("category__required_methods"),
+            category__allowed_methods__isnull=False,
+            then=F("category__allowed_methods"),
         ),
         When(
             runtype="il",
-            then=F("game__required_methods_il"),
+            then=F("game__allowed_methods_il"),
         ),
-        default=F("game__required_methods_fg"),
+        default=F("game__allowed_methods_fg"),
     )
 
 
@@ -148,7 +144,7 @@ def annotate_resolved_allowed(
     """Annotate a Runs queryset with `resolved_allowed` (list of timing methods).
 
     Resolves the VariableValue > Variable > Category > Game precedence chain
-    at the SQL layer, mirroring `Runs._resolved_required_methods()`.
+    at the SQL layer, mirroring `Runs._resolved_allowed_methods()`.
     """
     return qs.annotate(
         _val_allowed=_value_allowed_subquery(),
@@ -488,41 +484,6 @@ def query_stats() -> dict[str, Any]:
     }
 
 
-def query_player_runs(
-    player_id: str,
-    include_obsoletes: bool = False,
-) -> list[dict[str, Any]]:
-    qs: QuerySet[Runs] = (
-        Runs.objects.select_related("game", "category", "level", "platform")
-        .prefetch_related(
-            "run_players__player__countrycode",
-            "run_players__player__user",
-            "runvariablevalues_set__variable",
-            "runvariablevalues_set__value",
-        )
-        .filter(
-            run_players__player__id=player_id,
-            vid_status="verified",
-        )
-    )
-
-    if not include_obsoletes:
-        qs = qs.filter(obsolete=False)
-
-    qs = qs.order_by("game__release", "date")
-
-    result = []
-    for run in qs:
-        data = PlayerRunEmbedSchema.model_validate(run).model_dump()
-        data["players"] = _export_players(
-            run.run_players.all(),  # type: ignore
-            country_detail=False,
-        )
-        result.append(data)
-
-    return result
-
-
 def query_overall_leaderboard() -> list[dict[str, Any]]:
     rows = (
         RunPlayers.objects.filter(
@@ -798,7 +759,7 @@ def query_lbs_runs(
 
     qs: QuerySet[Runs] = (
         Runs.objects.filter(**filters)
-        .select_related("level")
+        .select_related("game", "category", "level")
         .prefetch_related(
             "run_players__player__countrycode",
             "run_players__player__user",
@@ -863,7 +824,7 @@ def query_lbs_recent(
             vid_status="verified",
             v_date__isnull=False,
         )
-        .select_related("category", "level")
+        .select_related("game", "category", "level")
         .prefetch_related(
             "run_players__player__countrycode",
             "run_players__player__user",
@@ -914,7 +875,7 @@ def query_lbs_il_summary(
             obsolete=False,
             vid_status="verified",
         )
-        .select_related("category", "level")
+        .select_related("game", "category", "level")
         .prefetch_related(
             "run_players__player__countrycode",
             "run_players__player__user",

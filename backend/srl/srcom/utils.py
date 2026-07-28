@@ -8,7 +8,6 @@ from django.db.models import Count, F, QuerySet
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 from pydantic import RootModel
-
 from srl.models import METHOD_TO_TIME_FIELD as _CANONICAL_METHOD_TO_TIME_FIELD
 from srl.models import Games, Platforms, Players, RunHistory, Runs, VariableValues
 from srl.models.run_history import RunHistoryEndReason
@@ -33,9 +32,6 @@ METHOD_TO_TIME_FIELD: dict[str, str] = {
     src_key: _CANONICAL_METHOD_TO_TIME_FIELD[short_key]
     for src_key, short_key in SRC_ALIAS.items()
 }
-
-# Retained for callers that imported the old name.
-SRC_METHOD_MAP: dict[str, str] = SRC_ALIAS
 
 
 def src_method_to_internal(

@@ -56,8 +56,7 @@ def get_leaderboard_time_column(
     `defaulttime` wins first; then any variable; then the category's
     `defaulttime`; then the game's `defaulttime` (or `idefaulttime` for IL).
 
-    Performs up to four small queries; for batch processing across many
-    leaderboards, use `build_leaderboard_metadata` plus `resolve_time_column`.
+    Performs up to four small queries per call.
     """
     var_map = leaderboard.get("variable_value_map") or {}
     if var_map:
@@ -117,95 +116,18 @@ def build_game_metadata(
 
 def build_leaderboard_metadata(
     leaderboards: list[dict],
-) -> tuple[
-    dict[str, dict[str, str]],
-    dict[str, bool],
-    dict[str, str],
-    dict[str, str],
-    dict[str, str],
-]:
-    """Build all caches needed to resolve timing across many leaderboards."""
-    game_ids = {lb["game_id"] for lb in leaderboards}
-    category_ids = {lb["category_id"] for lb in leaderboards if lb.get("category_id")}
-    variable_ids: set[str] = set()
-    value_ids: set[str] = set()
-    for lb in leaderboards:
-        var_map = lb.get("variable_value_map") or {}
-        variable_ids.update(var_map.keys())
-        value_ids.update(var_map.values())
+) -> dict[str, bool]:
+    """Build the Category-Extension flag map for the games behind the given leaderboards.
 
-    game_time_columns, game_is_ce = build_game_metadata(game_ids)
+    Arguments:
+        leaderboards (list[dict]): Leaderboard variant dicts to collect game ids from.
 
-    value_timings: dict[str, str] = {}
-    if value_ids:
-        value_timings = dict(
-            VariableValues.objects.filter(
-                value__in=value_ids,
-                defaulttime__isnull=False,
-            ).values_list("value", "defaulttime"),
-        )
-
-    variable_timings: dict[str, str] = {}
-    if variable_ids:
-        variable_timings = dict(
-            Variables.objects.filter(
-                id__in=variable_ids,
-                defaulttime__isnull=False,
-            ).values_list("id", "defaulttime"),
-        )
-
-    category_timings: dict[str, str] = {}
-    if category_ids:
-        category_timings = dict(
-            Categories.objects.filter(
-                id__in=category_ids,
-                defaulttime__isnull=False,
-            ).values_list("id", "defaulttime"),
-        )
-
-    return (
-        game_time_columns,
-        game_is_ce,
-        value_timings,
-        variable_timings,
-        category_timings,
-    )
-
-
-def resolve_time_column(
-    leaderboard: dict,
-    *,
-    game_time_columns: dict[str, dict[str, str]],
-    value_timings: dict[str, str],
-    variable_timings: dict[str, str],
-    category_timings: dict[str, str],
-) -> str:
-    """Resolve a leaderboard's time column from precomputed metadata.
-
-    Mirrors `get_leaderboard_time_column` but reads from caches instead of
-    the database, for use inside batch loops.
+    Returns:
+        game_is_ce (dict[str, bool]): Maps each referenced game id to its `is_ce` flag.
     """
-    var_map = leaderboard.get("variable_value_map") or {}
-    for var_id in sorted(var_map.keys()):
-        val_id = var_map[var_id]
-        vt = value_timings.get(val_id)
-        if vt:
-            return TIME_COLUMN_MAP.get(vt, "time_secs")
-    for var_id in sorted(var_map.keys()):
-        vt = variable_timings.get(var_id)
-        if vt:
-            return TIME_COLUMN_MAP.get(vt, "time_secs")
-
-    cat_id = leaderboard.get("category_id")
-    if cat_id:
-        ct = category_timings.get(cat_id)
-        if ct:
-            return TIME_COLUMN_MAP.get(ct, "time_secs")
-
-    return (
-        game_time_columns.get(leaderboard["game_id"], {}).get(leaderboard["runtype"])
-        or "time_secs"
-    )
+    game_ids = {lb["game_id"] for lb in leaderboards}
+    _, game_is_ce = build_game_metadata(game_ids)
+    return game_is_ce
 
 
 def _build_event_stream(
@@ -219,8 +141,18 @@ def _build_event_stream(
         effective_date = run.effective_date  # type: ignore
 
         events.append((effective_date, "ADD", 0, run))
-        if is_obsolete and obsoleted_at is not None and obsoleted_at > effective_date:
-            events.append((obsoleted_at, "REMOVE", 1, run))
+        if is_obsolete:
+            # An obsolete run must always be removed from the active pool so it can never
+            # suppress or out-rank a current run. Use its recorded obsoleted_at when that is
+            # a valid later timestamp; otherwise remove it at its own effective date (a
+            # zero-duration history row that backfill_obsoleted_at refines later). Without
+            # this, an obsolete run with a NULL obsoleted_at would linger as a permanent WR.
+            remove_date = (
+                obsoleted_at
+                if obsoleted_at is not None and obsoleted_at > effective_date
+                else effective_date
+            )
+            events.append((remove_date, "REMOVE", 1, run))
 
     events.sort(key=lambda e: (e[0], e[2]))
     return events
@@ -231,6 +163,7 @@ class _WalkerState:
     runtype: str
     is_ce: bool
     max_points: int
+    time_col: str
 
     active_pool: dict[str, tuple[Runs, float]] = field(default_factory=dict)
     active_entries: dict[str, tuple["RunHistory", float]] = field(default_factory=dict)
@@ -362,7 +295,10 @@ def _handle_add(
     run: Runs,
     event_date: datetime,
 ) -> None:
-    run_time = float(run.p_time_secs or 0.0)
+    # Rank strictly by the board's primary timing method. A run without a time in that
+    # column is not ranked here (no cross-method fallback), so e.g. an IGT-only run never
+    # leaks onto an RTA board. Display-side p_time_secs may still fall back; ranking does not.
+    run_time = float(getattr(run, state.time_col, None) or 0.0)
     if not run_time:
         return
 
@@ -754,6 +690,7 @@ def process_leaderboard(
         runtype=runtype,
         is_ce=is_ce,
         max_points=max_points,
+        time_col=get_leaderboard_time_column(leaderboard),
     )
 
     events = _build_event_stream(runs)
@@ -765,6 +702,14 @@ def process_leaderboard(
             _handle_remove(state, run, event_date)
 
     if not dry_run and state.new_entries:
+        open_run_ids = [
+            entry.run.id for entry in state.new_entries if entry.end_date is None
+        ]
+        if open_run_ids:
+            RunHistory.objects.filter(
+                run_id__in=open_run_ids,
+                end_date__isnull=True,
+            ).delete()
         RunHistory.objects.bulk_create(state.new_entries, batch_size=500)
 
     runs_to_fix = _sync_runs_points(state, runs, dry_run=dry_run)
@@ -809,7 +754,8 @@ def _assign_places(
     Recalculations usually occur during reconciliation, point changes, or something else major;
     because of this, this shouldn't run super often. The API has ways to handle this properly, but
     when you are dealing with lot of data (e.g. schema conversion), this is needed to properly
-    wire and set things up."""
+    wire and set things up.
+    """
     ranked = sorted(
         (
             (run, run_time)

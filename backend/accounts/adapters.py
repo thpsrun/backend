@@ -14,18 +14,16 @@ from django.db import transaction
 from django.http import HttpRequest, HttpResponseRedirect
 from srl.models import Players
 
-from accounts.oauth_connect import (
-    _CONNECT_COMPLETE_URL_PATH,
+from accounts.oauth_intent import (
+    CONNECT_FLOW,
+    LOGIN_FLOW,
+    REAUTH_FLOW,
+    SIGNUP_FLOW,
     handle_connect,
+    handle_login,
+    handle_reauth,
+    handle_signup,
 )
-from accounts.oauth_connect import clear_intent as clear_connect_intent
-from accounts.oauth_connect import peek_intent as peek_connect_intent
-from accounts.oauth_login import handle_login
-from accounts.oauth_login import peek_intent as peek_login_intent
-from accounts.oauth_reauth import handle_reauth
-from accounts.oauth_reauth import peek_intent as peek_reauth_intent
-from accounts.oauth_signup import handle_signup
-from accounts.oauth_signup import peek_intent as peek_signup_intent
 from accounts.privileges import social_login_requires_mfa
 
 TWITCH_LOGIN_RE: re.Pattern[str] = re.compile(r"^[A-Za-z0-9_]{1,25}$")
@@ -88,12 +86,12 @@ class SocialAccountAdapter(DefaultSocialAccountAdapter):
         _check_oauth_unique(sociallogin, exclude_user=exclude_user)  # type: ignore
 
         if process == "connect":
-            connect_intent = peek_connect_intent(request)
+            connect_intent = CONNECT_FLOW.peek_intent(request)
             if connect_intent is None:
-                clear_connect_intent(request)
+                CONNECT_FLOW.clear_intent(request)
                 raise ImmediateHttpResponse(
                     HttpResponseRedirect(
-                        f"{_CONNECT_COMPLETE_URL_PATH}"
+                        f"{CONNECT_FLOW.complete_url_path}"
                         f"?status=error&reason=intent_expired",
                     ),
                 )
@@ -103,17 +101,17 @@ class SocialAccountAdapter(DefaultSocialAccountAdapter):
         # At most one intent should exist per session. peek (not read) is used so an expired
         # intent still routes to its own handler and surfaces as intent_expired in the popup,
         # instead of being auto-cleared and falling through to the wrong flow.
-        reauth_intent = peek_reauth_intent(request)
+        reauth_intent = REAUTH_FLOW.peek_intent(request)
         if reauth_intent is not None:
             handle_reauth(request, sociallogin, reauth_intent)
             return
 
-        signup_intent = peek_signup_intent(request)
+        signup_intent = SIGNUP_FLOW.peek_intent(request)
         if signup_intent is not None:
             handle_signup(request, sociallogin, signup_intent)
             return
 
-        login_intent = peek_login_intent(request)
+        login_intent = LOGIN_FLOW.peek_intent(request)
         if login_intent is not None:
             handle_login(request, sociallogin, login_intent)
             return
@@ -139,9 +137,9 @@ class SocialAccountAdapter(DefaultSocialAccountAdapter):
         """Send the popup to the connect-complete page once allauth has linked the account."""
         # handle_connect leaves the intent in place so allauth can finish linking; the
         # success path clears it here.
-        clear_connect_intent(request)
+        CONNECT_FLOW.clear_intent(request)
         return (
-            f"{_CONNECT_COMPLETE_URL_PATH}"
+            f"{CONNECT_FLOW.complete_url_path}"
             f"?status=ok&provider={socialaccount.provider}"
         )
 

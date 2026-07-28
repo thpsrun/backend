@@ -1,5 +1,4 @@
 from pydantic import BaseModel, ConfigDict, Field
-
 from srl.srcom.schema.src import SrcLeaderboardRun
 
 
@@ -12,7 +11,6 @@ class RunSyncContext(BaseModel):
     category_type: str
     level_id: str | None = None
     level_name: str | None = None
-    wr_time_secs: float
     max_points: int
     default_time_type: str
     variable_value_map: dict[str, str]

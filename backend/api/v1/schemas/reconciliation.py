@@ -14,6 +14,14 @@ class ReconcileScope(str, Enum):
     SERIES = "SERIES"
 
 
+class GameReconcileMode(str, Enum):
+    """Mode controlling which runs the reconcile job processes for a game."""
+
+    RECENT = "recent"
+    FULL_GAME = "full_game"
+    IL = "il"
+
+
 class SourceOfTruth(str, Enum):
     """Source of Truth is how to reconciliation determines who 'wins' when there is differences."""
 
@@ -73,6 +81,8 @@ class ReconcileRequest(Schema):
     source_of_truth: SourceOfTruth = SourceOfTruth.SRC
     target_id: str | None = None
     target_descriptor: LeaderboardTarget | None = None
+    mode: GameReconcileMode = GameReconcileMode.RECENT
+    limit: int | None = None
 
     @model_validator(mode="after")
     def _check_target_shape(self) -> Self:
@@ -111,7 +121,8 @@ class ItemSummary(Schema):
     Attributes:
         record_type (str): Type of record affected (run, player, etc.).
         record_id (str): ID of the affected record.
-        action (str): Action taken (created, updated, skipped, failed).
+        action (str): Action taken (created, updated, skipped_local_wins,
+            skipped_no_change, missing_on_src, failed).
         phase: (ItemPhase): The phase currently being done.
         changes (dict[str, dict]): Dictionary of field changes {field: {old, new}}.
         error (str): Error message if action failed.
@@ -170,6 +181,8 @@ class JobOut(Schema):
     finished_at: datetime | None
     error_summary: str
     celery_task_id: str
+    mode: GameReconcileMode
+    run_limit: int | None
 
     model_config = ConfigDict(
         json_schema_extra={

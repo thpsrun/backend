@@ -58,7 +58,7 @@ class Games(models.Model):
             "being created and must be set manually."
         ),
     )
-    required_methods_fg = ArrayField(
+    allowed_methods_fg = ArrayField(
         base_field=models.CharField(
             max_length=20,
             choices=LeaderboardChoices.choices,
@@ -71,7 +71,7 @@ class Games(models.Model):
             "defaulttime."
         ),
     )
-    required_methods_il = ArrayField(
+    allowed_methods_il = ArrayField(
         base_field=models.CharField(
             max_length=20,
             choices=LeaderboardChoices.choices,
@@ -82,6 +82,34 @@ class Games(models.Model):
         help_text=(
             "Timing methods allowed for individual-level runs of this game. Must include "
             "idefaulttime."
+        ),
+    )
+    required_methods_fg = ArrayField(
+        base_field=models.CharField(
+            max_length=20,
+            choices=LeaderboardChoices.choices,
+        ),
+        default=all_methods_default,
+        blank=False,
+        verbose_name="Required FG Timing Methods",
+        help_text=(
+            "Timing methods a full-game run MUST supply. Must be a subset of the "
+            "allowed methods and include defaulttime. Allowed methods not listed "
+            "here are optional."
+        ),
+    )
+    required_methods_il = ArrayField(
+        base_field=models.CharField(
+            max_length=20,
+            choices=LeaderboardChoices.choices,
+        ),
+        default=all_methods_default,
+        blank=False,
+        verbose_name="Required IL Timing Methods",
+        help_text=(
+            "Timing methods an IL run MUST supply. Must be a subset of the allowed "
+            "methods and include idefaulttime. Allowed methods not listed here are "
+            "optional."
         ),
     )
     platforms = models.ManyToManyField(
@@ -152,17 +180,45 @@ class Games(models.Model):
     def clean(self) -> None:
         super().clean()
         errors: dict = {}
+        if not self.allowed_methods_fg:
+            errors["allowed_methods_fg"] = "Must contain at least one timing method."
+        if not self.allowed_methods_il:
+            errors["allowed_methods_il"] = "Must contain at least one timing method."
         if not self.required_methods_fg:
             errors["required_methods_fg"] = "Must contain at least one timing method."
         if not self.required_methods_il:
             errors["required_methods_il"] = "Must contain at least one timing method."
+        if self.allowed_methods_fg and self.defaulttime not in self.allowed_methods_fg:
+            errors["defaulttime"] = (
+                f"defaulttime ({self.defaulttime}) must be one of allowed_methods_fg "
+                f"({list(self.allowed_methods_fg)})."
+            )
+        if self.allowed_methods_il and self.idefaulttime not in self.allowed_methods_il:
+            errors["idefaulttime"] = (
+                f"idefaulttime ({self.idefaulttime}) must be one of allowed_methods_il "
+                f"({list(self.allowed_methods_il)})."
+            )
+        if self.allowed_methods_fg and not set(self.required_methods_fg or []).issubset(
+            self.allowed_methods_fg
+        ):
+            errors["required_methods_fg"] = (
+                f"Must be a subset of allowed_methods_fg "
+                f"({list(self.allowed_methods_fg)})."
+            )
+        if self.allowed_methods_il and not set(self.required_methods_il or []).issubset(
+            self.allowed_methods_il
+        ):
+            errors["required_methods_il"] = (
+                f"Must be a subset of allowed_methods_il "
+                f"({list(self.allowed_methods_il)})."
+            )
         if (
             self.required_methods_fg
             and self.defaulttime not in self.required_methods_fg
         ):
             errors["defaulttime"] = (
                 f"defaulttime ({self.defaulttime}) must be one of required_methods_fg "
-                f"({list(self.required_methods_fg)})."
+                f"({list(self.required_methods_fg)}); the primary can never be optional."
             )
         if (
             self.required_methods_il
@@ -170,19 +226,19 @@ class Games(models.Model):
         ):
             errors["idefaulttime"] = (
                 f"idefaulttime ({self.idefaulttime}) must be one of required_methods_il "
-                f"({list(self.required_methods_il)})."
+                f"({list(self.required_methods_il)}); the primary can never be optional."
             )
-        if self.pk and self.required_methods_fg:
-            fg_set = set(self.required_methods_fg)
+        if self.pk and self.allowed_methods_fg:
+            fg_set = set(self.allowed_methods_fg)
             bad_cats = self.categories_set.filter(  # type: ignore
                 type="per-game",
-                required_methods__isnull=False,
+                allowed_methods__isnull=False,
             )
             offenders = [
-                c.id for c in bad_cats if not set(c.required_methods).issubset(fg_set)
+                c.id for c in bad_cats if not set(c.allowed_methods).issubset(fg_set)
             ]
             if offenders:
-                errors["required_methods_fg"] = (
+                errors["allowed_methods_fg"] = (
                     f"Cannot narrow: per-game categories rely on removed methods. "
                     f"Offending category ids: {offenders}"
                 )
@@ -203,20 +259,39 @@ class Games(models.Model):
                     f"Cannot narrow: per-game categories have defaulttime outside the "
                     f"new window. Offending category ids: {default_offenders}"
                 )
-                existing = errors.get("required_methods_fg")
-                errors["required_methods_fg"] = f"{existing} {msg}" if existing else msg
+                existing = errors.get("allowed_methods_fg")
+                errors["allowed_methods_fg"] = f"{existing} {msg}" if existing else msg
 
-        if self.pk and self.required_methods_il:
-            il_set = set(self.required_methods_il)
+            # Reject narrowing if a per-game category's `required_methods` would be
+            # stranded outside the new window (even when its own `allowed_methods`
+            # is null/inherited, so the offender loop above wouldn't catch it).
+            required_offenders = [
+                c.id
+                for c in self.categories_set.filter(  # type: ignore
+                    type="per-game",
+                    required_methods__isnull=False,
+                )
+                if not set(c.required_methods).issubset(fg_set)
+            ]
+            if required_offenders:
+                msg = (
+                    f"Cannot narrow: per-game categories have required_methods outside "
+                    f"the new window. Offending category ids: {required_offenders}"
+                )
+                existing = errors.get("allowed_methods_fg")
+                errors["allowed_methods_fg"] = f"{existing} {msg}" if existing else msg
+
+        if self.pk and self.allowed_methods_il:
+            il_set = set(self.allowed_methods_il)
             bad_cats = self.categories_set.filter(  # type: ignore
                 type="per-level",
-                required_methods__isnull=False,
+                allowed_methods__isnull=False,
             )
             offenders = [
-                c.id for c in bad_cats if not set(c.required_methods).issubset(il_set)
+                c.id for c in bad_cats if not set(c.allowed_methods).issubset(il_set)
             ]
             if offenders:
-                errors["required_methods_il"] = (
+                errors["allowed_methods_il"] = (
                     f"Cannot narrow: per-level categories rely on removed methods. "
                     f"Offending category ids: {offenders}"
                 )
@@ -234,8 +309,27 @@ class Games(models.Model):
                     f"Cannot narrow: per-level categories have defaulttime outside the "
                     f"new window. Offending category ids: {default_offenders}"
                 )
-                existing = errors.get("required_methods_il")
-                errors["required_methods_il"] = f"{existing} {msg}" if existing else msg
+                existing = errors.get("allowed_methods_il")
+                errors["allowed_methods_il"] = f"{existing} {msg}" if existing else msg
+
+            # Reject narrowing if a per-level category's `required_methods` would be
+            # stranded outside the new window (even when its own `allowed_methods`
+            # is null/inherited, so the offender loop above wouldn't catch it).
+            required_offenders = [
+                c.id
+                for c in self.categories_set.filter(  # type: ignore
+                    type="per-level",
+                    required_methods__isnull=False,
+                )
+                if not set(c.required_methods).issubset(il_set)
+            ]
+            if required_offenders:
+                msg = (
+                    f"Cannot narrow: per-level categories have required_methods outside "
+                    f"the new window. Offending category ids: {required_offenders}"
+                )
+                existing = errors.get("allowed_methods_il")
+                errors["allowed_methods_il"] = f"{existing} {msg}" if existing else msg
 
         if errors:
             raise ValidationError(errors)

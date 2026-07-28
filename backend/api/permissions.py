@@ -1,7 +1,9 @@
 from collections.abc import Callable
 from typing import Any
 
-from accounts.privileges import compute_has_required_factor, compute_privileged
+from accounts.privileges import is_gated
+from api.csrf import enforce_csrf
+from api.models import APIKey
 from auditlog.context import set_actor
 from django.conf import settings
 from django.contrib.auth.models import AnonymousUser
@@ -19,9 +21,6 @@ from srl.rules import (
     owns_guide,
 )
 
-from api.csrf import enforce_csrf
-from api.models import APIKey
-
 # Capabilities exposed as API-key scopes. Each maps to True if game-scoped, False if
 # user-scoped. The /me/capabilities advisory endpoint, the API key scope-creation path,
 # and the backability check that drives signal-based revocation all read from this dict.
@@ -30,7 +29,7 @@ CAPABILITY_SCOPED: dict[str, bool] = {
     "runs.edit_own": True,
     "runs.edit_any": True,
     "runs.verify": True,
-    "runs.delete": True,
+    "runs.delete": False,
     "guides.create": True,
     "guides.edit_own": True,
     "guides.edit_any": True,
@@ -92,7 +91,10 @@ MOD_SCOPES: frozenset[str] = frozenset(
         "games.audit.view",
     },
 )
-SU_ONLY_SCOPES: frozenset[str] = frozenset({"runs.delete"})
+# Superuser-only AND game-narrowed scopes. Currently empty: runs.delete is superuser-only but
+# game-agnostic, so it lives as a global scope (CAPABILITY_SCOPED["runs.delete"] = False) rather
+# than here. Kept for the categorization assert and any future su-only game-scoped capability.
+SU_ONLY_SCOPES: frozenset[str] = frozenset()
 
 # Fail fast at import time if a new scoped capability is added to CAPABILITY_SCOPED without
 # being categorized above. Keeps /me/capabilities and the backability check from silently
@@ -197,10 +199,8 @@ def _resolve_caller(
             key: APIKey = APIKey.objects.get_from_key(api_key_header)
         except APIKey.DoesNotExist:
             raise HttpError(401, "Invalid or unusable API key")
-        if (
-            getattr(settings, "MFA_ENFORCE_FOR_PRIVILEGED", True)
-            and compute_privileged(key.user)
-            and not compute_has_required_factor(key.user)
+        if getattr(settings, "MFA_ENFORCE_FOR_PRIVILEGED", True) and is_gated(
+            key.user,
         ):
             raise HttpError(
                 403,
@@ -240,7 +240,8 @@ def _key_scope_admits(
     target: Any | None,
 ) -> bool:
     """Verifies differences between scopes and games, ensuring that the user has no powers than
-    they had requested."""
+    they had requested.
+    """
     caps: list[str] = list(key.scope_capabilities or [])
     if caps and capability not in caps:
         return False

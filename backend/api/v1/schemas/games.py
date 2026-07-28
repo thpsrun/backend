@@ -66,8 +66,10 @@ class GameBaseSchema(SlugMixin, BaseEmbedSchema):
         idefaulttime (str): Default timing method for individual level runs.
         pointsmax (int): Maximum points for world record full-game runs.
         ipointsmax (int): Maximum points for world record IL runs.
-        required_methods_fg (list[TimingMethodType]): Timing methods allowed for full-game runs.
-        required_methods_il (list[TimingMethodType]): Timing methods allowed for IL runs.
+        allowed_methods_fg (list[TimingMethodType]): Timing methods allowed for full-game runs.
+        allowed_methods_il (list[TimingMethodType]): Timing methods allowed for IL runs.
+        required_methods_fg (list[TimingMethodType]): Timing methods a full-game run must supply.
+        required_methods_il (list[TimingMethodType]): Timing methods an IL run must supply.
         rules (str | None): Game-level rules text.
     """
 
@@ -96,13 +98,21 @@ class GameBaseSchema(SlugMixin, BaseEmbedSchema):
     ipointsmax: int = Field(
         settings.POINTS_MAX_IL, ge=1, description="WR points for IL runs"
     )
-    required_methods_fg: list[TimingMethodType] = Field(
+    allowed_methods_fg: list[TimingMethodType] = Field(
         default_factory=list,
         description="Timing methods allowed for full-game runs",
     )
-    required_methods_il: list[TimingMethodType] = Field(
+    allowed_methods_il: list[TimingMethodType] = Field(
         default_factory=list,
         description="Timing methods allowed for individual-level runs",
+    )
+    required_methods_fg: list[TimingMethodType] = Field(
+        default_factory=list,
+        description="Timing methods a full-game run MUST supply. Subset of allowed_methods_fg.",
+    )
+    required_methods_il: list[TimingMethodType] = Field(
+        default_factory=list,
+        description="Timing methods an IL run MUST supply. Subset of allowed_methods_il.",
     )
 
 
@@ -131,6 +141,8 @@ class GameSchema(GameBaseSchema):
                 "idefaulttime": "rta",
                 "pointsmax": 1000,
                 "ipointsmax": 100,
+                "allowed_methods_fg": ["rta", "igt"],
+                "allowed_methods_il": ["rta"],
                 "required_methods_fg": ["rta", "igt"],
                 "required_methods_il": ["rta"],
                 "moderators": [
@@ -228,13 +240,21 @@ class GameCreateSchema(SlugMixin, BaseEmbedSchema):
     ipointsmax: int = Field(
         settings.POINTS_MAX_IL, ge=1, description="WR points for IL runs"
     )
-    required_methods_fg: list[TimingMethodType] | None = Field(
+    allowed_methods_fg: list[TimingMethodType] | None = Field(
         default=None,
         description="Allowed FG timing methods. If null, defaults to all three.",
     )
-    required_methods_il: list[TimingMethodType] | None = Field(
+    allowed_methods_il: list[TimingMethodType] | None = Field(
         default=None,
         description="Allowed IL timing methods. If null, defaults to all three.",
+    )
+    required_methods_fg: list[TimingMethodType] | None = Field(
+        default=None,
+        description="Required FG timing methods. If null, defaults to all three.",
+    )
+    required_methods_il: list[TimingMethodType] | None = Field(
+        default=None,
+        description="Required IL timing methods. If null, defaults to all three.",
     )
 
     @field_validator("rules", mode="after")
@@ -276,6 +296,8 @@ class GameUpdateSchema(BaseEmbedSchema):
     idefaulttime: TimingMethodType | None = None
     pointsmax: int | None = Field(default=None, ge=1)
     ipointsmax: int | None = Field(default=None, ge=1)
+    allowed_methods_fg: list[TimingMethodType] | None = None
+    allowed_methods_il: list[TimingMethodType] | None = None
     required_methods_fg: list[TimingMethodType] | None = None
     required_methods_il: list[TimingMethodType] | None = None
 
@@ -295,9 +317,14 @@ class ResolveTimingResponse(BaseEmbedSchema):
     """Resolved timing methods for a (game, category, level, variables) selection.
 
     Attributes:
-        resolved_required_methods (list[TimingMethodType]): Timing methods the run must
+        resolved_allowed_methods (list[TimingMethodType]): Timing methods the run may
             provide values for. Resolved by walking VariableValue -> Variable -> Category
-            -> Game (`required_methods_il` for ILs, `required_methods_fg` otherwise).
+            -> Game (`allowed_methods_il` for ILs, `allowed_methods_fg` otherwise).
+        resolved_required_methods (list[TimingMethodType]): The strict subset of
+            `resolved_allowed_methods` a run must supply. Resolved by the same chain
+            against `required_methods_il` / `required_methods_fg`.
+        resolved_optional_methods (list[TimingMethodType]): `resolved_allowed_methods` minus
+            `resolved_required_methods`; allowed but not mandatory.
         resolved_primary_method (TimingMethodType): The primary method used for leaderboard
             placement, resolved by the same chain against `defaulttime` / `idefaulttime`.
     """
@@ -305,14 +332,22 @@ class ResolveTimingResponse(BaseEmbedSchema):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
+                "resolved_allowed_methods": ["rta", "igt"],
                 "resolved_required_methods": ["rta", "igt"],
+                "resolved_optional_methods": [],
                 "resolved_primary_method": "rta",
             },
         },
     )
 
+    resolved_allowed_methods: list[TimingMethodType] = Field(
+        description="Timing methods allowed for the selection.",
+    )
     resolved_required_methods: list[TimingMethodType] = Field(
-        description="Timing methods required for the selection.",
+        description="Strict subset of resolved_allowed_methods a run must supply.",
+    )
+    resolved_optional_methods: list[TimingMethodType] = Field(
+        description="resolved_allowed_methods minus resolved_required_methods.",
     )
     resolved_primary_method: TimingMethodType = Field(
         description="Primary timing method used for leaderboard placement.",

@@ -108,16 +108,46 @@ class DefaultAdmin(admin.ModelAdmin):
     search_fields = ["name"]
 
 
+class InheritTimingMethodsForm(forms.ModelForm):
+    """Admin form for models whose `allowed_methods` may be NULL (inherit).
+
+    The default ArrayField widget submits an empty text box as `[]`, which the model
+    validators reject ("Cannot be an empty list; use null to inherit."), so the admin
+    had no way to clear an override back to the inherit state.
+    """
+
+    def clean_allowed_methods(
+        self,
+    ) -> list[str] | None:
+        """Return None instead of an empty list so a blank box means inherit."""
+        return self.cleaned_data.get("allowed_methods") or None
+
+    def clean_required_methods(
+        self,
+    ) -> list[str] | None:
+        """Return None instead of an empty list so a blank box means inherit."""
+        return self.cleaned_data.get("required_methods") or None
+
+
 class CategoriesAdmin(admin.ModelAdmin):
     """Admin panel used with the `Categories` model."""
 
+    form = InheritTimingMethodsForm
     list_display = ["name"]
     search_fields = ["id"]
     list_filter = ["game"]
 
 
+class VariablesAdmin(DefaultAdmin):
+    """Admin panel used with the `Variables` model."""
+
+    form = InheritTimingMethodsForm
+
+
 class VariableValuesAdmin(admin.ModelAdmin):
     """Admin panel used with the `VariableValues` model."""
+
+    form = InheritTimingMethodsForm
 
     list_display = [
         "name",
@@ -228,7 +258,7 @@ class CountryCodesAdmin(admin.ModelAdmin):
 
 admin.site.register(Categories, CategoriesAdmin)
 admin.site.register(Levels, CategoriesAdmin)
-admin.site.register(Variables, DefaultAdmin)
+admin.site.register(Variables, VariablesAdmin)
 admin.site.register(VariableValues, VariableValuesAdmin)
 admin.site.register(Runs, SpeedrunAdmin)
 admin.site.register(Players, PlayersAdmin)

@@ -564,11 +564,11 @@ class VariableTimingClean(TestCase):
             idefaulttime=LeaderboardChoices.REALTIME,
             pointsmax=1000,
             ipointsmax=250,
-            required_methods_fg=[
+            allowed_methods_fg=[
                 LeaderboardChoices.REALTIME,
                 LeaderboardChoices.INGAME,
             ],
-            required_methods_il=[
+            allowed_methods_il=[
                 LeaderboardChoices.REALTIME,
             ],
         )
@@ -579,7 +579,7 @@ class VariableTimingClean(TestCase):
             slug="any",
             type="per-game",
             url="https://example.com/any",
-            required_methods=[LeaderboardChoices.REALTIME],
+            allowed_methods=[LeaderboardChoices.REALTIME],
             defaulttime=LeaderboardChoices.REALTIME,
         )
 
@@ -595,7 +595,7 @@ class VariableTimingClean(TestCase):
             "game": self.game,
             "cat": self.category,
             "defaulttime": None,
-            "required_methods": None,
+            "allowed_methods": None,
         }
         defaults.update(kwargs)
         return Variables(**defaults)
@@ -603,28 +603,28 @@ class VariableTimingClean(TestCase):
     def test_variable_allowed_must_be_subset_of_category_allowed(
         self,
     ) -> None:
-        v = self._make(required_methods=[LeaderboardChoices.INGAME])
+        v = self._make(allowed_methods=[LeaderboardChoices.INGAME])
         with self.assertRaises(ValidationError) as cm:
             v.full_clean()
-        self.assertIn("required_methods", cm.exception.message_dict)
+        self.assertIn("allowed_methods", cm.exception.message_dict)
 
     def test_variable_inherits_category_allowed_when_null(
         self,
     ) -> None:
-        self._make(required_methods=None).full_clean()
+        self._make(allowed_methods=None).full_clean()
 
     def test_variable_explicit_primary_required_when_excluding_parent_primary(
         self,
     ) -> None:
         # Widen category for this test so the variable can plausibly narrow further.
-        self.category.required_methods = [
+        self.category.allowed_methods = [
             LeaderboardChoices.REALTIME,
             LeaderboardChoices.INGAME,
         ]
         self.category.defaulttime = LeaderboardChoices.REALTIME
         self.category.save()
         v = self._make(
-            required_methods=[LeaderboardChoices.INGAME],
+            allowed_methods=[LeaderboardChoices.INGAME],
             defaulttime=None,
         )
         with self.assertRaises(ValidationError) as cm:
@@ -636,9 +636,9 @@ class VariableTimingClean(TestCase):
     ) -> None:
         v = self._make(
             cat=None,
-            required_methods=[LeaderboardChoices.INGAME],
+            allowed_methods=[LeaderboardChoices.INGAME],
         )
-        v.full_clean()  # INGAME is in game.required_methods_fg
+        v.full_clean()  # INGAME is in game.allowed_methods_fg
 
     def test_variable_existing_scope_rule_still_fires(
         self,
@@ -647,6 +647,43 @@ class VariableTimingClean(TestCase):
         v = self._make(scope="single-level", level=None)
         with self.assertRaises(ValidationError):
             v.full_clean()
+
+    def test_variable_required_must_be_subset_of_effective_allowed(
+        self,
+    ) -> None:
+        # category.allowed_methods = [REALTIME] (from setUpTestData); required_methods
+        # of INGAME is not in the effective allowed window.
+        v = self._make(required_methods=[LeaderboardChoices.INGAME])
+        with self.assertRaises(ValidationError) as cm:
+            v.full_clean()
+        self.assertIn("required_methods", cm.exception.message_dict)
+
+    def test_variable_required_must_include_inherited_primary(
+        self,
+    ) -> None:
+        # Widen category so the variable's own allowed_methods can include both, then
+        # narrow required_methods to exclude the inherited primary.
+        self.category.allowed_methods = [
+            LeaderboardChoices.REALTIME,
+            LeaderboardChoices.INGAME,
+        ]
+        self.category.defaulttime = LeaderboardChoices.REALTIME
+        self.category.save()
+        v = self._make(
+            allowed_methods=[
+                LeaderboardChoices.REALTIME,
+                LeaderboardChoices.INGAME,
+            ],
+            required_methods=[LeaderboardChoices.INGAME],
+        )
+        with self.assertRaises(ValidationError) as cm:
+            v.full_clean()
+        self.assertIn("required_methods", cm.exception.message_dict)
+
+    def test_variable_null_required_methods_inherits_silently(
+        self,
+    ) -> None:
+        self._make(required_methods=None).full_clean()
 
 
 class VariableValueTimingClean(TestCase):
@@ -666,11 +703,11 @@ class VariableValueTimingClean(TestCase):
             idefaulttime=LeaderboardChoices.REALTIME,
             pointsmax=1000,
             ipointsmax=250,
-            required_methods_fg=[
+            allowed_methods_fg=[
                 LeaderboardChoices.REALTIME,
                 LeaderboardChoices.INGAME,
             ],
-            required_methods_il=[LeaderboardChoices.REALTIME],
+            allowed_methods_il=[LeaderboardChoices.REALTIME],
         )
         cls.category = Categories.objects.create(
             id="vvcat1",
@@ -687,7 +724,7 @@ class VariableValueTimingClean(TestCase):
             scope="full-game",
             game=cls.game,
             cat=cls.category,
-            required_methods=[
+            allowed_methods=[
                 LeaderboardChoices.REALTIME,
                 LeaderboardChoices.INGAME,
             ],
@@ -704,7 +741,7 @@ class VariableValueTimingClean(TestCase):
             "name": "Sick",
             "slug": "sick",
             "defaulttime": None,
-            "required_methods": None,
+            "allowed_methods": None,
         }
         defaults.update(kwargs)
         return VariableValues(**defaults)
@@ -712,16 +749,16 @@ class VariableValueTimingClean(TestCase):
     def test_value_must_be_subset_of_variable(
         self,
     ) -> None:
-        v = self._make(required_methods=[LeaderboardChoices.REALTIME_NOLOADS])
+        v = self._make(allowed_methods=[LeaderboardChoices.REALTIME_NOLOADS])
         with self.assertRaises(ValidationError) as cm:
             v.full_clean()
-        self.assertIn("required_methods", cm.exception.message_dict)
+        self.assertIn("allowed_methods", cm.exception.message_dict)
 
     def test_value_explicit_primary_when_excluding_parent_primary(
         self,
     ) -> None:
         v = self._make(
-            required_methods=[LeaderboardChoices.INGAME],
+            allowed_methods=[LeaderboardChoices.INGAME],
             defaulttime=None,
         )
         with self.assertRaises(ValidationError) as cm:
@@ -732,9 +769,38 @@ class VariableValueTimingClean(TestCase):
         self,
     ) -> None:
         self._make(
-            required_methods=[LeaderboardChoices.INGAME],
+            allowed_methods=[LeaderboardChoices.INGAME],
             defaulttime=LeaderboardChoices.INGAME,
         ).full_clean()
+
+    def test_value_required_must_be_subset_of_variable(
+        self,
+    ) -> None:
+        v = self._make(required_methods=[LeaderboardChoices.REALTIME_NOLOADS])
+        with self.assertRaises(ValidationError) as cm:
+            v.full_clean()
+        self.assertIn("required_methods", cm.exception.message_dict)
+
+    def test_value_required_must_include_inherited_primary(
+        self,
+    ) -> None:
+        # variable.defaulttime is REALTIME (inherited primary); excluding it from
+        # required_methods must be rejected.
+        v = self._make(
+            allowed_methods=[
+                LeaderboardChoices.REALTIME,
+                LeaderboardChoices.INGAME,
+            ],
+            required_methods=[LeaderboardChoices.INGAME],
+        )
+        with self.assertRaises(ValidationError) as cm:
+            v.full_clean()
+        self.assertIn("required_methods", cm.exception.message_dict)
+
+    def test_value_null_required_methods_inherits_silently(
+        self,
+    ) -> None:
+        self._make(required_methods=None).full_clean()
 
 
 class VariableNarrowingCascade(TestCase):
@@ -754,11 +820,11 @@ class VariableNarrowingCascade(TestCase):
             idefaulttime=LeaderboardChoices.REALTIME,
             pointsmax=1000,
             ipointsmax=250,
-            required_methods_fg=[
+            allowed_methods_fg=[
                 LeaderboardChoices.REALTIME,
                 LeaderboardChoices.INGAME,
             ],
-            required_methods_il=[
+            allowed_methods_il=[
                 LeaderboardChoices.REALTIME,
                 LeaderboardChoices.INGAME,
             ],
@@ -778,7 +844,7 @@ class VariableNarrowingCascade(TestCase):
             scope="full-game",
             game=cls.game,
             cat=cls.cat,
-            required_methods=[
+            allowed_methods=[
                 LeaderboardChoices.REALTIME,
                 LeaderboardChoices.INGAME,
             ],
@@ -789,32 +855,32 @@ class VariableNarrowingCascade(TestCase):
             var=cls.variable,
             name="Sick",
             slug="sick",
-            required_methods=[LeaderboardChoices.INGAME],
+            allowed_methods=[LeaderboardChoices.INGAME],
             defaulttime=LeaderboardChoices.INGAME,
         )
 
     def test_variable_narrowing_rejected_if_value_uses_removed_method(
         self,
     ) -> None:
-        self.variable.required_methods = [LeaderboardChoices.REALTIME]
+        self.variable.allowed_methods = [LeaderboardChoices.REALTIME]
         self.variable.defaulttime = LeaderboardChoices.REALTIME
         with self.assertRaises(ValidationError) as cm:
             self.variable.full_clean()
-        self.assertIn("required_methods", cm.exception.message_dict)
+        self.assertIn("allowed_methods", cm.exception.message_dict)
 
 
 class VariableSchemaTimingFields(TestCase):
 
-    def test_variable_base_schema_has_required_methods(
+    def test_variable_base_schema_has_allowed_methods(
         self,
     ) -> None:
         from api.v1.schemas.variables import VariableBaseSchema
 
-        self.assertIn("required_methods", VariableBaseSchema.model_fields)
+        self.assertIn("allowed_methods", VariableBaseSchema.model_fields)
 
-    def test_variable_value_schema_has_required_methods(
+    def test_variable_value_schema_has_allowed_methods(
         self,
     ) -> None:
         from api.v1.schemas.variables import VariableValueSchema
 
-        self.assertIn("required_methods", VariableValueSchema.model_fields)
+        self.assertIn("allowed_methods", VariableValueSchema.model_fields)

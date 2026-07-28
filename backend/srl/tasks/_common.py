@@ -12,7 +12,7 @@ from srl.srcom.utils import variables_hash
 logger = logging.getLogger(__name__)
 
 RECALC_LOCK_TTL_SECONDS = 300
-API_ACTIVITY_LOG_RETENTION_DAYS = 90
+API_ACTIVITY_LOG_RETENTION_DAYS = 180
 
 
 @contextmanager
@@ -22,7 +22,8 @@ def actor_from_user_id(
     """Re-establish actor context inside a Celery task body.
 
     ContextVar doesn't survive the broker hop, so callers thread `actor_user_id`
-    through and the task re-binds it from the User row on entry."""
+    through and the task re-binds it from the User row on entry.
+    """
 
     if user_id is not None:
         try:
@@ -108,7 +109,8 @@ def record_sync_outcome(
     """Single writer for sync_src_settings failure/pending paths.
 
     Replaces seven copy-paste blocks that all set
-    (status, attempts, error_category=category, last_error=str(exc)[:1000])."""
+    (status, attempts, error_category=category, last_error=str(exc)[:1000]).
+    """
     save_sync_task(
         sync_task,
         status=status,

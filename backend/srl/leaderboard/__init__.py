@@ -6,7 +6,6 @@ from srl.leaderboard.recalculation import (
     get_runs_for_leaderboard,
     get_time_column,
     process_leaderboard,
-    resolve_time_column,
 )
 from srl.leaderboard.resolution import resolve_leaderboard
 from srl.leaderboard.streaks import apply_streak_to_run
@@ -20,7 +19,6 @@ __all__ = [
     "get_runs_for_leaderboard",
     "get_time_column",
     "process_leaderboard",
-    "resolve_time_column",
     "resolve_leaderboard",
     "apply_streak_to_run",
     "recalculate_run",

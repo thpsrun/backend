@@ -9,11 +9,7 @@ from celery.exceptions import MaxRetriesExceededError
 from django.core.management import call_command
 from django_redis import get_redis_connection
 
-from srl.leaderboard.recalculation import (
-    get_leaderboard_time_column,
-    get_runs_for_leaderboard,
-)
-from srl.leaderboard.streaks import apply_streak_to_run
+from srl.leaderboard.streaks import apply_streaks_to_leaderboard
 from srl.models import Games, Runs, RunVariableValues
 from srl.srcom.utils import variables_hash
 
@@ -39,9 +35,8 @@ def recalculate_leaderboard_task(
 ) -> None:
     """Recalculate points and history for a single leaderboard variant.
 
-    Clears existing RunHistory for the variant, then rebuilds from scratch. Dispatched by
-    recalculate_run() when a run is verified, and by Phase 3 of a reconciliation job (one dispatch
-    per affected variant)."""
+    Clears existing RunHistory for the variant, then rebuilds from scratch.
+    """
 
     lock_key = recalc_lock_key(leaderboard_dict)
     redis = get_redis_connection("default")
@@ -53,7 +48,6 @@ def recalculate_leaderboard_task(
         except MaxRetriesExceededError:
             with actor_from_user_id(actor_user_id):
                 return
-            return
 
     try:
         with actor_from_user_id(actor_user_id):
@@ -71,38 +65,46 @@ def recalculate_leaderboard_task(
 
 
 @shared_task(
+    bind=True,
     name="srl.tasks.recalculate_streaks_task",
     acks_late=True,
     reject_on_worker_lost=True,
 )
 def recalculate_streaks_task(
+    self,
     leaderboard_dict: dict,
     *,
     actor_user_id: int | None = None,
 ) -> None:
-    """Recalculate streak bonus for the current WR on a leaderboard variant."""
+    """Recalculate the streak bonus for every WR (including tied) on a leaderboard variant.
 
-    with actor_from_user_id(actor_user_id):
-        time_col = get_leaderboard_time_column(leaderboard_dict)
+    Acquires the same per-variant recalc lock the board recompute uses, so the bonus/points
+    write here cannot race a concurrent run_leaderboard_recompute writing the same columns for
+    the same variant. The normal chain (recompute -> streaks) is unaffected: the recompute task
+    releases the lock before this task runs.
+    """
 
-        wr_run = (
-            get_runs_for_leaderboard(leaderboard_dict)
-            .exclude(**{f"{time_col}__lte": 0})
-            .exclude(**{f"{time_col}__isnull": True})
-            .order_by(time_col)
-            .select_related("game")
-            .prefetch_related("players")
-            .first()
-        )
-        if wr_run is None:
+    lock_key = recalc_lock_key(leaderboard_dict)
+    redis = get_redis_connection("default")
+    if not redis.set(lock_key, "1", nx=True, ex=RECALC_LOCK_TTL_SECONDS):
+        try:
+            raise self.retry(countdown=30, max_retries=3)
+        except MaxRetriesExceededError:
             return
 
-        result = apply_streak_to_run(wr_run)
-        if result is not None:
-            new_bonus, new_points = result
-            wr_run.bonus = new_bonus
-            wr_run.points = new_points
-            wr_run.save(update_fields=["bonus", "points"])
+    try:
+        with actor_from_user_id(actor_user_id):
+            # Apply the bonus to every co-WR run, not just one; otherwise the streak bonus for
+            # the previously untied WR would be lost.
+            apply_streaks_to_leaderboard(leaderboard_dict)
+    finally:
+        try:
+            redis.delete(lock_key)
+        except Exception:
+            logger.exception(
+                "recalc_lock_release_failed",
+                extra={"lock_key": lock_key},
+            )
 
 
 @shared_task(name="srl.tasks.build_streaks_task")
@@ -122,7 +124,8 @@ def rebackfill_game_runs(
 
     Runs `backfill_run_primary_data` so every run has a value in the column the leaderboard now
     ranks by, then dispatches a full board recalc so `Run.points`/`Run.bonus` reflect the new
-    ranking."""
+    ranking.
+    """
 
     with actor_from_user_id(actor_user_id):
         buf = StringIO()
@@ -152,7 +155,8 @@ def recalculate_game_boards(
 
     Dispatches `recalculate_leaderboard_task` -> `recalculate_streaks_task` as a Celery chain per
     unique variant so each variant's RunHistory, points, and streak bonus all get rebuilt without
-    having to call build_run_history / build_streaks separately."""
+    having to call build_run_history / build_streaks separately.
+    """
 
     with actor_from_user_id(actor_user_id):
         start = time.monotonic()

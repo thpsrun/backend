@@ -1,7 +1,7 @@
 from django.contrib.postgres.fields import ArrayField
 from django.db import models
 
-from srl.models.base import LeaderboardChoices, validate_allowed_subset
+from srl.models.base import LeaderboardChoices, make_slug, validate_allowed_subset
 from srl.models.games import Games
 
 
@@ -58,7 +58,7 @@ class Categories(models.Model):
             "determine what timing method is used for the category."
         ),
     )
-    required_methods = ArrayField(
+    allowed_methods = ArrayField(
         base_field=models.CharField(
             max_length=20,
             choices=LeaderboardChoices.choices,
@@ -71,6 +71,20 @@ class Categories(models.Model):
             "When set, narrows the timing methods allowed for runs in this category. "
             "Must be a non-empty subset of the parent game's allowed methods. Null inherits "
             "from a higher level."
+        ),
+    )
+    required_methods = ArrayField(
+        base_field=models.CharField(
+            max_length=20,
+            choices=LeaderboardChoices.choices,
+        ),
+        null=True,
+        blank=True,
+        default=None,
+        verbose_name="Required Timing Methods",
+        help_text=(
+            "When set, the subset of allowed methods a run MUST supply (the rest are "
+            "optional). Must include the primary. Null inherits."
         ),
     )
     url = models.URLField(
@@ -114,6 +128,11 @@ class Categories(models.Model):
         auto_now=True,
     )
 
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = make_slug(self.name)
+        super().save(*args, **kwargs)
+
     def clean(self) -> None:
         super().clean()
         validate_allowed_subset(
@@ -130,9 +149,9 @@ class Categories(models.Model):
         if self.game is None:
             return None
         return (
-            self.game.required_methods_il
+            self.game.allowed_methods_il
             if self.type == self.CategoryType.PER_LEVEL
-            else self.game.required_methods_fg
+            else self.game.allowed_methods_fg
         )
 
     def _inherited_primary(

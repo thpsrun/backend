@@ -1,13 +1,15 @@
 import time
 from urllib.parse import parse_qs, urlparse
 
-from accounts.oauth_reauth import REAUTH_INTENT_SESSION_KEY
+from accounts.oauth_intent import REAUTH_FLOW
 from allauth.account.internal.flows.login import AUTHENTICATION_METHODS_SESSION_KEY
 from allauth.socialaccount.models import SocialAccount
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import Client, TestCase
 from srl.models.players import Players
+
+REAUTH_INTENT_SESSION_KEY = REAUTH_FLOW.session_key
 
 User = get_user_model()
 

@@ -175,3 +175,39 @@ def resolve_game_or_none(
     return Games.objects.filter(
         Q(id__iexact=game_id) | Q(slug__iexact=game_id),
     ).first()
+
+
+def category_by_slug(
+    game: Games,
+    category_slug: str,
+    prefer_type: str,
+) -> Categories | None:
+    """Resolve a category by slug within a game, preferring a given type on collision.
+
+    A full-game and an IL category can legitimately share a name (e.g. THUG2's "Classic" and "Story"
+    each exist as both per-game and per-level), which slugify to the same value. When that happens,
+    prefer the type the calling endpoint serves; otherwise fall back to any match so the caller can
+    still emit its "wrong endpoint" hint.
+
+    Arguments:
+        game (Games): The owning game.
+        category_slug (str): Case-insensitive category slug taken from the URL.
+        prefer_type (str): The category type this endpoint serves
+            (`Categories.CategoryType.PER_GAME` or `PER_LEVEL`).
+
+    Returns:
+        category (Categories | None): The preferred-type match, else any match, else None.
+    """
+    matches = list(
+        Categories.objects.filter(
+            game=game,
+            slug__iexact=category_slug,
+            archive=False,
+        )
+    )
+    if not matches:
+        return None
+    return next(
+        (c for c in matches if c.type == prefer_type),
+        matches[0],
+    )

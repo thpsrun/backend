@@ -1,3 +1,4 @@
+from srl.srcom.v2.session import keepalive_bot_session
 from srl.tasks.celery_cleanup import prune_api_activity_log
 from srl.tasks.recalc import (
     build_streaks_task,
@@ -30,6 +31,7 @@ __all__ = [
     "discover_runs",
     "discover_new_series_games",
     "dispatch_run_discovery",
+    "keepalive_bot_session",
     "prune_api_activity_log",
     "rebackfill_game_runs",
     "recalculate_game_boards",

@@ -1,8 +1,10 @@
 from celery import shared_task
+from celery.exceptions import SoftTimeLimitExceeded
+from django.conf import settings
 from django.utils import timezone
 
 from srl.models import ReconciliationJob
-from srl.models.reconciliation import ReconPhase, ReconStatus
+from srl.models.reconciliation import GameReconcileMode, ReconPhase, ReconStatus
 
 
 @shared_task(
@@ -10,18 +12,23 @@ from srl.models.reconciliation import ReconPhase, ReconStatus
     name="srl.run_bounded_game_reconciliation",
     acks_late=True,
     reject_on_worker_lost=True,
+    time_limit=settings.RECON_SWEEP_TIME_LIMIT_SECONDS,
+    soft_time_limit=settings.RECON_SWEEP_SOFT_TIME_LIMIT_SECONDS,
 )
 def run_bounded_game_reconciliation(
     self,
     job_id: str,
 ) -> None:
-    """Routine GAME reconcile: bounded to recent runs, single task, no phase fan-out.
+    """GAME reconcile task: branches on job.mode to run a recent-run pass or a full sweep.
 
     Arguments:
-        job_id (str): UUID string of the `ReconciliationJob``to process.
+        job_id (str): UUID string of the `ReconciliationJob` to process.
     """
-    # Lazy import to prevent circular dependency errors.
-    from srl.srcom.recent_reconcile import reconcile_recent_game_runs
+    # Lazy imports to avoid a circular import error.
+    from srl.srcom.recent_reconcile import (
+        reconcile_game_sweep,
+        reconcile_recent_game_runs,
+    )
     from srl.srcom.reconciliation import CancellationRequested, release_lock
 
     job = ReconciliationJob.objects.get(id=job_id)
@@ -35,9 +42,26 @@ def run_bounded_game_reconciliation(
     status = ReconStatus.SUCCEEDED.value
     error_summary = ""
     try:
-        reconcile_recent_game_runs(job.target_id, job_id=str(job.id))
+        if job.mode == GameReconcileMode.FULL_GAME.value:
+            reconcile_game_sweep(job.target_id, job_id=str(job.id), runtype="main")
+        elif job.mode == GameReconcileMode.IL.value:
+            reconcile_game_sweep(job.target_id, job_id=str(job.id), runtype="il")
+        elif job.mode == GameReconcileMode.RECENT.value:
+            reconcile_recent_game_runs(
+                job.target_id,
+                job_id=str(job.id),
+                limit=job.run_limit,
+            )
+        else:
+            raise ValueError(f"Unknown reconcile mode: {job.mode!r}")
     except CancellationRequested:
         status = ReconStatus.CANCELLED.value
+    except SoftTimeLimitExceeded:
+        status = ReconStatus.FAILED.value
+        error_summary = (
+            "Job exceeded the soft time limit "
+            f"({settings.RECON_SWEEP_SOFT_TIME_LIMIT_SECONDS}s) and was aborted."
+        )
     except Exception as exc:
         status = ReconStatus.FAILED.value
         error_summary = str(exc)[:4000]
