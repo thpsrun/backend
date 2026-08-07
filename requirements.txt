@@ -6,12 +6,12 @@ celery-types==0.26.0
 cryptography==50.0.0
 certifi==2026.6.17
 curl-cffi==0.15.0
-Django==6.0.7
-django-allauth[mfa,headless]==65.18.0
-django-anymail[resend]==15.0
+Django==6.0.8
+django-allauth[mfa,headless]==65.19.0
+django-anymail[resend]==15.1
 django-cors-headers==4.9.0
 django-debug-toolbar==7.0.0
-django-htmx==1.28.0
+django-htmx==1.29.0
 django-ratelimit==4.1.0
 django-redis==7.0.0
 django-resized==1.0.3
