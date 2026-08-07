@@ -1,7 +1,7 @@
 # thps.run Website - Backend
 
 ### What the heck is this??
-This has been the pet project of [Anastasia](https://twitch.tv/theanastasia) for a few years now. In short, it is a highly-customizable, easy-to-use, and curated website that aims to mimic a lot of the leaderboard functionality seen from [HaloRuns](https://haloruns.com). Built entirely in Django (Python), this is the open-source files used for websites like [thps.run](https://thps.run).  
+This has been the pet project of [Anastasia](https://github.com/theanastasis) for a few years now. In short, it is a highly-customizable, easy-to-use, and curated website that aims to mimic a lot of the leaderboard functionality seen from [HaloRuns](https://haloruns.com). Built entirely in Django (Python), this is the open-source files used for websites like [thps.run](https://thps.run).  
   
 This repo, specifically, is for the backend portion. If you wish to help with the frontend (React/TypeScript), then you can find it here: [thps.run Frontend](https://github.com/thpsrun/frontend).
 
@@ -77,9 +77,12 @@ As an example of how points are reduced, how is a sample based on if a category'
     1.  The default `localhost:8001`, with `DEBUG` set to `True` will not give you much. This is the backend project, so it has no UI outside of the admin console.
 6.  Setup your superuser with `docker exec -it django python3 manage.py createsuperuser` and follow the prompts. After, log into the admin console.
 7.  Use `docker exec -it django python3 manage.py init_series --series <SRC_SERIES_ID> --watch` to begin crawling the series to import into your instance.
-    > [!IMPORTANT]  
-    > This will take a while to complete, depending on the size of your series (how many players, how many leaderboards, how many runs, how many games, etc.). SRC's API throttles hard, but the code is designed
-    > to keep this in mind! It will tell you if it is waiting for the rate limit to expire (~75-100 reqs/minute).
+> [!IMPORTANT]  
+> This will take a while to complete, depending on the size of your series (how many players, how many leaderboards, how many runs, how many games, etc.). SRC's API throttles hard, but the code is designed
+> to keep this in mind! It will tell you if it is waiting for the rate limit to expire (~75-100 reqs/minute).
 8.  If step 7 goes well, your data should be imported! If you have any issues, send logs and everything through an Issue!
-    > [!NOTE]
-    > If you are wanting a frontend to base things off of, the `thpsrun/frontend` project can be used as a basis. Just keep in mind there is a lot of thps.run-specific things in there :)
+> [!NOTE]
+> If you are wanting a frontend to base things off of, the `thpsrun/frontend` project can be used as a basis. Just keep in mind there is a lot of thps.run-specific things in there :)
+
+### Contributors
+*   [Naomi](https://github.com/naomshi) - Initial React Concepts and Feedback

@@ -1,3 +1,10 @@
+### v4.4.1
+###### August 7, 2026
+*   Updated libraries and backend to Django 6.0.8.
+    *   Had to force updated `aiohttp` to `3.14.X` since `speedruncompy` is strictly requiring the new version. Testing showed no issues.
+    *   Django 6.1 is out, but waiting for other dependencies to update.
+***
+
 ### v4.4
 ###### July 27, 2026
 *   Added
