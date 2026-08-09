@@ -152,15 +152,18 @@ def _build_src_run_payload(
     if body.date:
         run_data["date"] = body.date
 
-    for player in body.players:
-        if player.rel == "user":
-            run_data["players"].append(
-                {"rel": "user", "id": player.id},
-            )
-        else:
-            run_data["players"].append(
-                {"rel": "guest", "name": player.name},
-            )
+    if len(body.players) > 1:
+        for player in body.players:
+            if player.rel == "user":
+                run_data["players"].append(
+                    {"rel": "user", "id": player.id},
+                )
+            else:
+                run_data["players"].append(
+                    {"rel": "guest", "name": player.name},
+                )
+    else:
+        run_data.pop("players")
 
     if "realtime" in time_secs:
         run_data["times"]["realtime"] = time_secs["realtime"]

@@ -25,8 +25,6 @@ class SrcV2Error(Exception):
 class SrcV2AuthError(SrcV2Error):
     """401 Unauthorized: stale PHPSESSID. Refresh + retry is appropriate."""
 
-    pass
-
 
 class SrcV2PermissionError(SrcV2Error):
     """403 Forbidden: account lacks moderator status on this game.
@@ -35,8 +33,6 @@ class SrcV2PermissionError(SrcV2Error):
     should fail terminally and surface to admins (likely the bot has
     been removed as a moderator on the run's game).
     """
-
-    pass
 
 
 class SrcV2RateLimited(SrcV2Error):
