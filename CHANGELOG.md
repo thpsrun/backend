@@ -1,3 +1,11 @@
+### v4.4.2
+###### August 9, 2026
+*   Updated the `auth/submissions.py` to accept the user's SRC API Key (if given). THPSBot will no longer submit on their behalf.
+    *   Before, if you weren't a mod for the game, the site would try to submit through the V2 API. Removing the `players` key from the request fixes it for V1.
+*   Updated the `.env.example` file since SRC likes to keep changing the email titles of their 2FAs.
+***
+
+
 ### v4.4.1
 ###### August 7, 2026
 *   Updated libraries and backend to Django 6.0.8.
