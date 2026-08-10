@@ -348,7 +348,7 @@ def query_latest_runs(
     else:
         filters["place__gt"] = 1
 
-    time_delta = timezone.now() - timezone.timedelta(days=30)
+    time_delta = timezone.now() - timezone.timedelta(days=90)
     runs: QuerySet[Runs] = (
         Runs.objects.select_related("game", "category", "level")
         .prefetch_related(

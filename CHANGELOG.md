@@ -1,3 +1,8 @@
+### v4.4.2.1
+###### August 9, 2026
+*   Updated `/api/v1/website/main`'s `latest_wrs` embed so it provides the 5 latest world records in the last 90 days, up from 30.
+***
+
 ### v4.4.2
 ###### August 9, 2026
 *   Updated the `auth/submissions.py` to accept the user's SRC API Key (if given). THPSBot will no longer submit on their behalf.
