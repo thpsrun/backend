@@ -1,5 +1,9 @@
+from api.signals import disable_history_signals
+from api.v1.routers.utils.cache_utils import _HISTORY_CACHE_PREFIX
+from django.core.cache import caches
 from django.db import transaction
 from django_redis import get_redis_connection
+
 from srl.leaderboard.recalculation import (
     build_leaderboard_metadata,
     clear_leaderboard_history,
@@ -8,18 +12,33 @@ from srl.leaderboard.recalculation import (
 from srl.tasks._common import RECALC_LOCK_TTL_SECONDS, recalc_lock_key
 
 
+def _purge_history_cache_for_scopes(
+    scopes: list,
+) -> None:
+    """Best-effort invalidate the pointslb history cache for the given scopes."""
+
+    cache = caches["default"]
+    delete_pattern = getattr(cache, "delete_pattern", None)
+    if delete_pattern is None:
+        return
+    for scope in scopes:
+        delete_pattern(f"{_HISTORY_CACHE_PREFIX}:{scope}:*")
+
+
 def run_leaderboard_recompute(
     leaderboard_dict: dict,
 ) -> None:
-    """Clear and rebuild a single leaderboard variant's history and points.
+    """Clear and rebuild a single leaderboard variant's history and points."""
+    from srl.leaderboard.streaks import apply_streaks_to_leaderboard
 
-    The lock-free core shared by the Celery task and the synchronous verify path. Callers are
-    responsible for holding the per-variant recalc lock (see `recompute_variant_locked`).
-    """
     game_is_ce = build_leaderboard_metadata([leaderboard_dict])
+    scopes = ["all", leaderboard_dict["game_id"]]
     with transaction.atomic():
-        clear_leaderboard_history(leaderboard_dict)
-        process_leaderboard(leaderboard_dict, dry_run=False, game_is_ce=game_is_ce)
+        with disable_history_signals():
+            clear_leaderboard_history(leaderboard_dict)
+            process_leaderboard(leaderboard_dict, dry_run=False, game_is_ce=game_is_ce)
+            apply_streaks_to_leaderboard(leaderboard_dict)
+        transaction.on_commit(lambda: _purge_history_cache_for_scopes(scopes))
 
 
 def recompute_variant_locked(

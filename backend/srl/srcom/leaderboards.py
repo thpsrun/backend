@@ -153,7 +153,7 @@ def _resolve_obsoleted_at_for_player(
             vid_status="verified",
         )
         .exclude(v_date__isnull=True, date__isnull=True)
-        .order_by("v_date", "date")
+        .order_by("date", "v_date")
         .distinct()
     )
     if not player_runs:
@@ -192,7 +192,8 @@ def _resolve_obsoleted_at_for_player(
     updates: list[Runs] = []
     for key, group_runs in groups.items():
         _, game_id, cat_id, level_id, runtype, _ = key
-        group_runs.sort(key=lambda item: (item[0].v_date or item[0].date))  # type: ignore
+
+        group_runs.sort(key=lambda item: (item[0].date or item[0].v_date))  # type: ignore
 
         leaderboard_dict = {
             "game_id": game_id,
@@ -212,7 +213,7 @@ def _resolve_obsoleted_at_for_player(
                 continue
             if rt < pb_time:
                 if pb_run is not None and pb_run.obsolete:
-                    new_obs_at = r.v_date or r.date
+                    new_obs_at = r.date or r.v_date
                     if pb_run.obsoleted_at != new_obs_at:
                         pb_run.obsoleted_at = new_obs_at
                         updates.append(pb_run)
