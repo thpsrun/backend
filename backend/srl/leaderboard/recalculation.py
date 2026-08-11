@@ -1,7 +1,7 @@
 import bisect
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Iterator
 
 from auditlog.models import GameAuditEvent
 from auditlog.recorders import record_event
@@ -643,8 +643,9 @@ def get_runs_for_leaderboard(
         date__isnull=True,
     )
     base_qs = filter_by_variable_map(base_qs, leaderboard["variable_value_map"])
+
     return base_qs.annotate(
-        effective_date=Coalesce(F("v_date"), F("date")),
+        effective_date=Coalesce(F("date"), F("v_date")),
     ).order_by("effective_date")
 
 

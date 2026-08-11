@@ -983,6 +983,9 @@ def query_wr_history(
             run__vid_status="verified",
             points__gte=max_points,
         )
+        .exclude(
+            end_date=F("start_date"),
+        )
         .select_related(
             "run__game",
             "run__category",

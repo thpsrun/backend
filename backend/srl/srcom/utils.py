@@ -8,6 +8,7 @@ from django.db.models import Count, F, QuerySet
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 from pydantic import RootModel
+
 from srl.models import METHOD_TO_TIME_FIELD as _CANONICAL_METHOD_TO_TIME_FIELD
 from srl.models import Games, Platforms, Players, RunHistory, Runs, VariableValues
 from srl.models.run_history import RunHistoryEndReason
@@ -351,7 +352,7 @@ def apply_player_obsolescence(
         .exclude(**{f"{time_col}__isnull": True})
     )
     base_qs = filter_by_variable_map(base_qs, variable_value_map)
-    base_qs = base_qs.annotate(_eff=Coalesce(F("v_date"), F("date")))
+    base_qs = base_qs.annotate(_eff=Coalesce(F("date"), F("v_date")))
 
     current_obsolete: dict[str, bool] = {}
     keepers: set[str] = set()

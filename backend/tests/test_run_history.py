@@ -58,13 +58,12 @@ class RunHistoryOpenRowConstraintTests(TestCase):
             start_date=datetime(2024, 1, 1, tzinfo=_tz.utc),
             points=1000,
         )
-        with self.assertRaises(IntegrityError):
-            with transaction.atomic():
-                RunHistory.objects.create(
-                    run=self.target_run,
-                    start_date=datetime(2024, 2, 1, tzinfo=_tz.utc),
-                    points=900,
-                )
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            RunHistory.objects.create(
+                run=self.target_run,
+                start_date=datetime(2024, 2, 1, tzinfo=_tz.utc),
+                points=900,
+            )
 
     def test_closed_rows_do_not_conflict_with_open_row(
         self,

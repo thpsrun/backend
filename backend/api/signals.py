@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+from collections.abc import Generator
 from datetime import datetime
 from datetime import timezone as dt_tz
 from typing import Any
@@ -543,14 +544,29 @@ def invalidate_history_on_gradient(sender, instance, **kwargs) -> None:
 
 
 @contextlib.contextmanager
-def disable_history_signals():
-    post_save.disconnect(on_runhistory_saved, sender=RunHistory)
-    post_delete.disconnect(on_runhistory_deleted, sender=RunHistory)
+def disable_history_signals() -> Generator[None]:
+    """Temporarily disconnect the RunHistory cache-invalidation signals."""
+    post_save.disconnect(
+        sender=RunHistory,
+        dispatch_uid="api.signals.on_runhistory_saved",
+    )
+    post_delete.disconnect(
+        sender=RunHistory,
+        dispatch_uid="api.signals.on_runhistory_deleted",
+    )
     try:
         yield
     finally:
-        post_save.connect(on_runhistory_saved, sender=RunHistory)
-        post_delete.connect(on_runhistory_deleted, sender=RunHistory)
+        post_save.connect(
+            on_runhistory_saved,
+            sender=RunHistory,
+            dispatch_uid="api.signals.on_runhistory_saved",
+        )
+        post_delete.connect(
+            on_runhistory_deleted,
+            sender=RunHistory,
+            dispatch_uid="api.signals.on_runhistory_deleted",
+        )
 
 
 def _check_dirty(

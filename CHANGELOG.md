@@ -1,3 +1,12 @@
+### v4.4.3
+###### August 11, 2026
+*   Fixed an issue where the Celery agents would fail to create a backup of the runner's data, since they were never given full access to the `MEDIA_ROOT` folder it would be housed in.
+*   Fixed an issue where `v_date` was being used on when it attained a time instead of `date`, resulting in instances where some runs had no `v_date`, were backfilled improperly, and corrupted `RunHistory`. [#135](https://github.com/thpsrun/backend/issues/135)
+*   Fixed an issue where the `run_leaderboard_recompute` function could strip world records of their streaks and points in rare circumstances.
+    *   It's always THPS3 5th Gen...
+*   Fixed some more `N+1` errors.
+***
+
 ### v4.4.2.1
 ###### August 9, 2026
 *   Updated `/api/v1/website/main`'s `latest_wrs` embed so it provides the 5 latest world records in the last 90 days, up from 30.
