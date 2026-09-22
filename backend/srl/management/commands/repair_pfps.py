@@ -34,8 +34,9 @@ class Command(BaseCommand):
             "--all",
             action="store_true",
             help=(
-                "Also flag Players whose pfp is still a remote URL (never "
-                "successfully downloaded locally). Off by default."
+                "Also flag Players who were never successfully downloaded "
+                "locally: pfp is NULL/empty, or still a remote URL. Re-checks "
+                "each against SRC and downloads if a pfp exists. Off by default."
             ),
         )
         parser.add_argument(
@@ -76,11 +77,16 @@ class Command(BaseCommand):
 
         media_prefix: str = settings.MEDIA_URL
         media_root: str = settings.MEDIA_ROOT
-        qs = Players.objects.exclude(pfp__isnull=True).exclude(pfp="").only("id", "pfp")
+        qs = Players.objects.only("id", "pfp")
         scanned_players: int = 0
         for player in qs.iterator():
             scanned_players += 1
             pfp_url: str = player.pfp or ""
+
+            if not pfp_url:
+                if include_remote and player.id not in broken:
+                    broken[player.id] = "field <none>: no pfp stored"
+                continue
 
             if pfp_url.startswith(media_prefix):
                 rel_path: str = pfp_url[len(media_prefix) :]
