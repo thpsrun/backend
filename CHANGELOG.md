@@ -1,3 +1,9 @@
+### v4.5.1
+###### ???
+*   Added an additional check to download the profile picture of a user if they didn't have it before but then had it after they were imported to the site.
+*   Squashed all migrations from v3 to v4.5.
+***
+
 ### v4.5
 ###### August 28, 2026
 *   Added the ability to create and edit slugs for guides.

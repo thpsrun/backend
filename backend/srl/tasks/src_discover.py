@@ -8,6 +8,7 @@ from celery import shared_task
 from django.conf import settings
 from django.core.cache import cache
 from django.db import transaction
+from django.db.models import Q
 
 from srl.models import (
     Categories,
@@ -117,7 +118,16 @@ def _ensure_dependencies(
             flat=True,
         ),
     )
-    for pid in set(user_player_ids) - existing_ids:
+
+    # Additional check to download the pfps of players that never had one before.
+    # For example, if a player was created with no pfp, but later was added to the site
+    # but then they added a pfp later on SRC.
+    missing_pfp_ids = set(
+        Players.objects.filter(id__in=existing_ids)
+        .filter(Q(pfp__isnull=True) | Q(pfp=""))
+        .values_list("id", flat=True),
+    )
+    for pid in (set(user_player_ids) - existing_ids) | missing_pfp_ids:
         try:
             sync_players(pid, download_pfp=True)
         except Exception as exc:
