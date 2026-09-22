@@ -28,7 +28,12 @@ from srl.srcom.reconciliation import (
     reconciliation_upsert_check,
 )
 from srl.srcom.schema.internal import RunSyncContext, RunSyncTimesContext
-from srl.srcom.schema.src import SrcGamesModel, SrcLeaderboardModel, SrcRunsModel
+from srl.srcom.schema.src import (
+    SrcGamesModel,
+    SrcLeaderboardModel,
+    SrcLeaderboardRun,
+    SrcRunsModel,
+)
 from srl.srcom.utils import (
     build_leaderboard_combos,
     create_leaderboard_link,
@@ -781,9 +786,12 @@ def sync_single_run(
         None,
     )
     if target_lb_run is None:
-        # Run not on this leaderboard (rejected/new/obsoleted). sync_obsolete_runs
-        # or the broader leaderboard sync will pick it up hopefully.
-        return
+        if src_run.status.status != "verified":
+            return
+        # SRC's leaderboard only lists each player's current PB, so a run verified after the
+        # player already had a faster one is never on it. Returning here stranded the local row
+        # as `new` forever; syncing it unranked lets sync_run's keep-best pass obsolete it.
+        target_lb_run = SrcLeaderboardRun(place=0, run=src_run)
 
     base_context = _build_base_context(src_lb)
     run_context = base_context.model_copy(update={"runs_data": target_lb_run})
