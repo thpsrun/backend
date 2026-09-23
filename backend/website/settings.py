@@ -346,11 +346,13 @@ ACCOUNT_CHANGE_EMAIL = True
 SOCIALACCOUNT_EMAIL_VERIFICATION = "mandatory"
 SOCIALACCOUNT_EMAIL_AUTHENTICATION = True
 PASSWORD_RESET_TIMEOUT = 1800
+ACCOUNT_EMAIL_UNKNOWN_ACCOUNTS = False
 ACCOUNT_LOGIN_METHODS = {"username", "email"}
 ACCOUNT_SIGNUP_FIELDS = ["email*", "username*", "password1*", "password2*"]
 SITE_NAME = os.getenv("SITE_NAME", "thps.run")
 MFA_TOTP_ISSUER = SITE_NAME
 
+ACCOUNT_ADAPTER = "accounts.adapters.AccountAdapter"
 SOCIALACCOUNT_ADAPTER = "accounts.adapters.SocialAccountAdapter"
 MFA_ADAPTER = "accounts.adapters.MFAAdapter"
 
@@ -433,6 +435,8 @@ HEADLESS_CLIENTS = ("browser",)
 HEADLESS_FRONTEND_URLS = {
     "account_confirm_email": f"{FRONTEND_URL}/verify-email/{{key}}",
     "account_reset_password_from_key": f"{FRONTEND_URL}/reset-password/{{uidb36}}/{{key}}",
+    "account_reset_password": f"{FRONTEND_URL}/forgot-password",
+    "account_signup": f"{FRONTEND_URL}/register",
     "socialaccount_login_error": f"{FRONTEND_URL}/login/error/",
 }
 

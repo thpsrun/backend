@@ -1,5 +1,6 @@
 import re
 
+from allauth.account.adapter import DefaultAccountAdapter
 from allauth.account.internal.flows.login import AUTHENTICATION_METHODS_SESSION_KEY
 from allauth.core import context
 from allauth.core.exceptions import ImmediateHttpResponse
@@ -54,6 +55,17 @@ def _check_oauth_unique(
             url = f"https://twitch.tv/{login}"
             if qs.filter(twitch__iexact=url).exists():
                 raise ValidationError("twitch_handle_taken", code="twitch_handle_taken")
+
+
+class AccountAdapter(DefaultAccountAdapter):
+    """Account adapter that suppresses allauth's "account already exists" email."""
+
+    def send_account_already_exists_mail(
+        self,
+        email: str,
+    ) -> None:
+        """Skip the email sent when a signup reuses an already-registered address."""
+        return
 
 
 class SocialAccountAdapter(DefaultSocialAccountAdapter):
