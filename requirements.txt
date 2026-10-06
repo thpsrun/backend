@@ -33,6 +33,6 @@ rules==3.5
 sentry-sdk==2.66.0
 speedruncompy==1.0.5
 tzdata==2026.3
-urllib3==2.7.0
+urllib3==2.8.0
 whitenoise==6.12.0
 yarl==1.24.5
