@@ -1,12 +1,11 @@
-from celery import shared_task
 from django.db import transaction
+
 from srl.models import Categories, Games
 from srl.srcom.reconciliation import reconciliation_upsert_check
 from srl.srcom.schema.src import SrcCategoriesModel
 from srl.utils import src_api
 
 
-@shared_task(pydantic=True)
 def sync_categories(
     categories_data: str | dict | SrcCategoriesModel,
     game_id: str | None = None,

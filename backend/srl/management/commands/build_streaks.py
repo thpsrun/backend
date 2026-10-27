@@ -51,13 +51,8 @@ class Command(BaseCommand):
         game: Games,
         runtype: str,
     ) -> int:
-        """Get the max points for a run based on game type."""
-        if game.is_ce:
-            return settings.POINTS_MAX_CE
-        elif runtype == "main":
-            return game.pointsmax
-        else:
-            return game.ipointsmax
+        """Get the WR point maximum from the game's own fields (Category Extensions included)."""
+        return game.max_points_for(runtype)
 
     def is_anniversary_today(
         self,

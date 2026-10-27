@@ -4,7 +4,7 @@ import json
 from typing import Any
 
 from django.db.models import Q
-from django.http import HttpRequest
+from django.http import Http404, HttpRequest
 from django.shortcuts import get_object_or_404
 from guides.models import Guides
 from srl.models.categories import Categories
@@ -54,17 +54,32 @@ def run_from_path(
 
 def game_from_path(
     request: HttpRequest,
-) -> Games:
-    # Order: explicit game_id > game_slug > id fallback.
+) -> Games | None:
+    """Resolve the game named by the URL path, as the `authed()` permission target.
+
+    Arguments:
+        request (HttpRequest): The request; its resolver match supplies the path kwargs.
+
+    Returns:
+        game (Games | None): The targeted game, or None when the path names no live game
+            through `slug`, or carries no game kwarg at all.
+
+    Raises:
+        Http404: When a `game_id`, `game_slug`, or `id` kwarg names no game.
+    """
     kwargs = _path_kwargs(request)
     if "game_id" in kwargs:
         return get_object_or_404(Games, pk=kwargs["game_id"])
     if "game_slug" in kwargs:
         return get_object_or_404(Games, slug=kwargs["game_slug"])
     if "id" in kwargs:
-        ref = kwargs["id"]
-        return get_object_or_404(Games, Q(pk=ref) | Q(slug=ref))
-    return None  # type: ignore
+        game = resolve_game_or_none(kwargs["id"])
+        if game is None:
+            raise Http404("Game does not exist")
+        return game
+    if "slug" in kwargs:
+        return Games.objects.filter(slug__iexact=kwargs["slug"]).first()
+    return None
 
 
 def guide_from_path(
@@ -178,6 +193,7 @@ def game_from_stream_path(
 def resolve_game_or_none(
     game_id: str,
 ) -> Games | None:
+    """Return the game whose id or slug matches `game_id` case-insensitively, else None."""
     return Games.objects.filter(
         Q(id__iexact=game_id) | Q(slug__iexact=game_id),
     ).first()

@@ -527,8 +527,9 @@ class RunCreateSchema(BaseEmbedSchema):
     Attributes:
         id (str | None): The run ID; if one is not given, it will auto-generate.
         game_id (str): Game ID.
-        category_id (str | None): Category ID.
-        level_id (str | None): Level ID (for ILs).
+        category_id (str | None): Category ID. Required: the router returns 422 without it
+            (typed optional so an unknown game still reports its own 400 first).
+        level_id (str | None): Level ID. Required for IL runs (422 without it).
         player_ids (list[str] | None): List of player IDs in order of participation.
         runtype (str): Run type (main or il).
         place (int): Leaderboard position.
@@ -546,8 +547,10 @@ class RunCreateSchema(BaseEmbedSchema):
         default=None, max_length=10, description="Auto-generates if omitted"
     )
     game_id: str
-    category_id: str | None = None
-    level_id: str | None = Field(default=None, description="For IL runs")
+    category_id: str | None = Field(
+        default=None, description="Required (422 if omitted)"
+    )
+    level_id: str | None = Field(default=None, description="Required for IL runs")
     player_ids: list[str] | None = Field(None, description="In order of participation")
     runtype: RunTypeType = Field(...)
     place: int = Field(..., ge=1)
@@ -611,8 +614,8 @@ class RunUpdateSchema(BaseEmbedSchema):
 
     Attributes:
         game_id (str | None): Updated game ID.
-        category_id (str | None): Updated category ID.
-        level_id (str | None): Updated level ID.
+        category_id (str | None): Updated category ID. Cannot be cleared (422).
+        level_id (str | None): Updated level ID. Cannot be cleared on an IL run (422).
         player_ids (list[str] | None): Updated list of player IDs.
         runtype (str | None): Updated run type.
         time (str | None): Updated formatted time string.
@@ -624,8 +627,10 @@ class RunUpdateSchema(BaseEmbedSchema):
     """
 
     game_id: str | None = None
-    category_id: str | None = None
-    level_id: str | None = None
+    category_id: str | None = Field(default=None, description="Cannot be cleared")
+    level_id: str | None = Field(
+        default=None, description="Cannot be cleared on IL runs"
+    )
     player_ids: list[str] | None = Field(None, description="In order of participation")
     runtype: RunTypeType | None = None
     time: str | None = Field(default=None, max_length=25)

@@ -130,24 +130,26 @@ class Games(models.Model):
         verbose_name="Full Game WR Point Maximum",
         default=settings.POINTS_MAX_FG,
         help_text=(
-            'Default is 1000; 25 if this game contains the name "Category '
-            'Extension". This is the maximum total of points a full-game speedrun '
-            "receives if it is the world record. All lower-ranked speedruns recieve less "
-            "based upon an algorithmic formula.<br />NOTE: Changing this value will ONLY "
-            "affect new runs. If you change this value, you will need to reset runs for "
-            "this game from the admin panel."
+            f'Default is {settings.POINTS_MAX_FG}; games imported with "Category Extensions" '
+            f"in their name get {settings.POINTS_MAX_CE}. This is the maximum total of points a "
+            "full-game speedrun receives if it is the world record; all lower-ranked speedruns "
+            "receive less based upon an algorithmic formula. This value is always used, "
+            "including for Category Extensions.<br />NOTE: Changing this value only affects "
+            "runs as their boards are recalculated. Recalculate this game's boards to apply it "
+            "to existing runs."
         ),
     )
     ipointsmax = models.PositiveSmallIntegerField(
         verbose_name="IL WR Point Maximum",
-        default=settings.POINTS_MAX_CE,
+        default=settings.POINTS_MAX_IL,
         help_text=(
-            'Default is 250; 25O if this game contains the name "Category '
-            'Extension". This is the maximum total of points an IL speedrun receives if '
-            "it is the world record. All lower-ranked speedruns recieve less based upon an "
-            "algorithmic formula.<br />NOTE: Changing this value will ONLY affect new "
-            "runs. If you change this value, you will need to reset runs for this game "
-            "from the admin panel."
+            f'Default is {settings.POINTS_MAX_IL}; games imported with "Category Extensions" '
+            f"in their name get {settings.POINTS_MAX_CE}. This is the maximum total of points an "
+            "IL speedrun receives if it is the world record; all lower-ranked speedruns receive "
+            "less based upon an algorithmic formula. This value is always used, including for "
+            "Category Extensions.<br />NOTE: Changing this value only affects runs as their "
+            "boards are recalculated. Recalculate this game's boards to apply it to existing "
+            "runs."
         ),
     )
     rules = models.TextField(
@@ -176,6 +178,20 @@ class Games(models.Model):
         self,
     ) -> bool:
         return "category extension" in self.name.lower()
+
+    def max_points_for(
+        self,
+        runtype: str,
+    ) -> int:
+        """Return the world-record point maximum for a run type on this game.
+
+        Arguments:
+            runtype (str): "main" for full-game; anything else is treated as IL.
+
+        Returns:
+            max_points (int): `pointsmax` for full-game, otherwise `ipointsmax`.
+        """
+        return self.pointsmax if runtype == "main" else self.ipointsmax
 
     def clean(self) -> None:
         super().clean()

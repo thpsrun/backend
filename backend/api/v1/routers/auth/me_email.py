@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from urllib.parse import unquote
 
-from allauth.account.internal.flows.reauthentication import did_recently_authenticate
+from allauth.account.internal.flows.reauthentication import did_recently_reauthenticate
 from allauth.account.models import EmailAddress, EmailConfirmationHMAC
 from django.db import IntegrityError, transaction
 from django.http import HttpRequest
@@ -91,7 +91,7 @@ def change_email(
     body: EmailChangeRequest,
 ) -> Status:
     user = request.auth  # type: ignore
-    if not did_recently_authenticate(request):
+    if not did_recently_reauthenticate(request):
         return Status(
             401,
             ErrorResponse(

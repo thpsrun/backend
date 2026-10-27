@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from django.conf import settings
 from django.http import HttpRequest
@@ -8,6 +8,7 @@ from srl.models import BotSession, SRCSyncTask
 from srl.srcom.v2 import is_v2_enabled
 from srl.srcom.v2.session import cooldown_remaining_seconds, refresh_bot_session
 from srl.tasks import replay_failed_edits
+from srl.tasks.src_sync import replayable_failed_edits
 
 from api.permissions import authed
 from api.v1.schemas.base import ErrorResponse
@@ -24,7 +25,7 @@ router = Router()
 def _replay_window_cutoff() -> datetime:
     """Oldest created_at an EDIT_RUN task may have and still be eligible for replay."""
     days = getattr(settings, "SRC_V2_REPLAY_MAX_AGE_DAYS", 7)
-    return datetime.now(timezone.utc) - timedelta(days=days)
+    return datetime.now(UTC) - timedelta(days=days)
 
 
 def _edit_run_count(
@@ -156,11 +157,7 @@ def put_kill_switch(
             bs.disabled_by_circuit_breaker = False
             bs.save(update_fields=["disabled_by_circuit_breaker"])
 
-        replay_queued_count = SRCSyncTask.objects.filter(
-            action=SRCSyncTask.ActionType.EDIT_RUN,
-            status=SRCSyncTask.Status.FAILED,
-            created_at__gte=_replay_window_cutoff(),
-        ).count()
+        replay_queued_count = replayable_failed_edits().count()
         replay_failed_edits.delay()
 
     return Status(

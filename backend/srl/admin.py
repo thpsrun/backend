@@ -23,7 +23,7 @@ from srl.models import (
     Variables,
     VariableValues,
 )
-from srl.srcom import sync_game, sync_game_runs, sync_players
+from srl.srcom import sync_game_runs, sync_game_task, sync_players_task
 
 
 class GameAdmin(admin.ModelAdmin):
@@ -62,7 +62,7 @@ class GameAdmin(admin.ModelAdmin):
         """Queues a metadata sync from the SRC API for each selected game."""
         game_ids = [obj.id for obj in queryset]
         for game_id in game_ids:
-            sync_game.delay(game_id)
+            sync_game_task.delay(game_id)
         self.message_user(
             request,
             f"Queued metadata sync for {len(game_ids)} game(s).",
@@ -235,10 +235,10 @@ class PlayersAdmin(admin.ModelAdmin):
         request: HttpRequest,
         queryset: QuerySet["Players"],
     ) -> None:
-        """Queues a metadata sync from the SRC API for each selected player."""
+        """Queues a metadata sync (pfp included) from the SRC API for each selected player."""
         player_ids = [obj.id for obj in queryset]
         for player_id in player_ids:
-            sync_players.delay(player_id)
+            sync_players_task.delay(player_id, download_pfp=True)
         self.message_user(
             request,
             f"Queued metadata sync for {len(player_ids)} player(s).",

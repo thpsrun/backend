@@ -76,6 +76,14 @@ def _sync_game_structure(
 def _build_base_context(
     src_lb: SrcLeaderboardModel,
 ) -> RunSyncContext:
+    """Build the per-leaderboard `RunSyncContext`, seeded with the board's first run.
+
+    Arguments:
+        src_lb (SrcLeaderboardModel): A non-empty SRC leaderboard.
+
+    Returns:
+        context (RunSyncContext): Shared context; callers swap `runs_data` per run.
+    """
     # SRC's v1 API has a bug where if "realtime_noloads" is the only timing method
     # used, it surfaces as "time" (RTA). lrt_fix corrects that for now.
     lrt_fix_check = False
@@ -106,6 +114,8 @@ def _build_base_context(
             lrt_fix_check = True
 
     run_variables = src_lb.runs[0].run.values
+    # Tied runs share place 1 with equal times, so the first place-1 entry is the WR.
+    wr_entry = next((lb_run for lb_run in src_lb.runs if lb_run.place == 1), None)
 
     return RunSyncContext(
         game_id=game_info.id,
@@ -117,9 +127,9 @@ def _build_base_context(
         max_points=max_points,
         default_time_type=src_lb.timing,
         variable_value_map=dict(run_variables) if run_variables else {},
-        download_pfp=False,
         lrt_fix=lrt_fix_check,
         runs_data=src_lb.runs[0],
+        wr_times=wr_entry.run.times if wr_entry else None,
     )
 
 
@@ -314,7 +324,7 @@ def _write_run_record(
         ),
     )
     for pid in set(user_player_ids) - existing_ids:
-        sync_players(pid)
+        sync_players(pid, download_pfp=True)
 
     with transaction.atomic():
         run_obj = reconciliation_upsert_check(
@@ -365,6 +375,55 @@ def _reconcile_run_from_payload(
     default = _build_run_defaults(src_run, game_info)
     default.pop("place", None)
     return _write_run_record(src_run, default)
+
+
+def _resolve_wr_seconds(
+    context_data: RunSyncContext,
+) -> float | None:
+    """Return the WR time of the run's leaderboard in its default timing method.
+
+    Prefers the local `place=1, obsolete=False` row and falls back to SRC's place-1 times carried
+    on the context. The run's own times are never used: scoring a run against itself awards it
+    max points.
+
+    Arguments:
+        context_data (RunSyncContext): Context of the run being synced.
+
+    Returns:
+        wr_secs (float | None): The WR in seconds, or None when no usable WR time is known.
+    """
+    base_wr_query = filter_by_variable_map(
+        Runs.objects.filter(
+            game=context_data.game_id,
+            category_id=context_data.category_id,
+            level_id=context_data.level_id,
+            obsolete=False,
+            place=1,
+        ),
+        context_data.variable_value_map,
+    )
+    if context_data.category_type == "per-game":
+        wr_pull = base_wr_query.filter(runtype="main").first()
+    else:
+        wr_pull = base_wr_query.filter(runtype="il").first()
+    if wr_pull is not None:
+        wr_times = RunSyncTimesContext.model_validate(wr_pull)
+    elif context_data.wr_times is not None:
+        wr_times = RunSyncTimesContext.model_validate(
+            context_data.wr_times.model_dump(),
+        )
+    else:
+        return None
+
+    default_time = src_method_to_internal(context_data.default_time_type)
+    if default_time == "rta":
+        wr = wr_times.timeigt_secs if wr_times.time_secs == 0 else wr_times.time_secs
+    elif default_time == "lrt":
+        wr = wr_times.timenl_secs
+    else:
+        wr = wr_times.time_secs if wr_times.timeigt_secs == 0 else wr_times.timeigt_secs
+
+    return wr if wr > 0 else None
 
 
 @shared_task
@@ -447,7 +506,7 @@ def sync_leaderboards(
         for lb_run in src_lb.runs:
             check_cancelled()
             run_context = base_context.model_copy(update={"runs_data": lb_run})
-            sync_run.delay(
+            sync_run_task.delay(
                 run_context.model_dump(),
                 progress_key=progress_key,
             )
@@ -546,7 +605,6 @@ def sync_obsolete_runs(
             bump(progress_key, "players_failed" if failed else "players_done")
 
 
-@shared_task(pydantic=True)
 def sync_run(
     context_data: RunSyncContext,
     progress_key: str | None = None,
@@ -569,61 +627,21 @@ def sync_run(
             lrtfix=context_data.lrt_fix,
         )
 
-        # When Phase 3 is kicked off, leaderboard and streaks recalculations are done. To
-        # prevent deadlock on the database, if a reconciliation is going on it will just set
-        # the points to 0. Otherwise it would assume world record incorrectly, fuck up the
-        # formula, give like a bajillion points to a SmallIntField, crash the bot, and I cry.
         if current_job() is not None:
             points = 0
         elif place == 1:
             points = context_data.max_points
         elif place > 1:
-            base_wr_query = filter_by_variable_map(
-                Runs.objects.filter(
-                    game=context_data.game_id,
-                    category_id=context_data.category_id,
-                    level_id=context_data.level_id,
-                    obsolete=False,
-                    place=1,
-                ),
-                context_data.variable_value_map,
-            )
-            if context_data.category_type == "per-game":
-                wr_pull = base_wr_query.filter(runtype="main").first()
+            wr = _resolve_wr_seconds(context_data)
+            if wr is None:
+                points = 0
             else:
-                wr_pull = base_wr_query.filter(runtype="il").first()
-
-            # When a WR exists in the DB, read times via from_attributes;
-            # otherwise validate from the SrcRunsTimes payload (aliased fields).
-            if wr_pull is not None:
-                wr_times = RunSyncTimesContext.model_validate(wr_pull)
-            else:
-                wr_times = RunSyncTimesContext.model_validate(
-                    run_data.times.model_dump(),
+                points = points_formula(
+                    wr=wr,
+                    run=run_data.times.primary_t,
+                    max_points=context_data.max_points,
+                    short=wr < 60,
                 )
-
-            default_time = src_method_to_internal(context_data.default_time_type)
-            if default_time == "rta":
-                wr = (
-                    wr_times.timeigt_secs
-                    if wr_times.time_secs == 0
-                    else wr_times.time_secs
-                )
-            elif default_time == "lrt":
-                wr = wr_times.timenl_secs
-            else:
-                wr = (
-                    wr_times.time_secs
-                    if wr_times.timeigt_secs == 0
-                    else wr_times.timeigt_secs
-                )
-
-            points = points_formula(
-                wr=wr,
-                run=run_data.times.primary_t,
-                max_points=context_data.max_points,
-                short=wr < 60,
-            )
         else:
             points = 0
 
@@ -650,7 +668,7 @@ def sync_run(
         )
         missing_ids = unique_player_ids - existing_ids
         for pid in missing_ids:
-            sync_players(pid)
+            sync_players(pid, download_pfp=True)
 
         with transaction.atomic():
             run_obj = reconciliation_upsert_check(
@@ -729,7 +747,15 @@ def sync_run(
             bump(progress_key, "runs_failed" if failed else "runs_done")
 
 
-@shared_task
+@shared_task(name="srl.srcom.leaderboards.sync_run", pydantic=True)
+def sync_run_task(
+    context_data: RunSyncContext,
+    progress_key: str | None = None,
+) -> None:
+    """Celery entry point for `sync_run`; in-process callers use `sync_run` directly."""
+    sync_run(context_data, progress_key)
+
+
 def sync_single_run(
     run_id: str,
     run_payload: dict | None = None,

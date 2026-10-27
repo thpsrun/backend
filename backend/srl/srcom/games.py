@@ -3,6 +3,7 @@ import os
 from celery import shared_task
 from django.conf import settings
 from django.db import transaction
+
 from srl.models import Games, Players
 from srl.srcom._static_fetch import (
     StaticAssetDownloadError,
@@ -86,7 +87,6 @@ def apply_game_record(
     return game
 
 
-@shared_task
 def sync_game(
     game_id: str,
 ) -> None:
@@ -98,6 +98,14 @@ def sync_game(
     src_data = src_api(f"https://speedrun.com/api/v1/games/{game_id}?embed=platforms")
     assert isinstance(src_data, dict)
     apply_game_record(SrcGamesModel.model_validate(src_data))
+
+
+@shared_task(name="srl.srcom.games.sync_game")
+def sync_game_task(
+    game_id: str,
+) -> None:
+    """Celery entry point for `sync_game`; in-process callers use `sync_game` directly."""
+    sync_game(game_id)
 
 
 def backfill_moderators(

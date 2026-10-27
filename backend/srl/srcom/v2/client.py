@@ -6,6 +6,7 @@ from speedruncompy.endpoints import PutRunSettings
 from speedruncompy.exceptions import Forbidden
 
 from srl.srcom.v2.errors import ErrorCategory, map_exception
+from srl.srcom.v2.runs import upgrade_legacy_run_settings
 
 
 class SrcV2Error(Exception):
@@ -96,8 +97,8 @@ class SrcV2Client:
         try:
             return PutRunSettings(
                 csrfToken=token,
-                settings=settings_payload,
-                autoverify=False,
+                settings=upgrade_legacy_run_settings(settings_payload),
+                autoVerify=False,
                 _client=self._inner,
             ).perform_sync()
         except BaseException as exc:

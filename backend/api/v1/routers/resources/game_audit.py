@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from auditlog.models import GameAuditEvent
 from django.db.models import Q
 from django.http import HttpRequest
 from ninja import Query, Router, Status
 from ninja.errors import HttpError
-
-from auditlog.models import GameAuditEvent
 
 from api.permissions import authed
 from api.v1.routers.utils.resolvers import game_from_path
@@ -19,6 +18,22 @@ from api.v1.schemas.game_audit import (
 )
 
 router = Router()
+
+
+def _game_slug_q(
+    slug: str,
+) -> Q:
+    """Match audit rows of the live game with `slug`, or orphaned rows that remember it.
+
+    Arguments:
+        slug (str): The game slug taken from the URL.
+
+    Returns:
+        condition (Q): The filter selecting that game's audit rows.
+    """
+    return Q(game__slug__iexact=slug) | Q(
+        game__isnull=True, game_slug_snapshot__iexact=slug
+    )
 
 
 @router.get(
@@ -51,16 +66,8 @@ def list_audit(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
 ) -> Status:
-    # Match live game by slug OR an orphaned row whose snapshot remembers the
-    # slug (game FK is null because the game was deleted; see auditlog 0002).
-    qs = (
-        GameAuditEvent.objects
-        .filter(
-            Q(game__slug=slug)
-            | Q(game__isnull=True, game_slug_snapshot=slug),
-        )
-        .select_related("actor_user")
-    )
+    """List a game's audit rows, newest first, with optional filters and pagination."""
+    qs = GameAuditEvent.objects.filter(_game_slug_q(slug)).select_related("actor_user")
 
     if event_type:
         qs = qs.filter(event_type__in=event_type)
@@ -76,7 +83,7 @@ def list_audit(
         qs = qs.filter(created_at__lt=until)
 
     total = qs.count()
-    page = qs.order_by("-created_at")[offset:offset + limit]
+    page = qs.order_by("-created_at")[offset : offset + limit]
 
     results: list[AuditRowDetail] | list[AuditRowSummary]
     if include_payload:
@@ -87,9 +94,7 @@ def list_audit(
                 event_type=row.event_type,
                 actor_kind=row.actor_kind,
                 actor_user_id=row.actor_user_id,
-                actor_username=(
-                    row.actor_user.username if row.actor_user_id else None
-                ),
+                actor_username=(row.actor_user.username if row.actor_user_id else None),
                 actor_api_key_id=row.actor_api_key_id,
                 actor_label=row.actor_label,
                 target_app=row.target_app,
@@ -109,9 +114,7 @@ def list_audit(
                 event_type=row.event_type,
                 actor_kind=row.actor_kind,
                 actor_user_id=row.actor_user_id,
-                actor_username=(
-                    row.actor_user.username if row.actor_user_id else None
-                ),
+                actor_username=(row.actor_user.username if row.actor_user_id else None),
                 actor_api_key_id=row.actor_api_key_id,
                 actor_label=row.actor_label,
                 target_app=row.target_app,
@@ -149,11 +152,10 @@ def get_audit(
     slug: str,
     audit_id: int,
 ) -> Status:
+    """Return one of a game's audit rows with its full payload, or 404."""
     row = (
-        GameAuditEvent.objects
-        .filter(
-            Q(game__slug=slug)
-            | Q(game__isnull=True, game_slug_snapshot=slug),
+        GameAuditEvent.objects.filter(
+            _game_slug_q(slug),
             pk=audit_id,
         )
         .select_related("actor_user")
@@ -169,9 +171,7 @@ def get_audit(
             event_type=row.event_type,
             actor_kind=row.actor_kind,
             actor_user_id=row.actor_user_id,
-            actor_username=(
-                row.actor_user.username if row.actor_user_id else None
-            ),
+            actor_username=(row.actor_user.username if row.actor_user_id else None),
             actor_api_key_id=row.actor_api_key_id,
             actor_label=row.actor_label,
             target_app=row.target_app,

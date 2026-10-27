@@ -97,23 +97,6 @@ def get_leaderboard_time_column(
     return get_time_column(leaderboard["game_id"], leaderboard["runtype"])
 
 
-def build_game_metadata(
-    game_ids: set[str],
-) -> tuple[dict[str, dict[str, str]], dict[str, bool]]:
-    """Build game_time_columns and game_is_ce caches for the given game IDs."""
-    game_time_columns: dict[str, dict[str, str]] = {}
-    game_is_ce: dict[str, bool] = {}
-    for game in Games.objects.filter(id__in=game_ids).only(
-        "id", "defaulttime", "idefaulttime"
-    ):
-        game_time_columns[game.id] = {
-            "main": TIME_COLUMN_MAP.get(game.defaulttime, "time_secs"),
-            "il": TIME_COLUMN_MAP.get(game.idefaulttime, "time_secs"),
-        }
-        game_is_ce[game.id] = game.is_ce
-    return game_time_columns, game_is_ce
-
-
 def build_leaderboard_metadata(
     leaderboards: list[dict],
 ) -> dict[str, bool]:
@@ -126,8 +109,9 @@ def build_leaderboard_metadata(
         game_is_ce (dict[str, bool]): Maps each referenced game id to its `is_ce` flag.
     """
     game_ids = {lb["game_id"] for lb in leaderboards}
-    _, game_is_ce = build_game_metadata(game_ids)
-    return game_is_ce
+    # `is_ce` reads `name`, so it must be loaded up front; deferring it costs one query per game.
+    games = Games.objects.filter(id__in=game_ids).only("id", "name")
+    return {game.id: game.is_ce for game in games}
 
 
 def _build_event_stream(
@@ -668,6 +652,19 @@ def process_leaderboard(
     dry_run: bool,
     game_is_ce: dict[str, bool],
 ) -> tuple[int, int, int]:
+    """Rebuild one leaderboard variant's RunHistory and sync its runs' points and places.
+
+    Arguments:
+        leaderboard (dict): The variant signature (game_id, category_id, level_id, runtype,
+            variable_value_map).
+        dry_run (bool): When True, compute everything but write nothing.
+        game_is_ce (dict[str, bool]): Category-Extension flags by game id (see
+            `build_leaderboard_metadata`); CE games get no streak bonus.
+
+    Returns:
+        counts (tuple[int, int, int]): History entries created, runs processed, and runs whose
+            points/bonus/place changed.
+    """
     runs = list(
         get_runs_for_leaderboard(leaderboard).prefetch_related(
             Prefetch("players", queryset=Players.objects.only("id")),
@@ -680,17 +677,14 @@ def process_leaderboard(
 
     game_id = leaderboard["game_id"]
     runtype = leaderboard["runtype"]
-    is_ce = game_is_ce.get(game_id, False)
-    max_points = (
-        settings.POINTS_MAX_CE
-        if is_ce
-        else (settings.POINTS_MAX_FG if runtype == "main" else settings.POINTS_MAX_IL)
-    )
+    game = Games.objects.only(
+        "id", "pointsmax", "ipointsmax", "verbose_recalc_log"
+    ).get(pk=game_id)
 
     state = _WalkerState(
         runtype=runtype,
-        is_ce=is_ce,
-        max_points=max_points,
+        is_ce=game_is_ce.get(game_id, False),
+        max_points=game.max_points_for(runtype),
         time_col=get_leaderboard_time_column(leaderboard),
     )
 
@@ -717,13 +711,7 @@ def process_leaderboard(
 
     if not dry_run:
         try:
-
-            verbose = (
-                Games.objects.filter(pk=game_id)
-                .values_list("verbose_recalc_log", flat=True)
-                .first()
-            )
-            if verbose:
+            if game.verbose_recalc_log:
                 record_event(
                     game=game_id,
                     event_type=GameAuditEvent.EventType.RECALC_BOARD,

@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from typing import Any
 
 from srl.models import RunPlayers, Runs, RunVariableValues
@@ -19,22 +20,72 @@ V2_ELIGIBLE_FIELDS: frozenset[str] = frozenset(
     },
 )
 
+_DURATION_FIELDS: tuple[str, ...] = ("time", "timeWithLoads", "igt")
 
-def _to_runtime_tuple(
+
+def _to_duration(
     secs: float | None,
-) -> dict[str, int] | None:
+) -> str | None:
+    """Format seconds as a protoJSON duration, matching speedruncompy's `Duration_` serializer.
+
+    Arguments:
+        secs (float | None): The run time in seconds.
+
+    Returns:
+        duration (str | None): e.g. "5014.97s", or None when there is no positive time.
+    """
     if not secs or secs <= 0:
         return None
-    total_ms = int(round(secs * 1000))
-    hours, rem = divmod(total_ms, 3600 * 1000)
-    minutes, rem = divmod(rem, 60 * 1000)
-    seconds, milliseconds = divmod(rem, 1000)
-    return {
-        "hour": hours,
-        "minute": minutes,
-        "second": seconds,
-        "millisecond": milliseconds,
-    }
+    return f"{round(float(secs), 3)}s"
+
+
+def _to_timestamp(
+    value: datetime | None,
+) -> str:
+    """Format a datetime UTC string, matching speedruncompy's `Timestamp_`.
+
+    Arguments:
+        value (datetime | None): The run date; None falls back to the Unix epoch, as before.
+
+    Returns:
+        timestamp (str): e.g. "2026-10-15T00:00:00Z".
+    """
+    value = value or datetime.fromtimestamp(0, UTC)
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _legacy_tuple_to_duration(
+    value: dict[str, int],
+) -> str | None:
+    """Convert a pre-protoJSON {hour, minute, second, millisecond} dict into a duration."""
+    secs = (
+        value.get("hour", 0) * 3600
+        + value.get("minute", 0) * 60
+        + value.get("second", 0)
+        + value.get("millisecond", 0) / 1000
+    )
+    return _to_duration(secs)
+
+
+def upgrade_legacy_run_settings(
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    upgraded = dict(payload)
+    if "date" in upgraded:
+        date_val = upgraded.pop("date")
+        if "performedAt" not in upgraded:
+            upgraded["performedAt"] = _to_timestamp(
+                datetime.fromtimestamp(date_val or 0, UTC),
+            )
+    for field in _DURATION_FIELDS:
+        value = upgraded.get(field)
+        if isinstance(value, dict):
+            value = _legacy_tuple_to_duration(value)
+        if value is None:
+            upgraded.pop(field, None)
+        else:
+            upgraded[field] = value
+    return upgraded
 
 
 def snapshot_run(
@@ -93,21 +144,18 @@ def _build_run_settings(
     igt_secs = snapshot.get("timeigt_secs")
 
     if method == "lrt":
-        time_field = _to_runtime_tuple(lrt_secs)
-        time_with_loads_field = _to_runtime_tuple(rta_secs)
+        time_field = _to_duration(lrt_secs)
+        time_with_loads_field = _to_duration(rta_secs)
     else:
-        time_field = _to_runtime_tuple(rta_secs)
+        time_field = _to_duration(rta_secs)
         time_with_loads_field = None
 
-    igt_field = _to_runtime_tuple(igt_secs)
+    igt_field = _to_duration(igt_secs)
 
     values = [
         {"variableId": var_id, "valueId": val_id}
         for (var_id, val_id) in snapshot.get("variables", [])
     ]
-
-    date_val = snapshot.get("date")
-    date_int = int(date_val.timestamp()) if date_val else 0
 
     payload: dict[str, Any] = {
         "gameId": snapshot.get("game_id"),
@@ -116,17 +164,19 @@ def _build_run_settings(
         "emulator": bool(snapshot.get("emulated")),
         "video": snapshot.get("video") or "",
         "comment": snapshot.get("description") or "",
-        "date": date_int,
+        "performedAt": _to_timestamp(snapshot.get("date")),
         "playerNames": list(snapshot.get("player_names") or []),
         "values": values,
-        "time": time_field,
-        "igt": igt_field,
     }
     if run_id is not None:
         payload["runId"] = run_id
     level_id = snapshot.get("level_id")
     if level_id is not None:
         payload["levelId"] = level_id
+    if time_field is not None:
+        payload["time"] = time_field
+    if igt_field is not None:
+        payload["igt"] = igt_field
     if time_with_loads_field is not None:
         payload["timeWithLoads"] = time_with_loads_field
     return payload

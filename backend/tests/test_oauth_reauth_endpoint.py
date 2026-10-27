@@ -2,7 +2,11 @@ import time
 from urllib.parse import parse_qs, urlparse
 
 from accounts.oauth_intent import REAUTH_FLOW
-from allauth.account.internal.flows.login import AUTHENTICATION_METHODS_SESSION_KEY
+from allauth.account.internal.flows.login import (
+    _AUTHENTICATION_METHODS_USER_SESSION_KEY,
+    AUTHENTICATION_METHODS_SESSION_KEY,
+)
+from allauth.account.internal.userkit import user_id_to_str
 from allauth.socialaccount.models import SocialAccount
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -161,6 +165,8 @@ class EndToEndDisconnectTests(TestCase):
                 "reauthenticated": True,
             },
         ]
+        # allauth >=65.21 ignores records not bound to the current user (cross-user carry-over fix).
+        session[_AUTHENTICATION_METHODS_USER_SESSION_KEY] = user_id_to_str(self.user)
         session.save()
 
         # Disconnect now succeeds.
