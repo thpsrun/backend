@@ -1,6 +1,6 @@
 from typing import Annotated, Any
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.http import HttpRequest
 from django.utils.text import slugify
@@ -15,7 +15,11 @@ from api.permissions import (
     public_read,
 )
 from api.v1.routers.utils.embeds import parse_embeds
-from api.v1.routers.utils.resolvers import game_from_body, guide_from_path
+from api.v1.routers.utils.resolvers import (
+    game_from_body,
+    guide_from_path,
+    resolve_game_or_none,
+)
 from api.v1.schemas.base import ErrorResponse
 from api.v1.schemas.common import CountrySchema
 from api.v1.schemas.games import GameSchema
@@ -77,6 +81,42 @@ _AUTHOR_SELECT_RELATED: tuple[str, ...] = (
     "owner__player",
     "owner__player__countrycode",
 )
+
+
+def _guide_slug_taken(
+    game: Games,
+    slug: str,
+    exclude_pk: int | None = None,
+) -> bool:
+    """Return whether another guide in `game` already uses `slug` (case-insensitive).
+
+    This is only a friendly pre-check; `unique_guide_slug_per_game` is the real guard.
+
+    Arguments:
+        game (Games): Game the slug must be unique within.
+        slug (str): Normalized slug to look for.
+        exclude_pk (int | None): Guide to ignore (the one being updated), if any.
+
+    Returns:
+        taken (bool): True when a different guide in the game has this slug.
+    """
+    queryset = Guides.objects.filter(game=game, slug__iexact=slug)
+    if exclude_pk is not None:
+        queryset = queryset.exclude(pk=exclude_pk)
+    return queryset.exists()
+
+
+def _slug_taken_response(
+    slug: str,
+) -> Status:
+    """Build the 400 returned when `slug` is already used by another guide in the game."""
+    return Status(
+        400,
+        ErrorResponse(
+            error="Guide With Slug Already Exists",
+            details={"slug": slug},
+        ),
+    )
 
 
 @router.get(
@@ -242,14 +282,21 @@ def create_guide(
     request: HttpRequest,
     data: GuideCreateSchema,
 ) -> Status:
-    try:
-        game = Games.objects.get(id=data.game_id)
-    except Games.DoesNotExist:
+    game = resolve_game_or_none(data.game_id)
+    if game is None:
         return Status(
             400,
             ErrorResponse(
                 error="Game ID Doesn't Exist",
-                details={"games": {data.game_id}},
+                details={"game_id": data.game_id},
+            ),
+        )
+    if not actor_key_check(request, "guides.create", game):
+        return Status(
+            403,
+            ErrorResponse(
+                error="API key scope does not cover this game",
+                details=None,
             ),
         )
 
@@ -278,45 +325,35 @@ def create_guide(
                 details={"slug": data.slug or data.title},
             ),
         )
-    if Guides.objects.filter(game=game, slug__iexact=slug).exists():
-        return Status(
-            400,
-            ErrorResponse(
-                error="Guide With Slug Already Exists",
-                details={"slug": slug},
-            ),
-        )
+    if _guide_slug_taken(game, slug):
+        return _slug_taken_response(slug)
 
-    try:
-        with transaction.atomic():
-            guide = Guides.objects.create(
-                title=data.title,
-                slug=slug,
-                game=game,
-                owner=request.user,
-                short_description=data.short_description,
-                content=data.content,
-            )
+    with transaction.atomic():
+        try:
+            # Savepoint around the insert only: the pre-check above can lose a race with a
+            # concurrent create, and unique_guide_slug_per_game is the real guard. Other
+            # errors fall through to the global handler.
+            with transaction.atomic():
+                guide = Guides.objects.create(
+                    title=data.title,
+                    slug=slug,
+                    game=game,
+                    owner=request.user,
+                    short_description=data.short_description,
+                    content=data.content,
+                )
+        except IntegrityError:
+            return _slug_taken_response(slug)
 
-            if data.tag_ids:
-                guide.tags.set(data.tag_ids)
+        if data.tag_ids:
+            guide.tags.set(data.tag_ids)
 
-            guide_data = GuideSchema.model_validate(guide)
-            guide_data.author = _author_for_user(request.user)
-            guide_data.game = GameSchema.model_validate(guide.game)
-            guide_data.tags = [
-                TagSchema.model_validate(tag) for tag in guide.tags.all()
-            ]
+    guide_data = GuideSchema.model_validate(guide)
+    guide_data.author = _author_for_user(request.user)
+    guide_data.game = GameSchema.model_validate(guide.game)
+    guide_data.tags = [TagSchema.model_validate(tag) for tag in guide.tags.all()]
 
-            return Status(201, guide_data)
-    except Exception as e:
-        return Status(
-            500,
-            ErrorResponse(
-                error="Guide Creation Failed",
-                details={"exception": str(e)},
-            ),
-        )
+    return Status(201, guide_data)
 
 
 @router.put(
@@ -371,9 +408,8 @@ def update_guide(
 
     new_game: Games | None = None
     if data.game_id:
-        try:
-            new_game = Games.objects.get(id=data.game_id)
-        except Games.DoesNotExist:
+        new_game = resolve_game_or_none(data.game_id)
+        if new_game is None:
             return Status(
                 400,
                 ErrorResponse(
@@ -410,66 +446,47 @@ def update_guide(
                 ),
             )
 
-    try:
-        with transaction.atomic():
-            if data.title is not None:
-                guide.title = data.title
+    with transaction.atomic():
+        if data.title is not None:
+            guide.title = data.title
 
-            if data.slug is not None:
-                # Normalize so stored slugs stay canonical (SlugField is not
-                # validated by save()) and lookups match case-insensitively.
-                new_slug = slugify(data.slug)
-                if not new_slug:
-                    return Status(
-                        400,
-                        ErrorResponse(
-                            error="Slug must contain at least one letter or number",
-                            details={"slug": data.slug},
-                        ),
-                    )
-                target_game = new_game if new_game is not None else guide.game
-                existing_guide = (
-                    Guides.objects.filter(game=target_game, slug__iexact=new_slug)
-                    .exclude(id=guide.pk)
-                    .first()
+        if data.slug is not None:
+            new_slug = slugify(data.slug)
+            if not new_slug:
+                return Status(
+                    400,
+                    ErrorResponse(
+                        error="Slug must contain at least one letter or number",
+                        details={"slug": data.slug},
+                    ),
                 )
-                if existing_guide:
-                    return Status(
-                        400,
-                        ErrorResponse(
-                            error="Guide With Slug Already Exists",
-                            details={"slug": new_slug},
-                        ),
-                    )
-                guide.slug = new_slug
+            target_game = new_game if new_game is not None else guide.game
+            if _guide_slug_taken(target_game, new_slug, exclude_pk=guide.pk):
+                return _slug_taken_response(new_slug)
+            guide.slug = new_slug
 
-            if new_game is not None:
-                guide.game = new_game
-            if data.short_description is not None:
-                guide.short_description = data.short_description
-            if data.content is not None:
-                guide.content = data.content
+        if new_game is not None:
+            guide.game = new_game
+        if data.short_description is not None:
+            guide.short_description = data.short_description
+        if data.content is not None:
+            guide.content = data.content
 
-            guide.save()
+        try:
+            with transaction.atomic():
+                guide.save()
+        except IntegrityError:
+            return _slug_taken_response(guide.slug)
 
-            if data.tag_ids is not None:
-                guide.tags.set(data.tag_ids)
+        if data.tag_ids is not None:
+            guide.tags.set(data.tag_ids)
 
-            guide_data = GuideSchema.model_validate(guide)
-            guide_data.author = _author_for_user(guide.owner)
-            guide_data.game = GameSchema.model_validate(guide.game)
-            guide_data.tags = [
-                TagSchema.model_validate(tag) for tag in guide.tags.all()
-            ]
-            return Status(200, guide_data)
-    except Exception as e:
-        return Status(
-            500,
-            ErrorResponse(
-                error="Guide Update Failed",
-                details={"exception": str(e)},
-            ),
-        )
+    guide_data = GuideSchema.model_validate(guide)
+    guide_data.author = _author_for_user(guide.owner)
+    guide_data.game = GameSchema.model_validate(guide.game)
+    guide_data.tags = [TagSchema.model_validate(tag) for tag in guide.tags.all()]
+
+    return Status(200, guide_data)
 
 
 @router.delete(
@@ -512,15 +529,6 @@ def delete_guide(
             ),
         )
 
-    try:
-        title = guide.title
-        guide.delete()
-        return Status(200, {"message": f"Guide '{title}' deleted successfully."})
-    except Exception as e:
-        return Status(
-            500,
-            ErrorResponse(
-                error="Guide Delete Failed",
-                details={"exception": str(e)},
-            ),
-        )
+    title = guide.title
+    guide.delete()
+    return Status(200, {"message": f"Guide '{title}' deleted successfully."})

@@ -1,9 +1,12 @@
 from pydantic import BaseModel, ConfigDict, Field
-from srl.srcom.schema.src import SrcLeaderboardRun
+
+from srl.srcom.schema.src import SrcLeaderboardRun, SrcRunsTimes
 
 
 class RunSyncContext(BaseModel):
     """Base model to provide internal run context to leaderboard and run creation functions."""
+
+    model_config = ConfigDict(extra="ignore")
 
     game_id: str
     category_id: str
@@ -14,9 +17,9 @@ class RunSyncContext(BaseModel):
     max_points: int
     default_time_type: str
     variable_value_map: dict[str, str]
-    download_pfp: bool = False
     lrt_fix: bool = False
     runs_data: SrcLeaderboardRun
+    wr_times: SrcRunsTimes | None = None
 
 
 class RunSyncTimesContext(BaseModel):

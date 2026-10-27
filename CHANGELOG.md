@@ -1,3 +1,23 @@
+### v4.6
+###### October 26, 2026
+*   Added
+    *   Added more lazy loading to help site load times (especially the guides and profile sections).
+        *   This will mean it will take slightly longer to go to your profile, but it will be faster in all other cases (e.g. just viewing the leaderboard).
+
+*   Updated
+    *   Updated the flags to appear and load only when shown, instead of them being loaded entirely in React on each request.
+    *   Updated libraries and images (for both backend and frontend)
+        *   With a Django-Allauth update, the login behavior was changed slightly. Code was modified to accomodate.
+        *   Speedruncompy also got updated to accomodate the change in SRC's v2 API, so there is also a fix to an issue where runs would not properly be pushed.
+    *   Updated the SECURITY.md files to reflect using the built-in GitHub Security Advisories page.
+
+*   Fixed
+    *   Fixed an issue where 502 errors from SRC would not be properly retried.
+
+*   Removed
+    *   Removed some redundant code related to flags.
+***
+
 ### v4.5.2
 ###### September 23, 2026
 *   Fixed an issue where requesting a "forgot password" email would allow for enumeration.

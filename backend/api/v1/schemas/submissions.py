@@ -3,10 +3,10 @@ from typing import Any, Literal
 
 from ninja import Schema
 from pydantic import Field, field_validator, model_validator
+from srl.constants import is_youtube_url
 
 from api.v1.schemas.base import RunStatusType
 from api.v1.schemas.runs import PlayerRunEmbedSchema
-from srl.constants import is_youtube_url
 
 
 class SyncStatusSchema(Schema):
@@ -301,17 +301,6 @@ class RunSubmitSchema(Schema):
             raise ValueError(
                 "At least one timing value is required (time, timenl, or timeigt)."
             )
-        return self
-
-    @model_validator(mode="after")
-    def validate_player_fields(
-        self,
-    ) -> "RunSubmitSchema":
-        for i, p in enumerate(self.players):
-            if p.rel == "user" and not p.id:
-                raise ValueError(f"Player {i}: 'id' is required when rel='user'.")
-            if p.rel == "guest" and not p.name:
-                raise ValueError(f"Player {i}: 'name' is required when rel='guest'.")
         return self
 
 

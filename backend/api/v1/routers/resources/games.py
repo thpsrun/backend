@@ -307,35 +307,24 @@ def get_all_games(
             ),
         )
 
-    try:
-        queryset = Games.objects.all().order_by("release")
-        queryset = game_embeds(queryset, embed)
-        games = queryset[offset : offset + limit]
+    queryset = Games.objects.all().order_by("release")
+    queryset = game_embeds(queryset, embed)
+    games = queryset[offset : offset + limit]
 
-        # Simple model validate on the game date received before putting it into
-        # an array that is then sent back to the client.
-        game_schemas = []
-        for game in games:
-            game_data = GameSchema.model_validate(game)
-            if "categories" in embed_fields:
-                game_data.categories = _build_categories_embed(game)
-            if "levels" in embed_fields:
-                game_data.levels = _build_levels_embed(game)
-            if "platforms" in embed_fields:
-                game_data.platforms = _build_platforms_embed(game)
-            if "moderators" in embed_fields:
-                game_data.moderators = _build_moderators_embed(game)
-            game_schemas.append(game_data)
+    game_schemas = []
+    for game in games:
+        game_data = GameSchema.model_validate(game)
+        if "categories" in embed_fields:
+            game_data.categories = _build_categories_embed(game)
+        if "levels" in embed_fields:
+            game_data.levels = _build_levels_embed(game)
+        if "platforms" in embed_fields:
+            game_data.platforms = _build_platforms_embed(game)
+        if "moderators" in embed_fields:
+            game_data.moderators = _build_moderators_embed(game)
+        game_schemas.append(game_data)
 
-        return Status(200, game_schemas)
-    except Exception as e:
-        return Status(
-            500,
-            ErrorResponse(
-                error="Failed to retrieve games",
-                details={"exception": str(e)},
-            ),
-        )
+    return Status(200, game_schemas)
 
 
 @router.get(
@@ -486,38 +475,29 @@ def get_game(
             ),
         )
 
-    try:
-        queryset = Games.objects.all()
-        queryset = game_embeds(queryset, embed)
+    queryset = Games.objects.all()
+    queryset = game_embeds(queryset, embed)
 
-        game = queryset.filter(Q(id__iexact=id) | Q(slug__iexact=id)).first()
-        if not game:
-            return Status(
-                404,
-                ErrorResponse(
-                    error="Game does not exist",
-                    details=None,
-                ),
-            )
-
-        game_data = GameSchema.model_validate(game)
-        if "categories" in embed_fields:
-            game_data.categories = _build_categories_embed(game)
-        if "levels" in embed_fields:
-            game_data.levels = _build_levels_embed(game)
-        if "platforms" in embed_fields:
-            game_data.platforms = _build_platforms_embed(game)
-        if "moderators" in embed_fields:
-            game_data.moderators = _build_moderators_embed(game)
-        return Status(200, game_data)
-    except Exception as e:
+    game = queryset.filter(Q(id__iexact=id) | Q(slug__iexact=id)).first()
+    if not game:
         return Status(
-            500,
+            404,
             ErrorResponse(
-                error="Failed to retrieve game",
-                details={"exception": str(e)},
+                error="Game does not exist",
+                details=None,
             ),
         )
+
+    game_data = GameSchema.model_validate(game)
+    if "categories" in embed_fields:
+        game_data.categories = _build_categories_embed(game)
+    if "levels" in embed_fields:
+        game_data.levels = _build_levels_embed(game)
+    if "platforms" in embed_fields:
+        game_data.platforms = _build_platforms_embed(game)
+    if "moderators" in embed_fields:
+        game_data.moderators = _build_moderators_embed(game)
+    return Status(200, game_data)
 
 
 @router.post(
@@ -552,65 +532,56 @@ def create_game(
     request: HttpRequest,
     game_data: GameCreateSchema,
 ) -> Status:
-    try:
-        game_check = Games.objects.filter(
-            Q(name__iexact=game_data.name) | Q(slug__iexact=game_data.slug)
-        ).first()
-        if game_check:
-            return Status(
-                400,
-                ErrorResponse(
-                    error="Game Already Exists",
-                    details={
-                        "exception": "Either the name of the game or its slug already exists."
-                    },
-                ),
-            )
-
-        try:
-            game_id = get_or_generate_id(
-                game_data.id,
-                lambda id: Games.objects.filter(id=id).exists(),
-            )
-        except ValueError as e:
-            return Status(
-                400,
-                ErrorResponse(
-                    error="ID Already Exists",
-                    details={"exception": str(e)},
-                ),
-            )
-
-        create_data = game_data.model_dump(exclude_unset=True)
-        create_data["id"] = game_id
-
-        for scope in ("fg", "il"):
-            allowed_key = f"allowed_methods_{scope}"
-            required_key = f"required_methods_{scope}"
-            if allowed_key in create_data and required_key not in create_data:
-                create_data[required_key] = list(create_data[allowed_key])
-        game = Games(**create_data)
-        try:
-            game.full_clean()
-        except ValidationError as e:
-            return Status(
-                422,
-                ErrorResponse(
-                    error="Validation failed",
-                    details={"errors": e.message_dict},
-                ),
-            )
-        game.save()
-
-        return Status(201, GameSchema.model_validate(game))
-    except Exception as e:
+    game_check = Games.objects.filter(
+        Q(name__iexact=game_data.name) | Q(slug__iexact=game_data.slug)
+    ).first()
+    if game_check:
         return Status(
-            500,
+            400,
             ErrorResponse(
-                error="Game Creation Failed",
+                error="Game Already Exists",
+                details={
+                    "exception": "Either the name of the game or its slug already exists."
+                },
+            ),
+        )
+
+    try:
+        game_id = get_or_generate_id(
+            game_data.id,
+            lambda id: Games.objects.filter(id=id).exists(),
+        )
+    except ValueError as e:
+        return Status(
+            400,
+            ErrorResponse(
+                error="ID Already Exists",
                 details={"exception": str(e)},
             ),
         )
+
+    create_data = game_data.model_dump(exclude_unset=True)
+    create_data["id"] = game_id
+
+    for scope in ("fg", "il"):
+        allowed_key = f"allowed_methods_{scope}"
+        required_key = f"required_methods_{scope}"
+        if allowed_key in create_data and required_key not in create_data:
+            create_data[required_key] = list(create_data[allowed_key])
+    game = Games(**create_data)
+    try:
+        game.full_clean()
+    except ValidationError as e:
+        return Status(
+            422,
+            ErrorResponse(
+                error="Validation failed",
+                details={"errors": e.message_dict},
+            ),
+        )
+    game.save()
+
+    return Status(201, GameSchema.model_validate(game))
 
 
 @router.put(
@@ -645,54 +616,45 @@ def update_game(
     id: str,
     game_data: GameUpdateSchema,
 ) -> Status:
-    try:
-        game = Games.objects.filter(Q(id__iexact=id) | Q(slug__iexact=id)).first()
-        if not game:
-            return Status(
-                404,
-                ErrorResponse(
-                    error="Game does not exist",
-                    details=None,
-                ),
-            )
-
-        update_data = game_data.model_dump(exclude_unset=True)
-        for attr, value in update_data.items():
-            setattr(game, attr, value)
-
-        for scope, primary_attr in (("fg", "defaulttime"), ("il", "idefaulttime")):
-            allowed_key = f"allowed_methods_{scope}"
-            required_key = f"required_methods_{scope}"
-            if allowed_key in update_data and required_key not in update_data:
-                new_allowed = getattr(game, allowed_key) or []
-                reconciled = [
-                    m for m in (getattr(game, required_key) or []) if m in new_allowed
-                ]
-                primary = getattr(game, primary_attr)
-                if primary and primary in new_allowed and primary not in reconciled:
-                    reconciled.append(primary)
-                setattr(game, required_key, reconciled)
-
-        try:
-            game.full_clean()
-        except ValidationError as e:
-            return Status(
-                422,
-                ErrorResponse(
-                    error="Validation failed",
-                    details={"errors": e.message_dict},
-                ),
-            )
-        game.save()
-        return Status(200, GameSchema.model_validate(game))
-    except Exception as e:
+    game = Games.objects.filter(Q(id__iexact=id) | Q(slug__iexact=id)).first()
+    if not game:
         return Status(
-            500,
+            404,
             ErrorResponse(
-                error="Failed to update game",
-                details={"exception": str(e)},
+                error="Game does not exist",
+                details=None,
             ),
         )
+
+    update_data = game_data.model_dump(exclude_unset=True)
+    for attr, value in update_data.items():
+        setattr(game, attr, value)
+
+    for scope, primary_attr in (("fg", "defaulttime"), ("il", "idefaulttime")):
+        allowed_key = f"allowed_methods_{scope}"
+        required_key = f"required_methods_{scope}"
+        if allowed_key in update_data and required_key not in update_data:
+            new_allowed = getattr(game, allowed_key) or []
+            reconciled = [
+                m for m in (getattr(game, required_key) or []) if m in new_allowed
+            ]
+            primary = getattr(game, primary_attr)
+            if primary and primary in new_allowed and primary not in reconciled:
+                reconciled.append(primary)
+            setattr(game, required_key, reconciled)
+
+    try:
+        game.full_clean()
+    except ValidationError as e:
+        return Status(
+            422,
+            ErrorResponse(
+                error="Validation failed",
+                details={"errors": e.message_dict},
+            ),
+        )
+    game.save()
+    return Status(200, GameSchema.model_validate(game))
 
 
 @router.delete(
@@ -717,25 +679,16 @@ def delete_game(
     request: HttpRequest,
     id: str,
 ) -> Status:
-    try:
-        game = Games.objects.filter(Q(id__iexact=id) | Q(slug__iexact=id)).first()
-        if not game:
-            return Status(
-                404,
-                ErrorResponse(
-                    error="Game does not exist",
-                    details=None,
-                ),
-            )
-
-        name = game.name
-        game.delete()
-        return Status(200, {"message": f"Game '{name}' deleted successfully"})
-    except Exception as e:
+    game = Games.objects.filter(Q(id__iexact=id) | Q(slug__iexact=id)).first()
+    if not game:
         return Status(
-            500,
+            404,
             ErrorResponse(
-                error="Failed to delete game",
-                details={"exception": str(e)},
+                error="Game does not exist",
+                details=None,
             ),
         )
+
+    name = game.name
+    game.delete()
+    return Status(200, {"message": f"Game '{name}' deleted successfully"})

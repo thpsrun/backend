@@ -1,4 +1,3 @@
-from celery import shared_task
 from django.db import transaction
 
 from srl.models import Platforms
@@ -7,7 +6,6 @@ from srl.srcom.schema.src import SrcPlatformModel
 from srl.utils import src_api
 
 
-@shared_task(pydantic=True)
 def sync_platforms(
     platform_data: str | dict | SrcPlatformModel,
 ) -> None:

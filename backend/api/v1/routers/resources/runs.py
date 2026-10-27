@@ -299,69 +299,59 @@ def get_all_runs(
             ),
         )
 
-    try:
-        queryset = (
-            Runs.objects.all()
-            .select_related("game", "category", "level", "platform")
-            .prefetch_related(
-                "run_players__player__countrycode",
-                "runvariablevalues_set__variable",
-                "runvariablevalues_set__value",
-            )
+    queryset = (
+        Runs.objects.all()
+        .select_related("game", "category", "level", "platform")
+        .prefetch_related(
+            "run_players__player__countrycode",
+            "runvariablevalues_set__variable",
+            "runvariablevalues_set__value",
         )
+    )
 
-        if sort == "newest":
-            queryset = queryset.order_by("-created_at", "-id")
-        else:
-            queryset = queryset.order_by("-v_date", "place")
+    if sort == "newest":
+        queryset = queryset.order_by("-created_at", "-id")
+    else:
+        queryset = queryset.order_by("-v_date", "place")
 
-        if game_id:
-            queryset = queryset.filter(Q(game__id=game_id) | Q(game__slug=game_id))
-        if category_id:
-            queryset = queryset.filter(category__id=category_id)
-        if level_id:
-            queryset = queryset.filter(level__id=level_id)
-        if player_id:
-            queryset = queryset.filter(run_players__player__id=player_id)
-        if runtype:
-            queryset = queryset.filter(runtype=runtype)
-        if place:
-            queryset = queryset.filter(place=place)
-        if status:
-            queryset = queryset.filter(vid_status=status)
-        if search:
-            queryset = queryset.filter(
-                Q(category__name__icontains=search)
-                | Q(level__name__icontains=search)
-                | Q(runvariablevalues__value__name__icontains=search)
-            ).distinct()
+    if game_id:
+        queryset = queryset.filter(Q(game__id=game_id) | Q(game__slug=game_id))
+    if category_id:
+        queryset = queryset.filter(category__id=category_id)
+    if level_id:
+        queryset = queryset.filter(level__id=level_id)
+    if player_id:
+        queryset = queryset.filter(run_players__player__id=player_id)
+    if runtype:
+        queryset = queryset.filter(runtype=runtype)
+    if place:
+        queryset = queryset.filter(place=place)
+    if status:
+        queryset = queryset.filter(vid_status=status)
+    if search:
+        queryset = queryset.filter(
+            Q(category__name__icontains=search)
+            | Q(level__name__icontains=search)
+            | Q(runvariablevalues__value__name__icontains=search)
+        ).distinct()
 
-        runs = queryset[offset : offset + limit]
+    runs = queryset[offset : offset + limit]
 
-        run_schemas = []
-        for run in runs:
-            run_data = RunSchema.model_validate(run)
+    run_schemas = []
+    for run in runs:
+        run_data = RunSchema.model_validate(run)
 
-            run_data.players = get_run_players(run)
-            run_data.variables = get_run_variables(run)
+        run_data.players = get_run_players(run)
+        run_data.variables = get_run_variables(run)
 
-            if embed_fields:
-                embed_data = apply_run_embeds(run, embed_fields)
-                for field, data in embed_data.items():
-                    setattr(run_data, field, data)
+        if embed_fields:
+            embed_data = apply_run_embeds(run, embed_fields)
+            for field, data in embed_data.items():
+                setattr(run_data, field, data)
 
-            run_schemas.append(run_data)
+        run_schemas.append(run_data)
 
-        return Status(200, run_schemas)
-
-    except Exception as e:
-        return Status(
-            500,
-            ErrorResponse(
-                error="Failed to retrieve runs",
-                details={"exception": str(e)},
-            ),
-        )
+    return Status(200, run_schemas)
 
 
 @router.get(
@@ -422,46 +412,36 @@ def get_run(
             ),
         )
 
-    try:
-        run = (
-            Runs.objects.filter(id__iexact=id)
-            .select_related("game", "category", "level", "platform", "approver")
-            .prefetch_related(
-                "run_players__player__countrycode",
-                "runvariablevalues_set__variable",
-                "runvariablevalues_set__value",
-            )
-            .first()
+    run = (
+        Runs.objects.filter(id__iexact=id)
+        .select_related("game", "category", "level", "platform", "approver")
+        .prefetch_related(
+            "run_players__player__countrycode",
+            "runvariablevalues_set__variable",
+            "runvariablevalues_set__value",
         )
-        if not run:
-            return Status(
-                404,
-                ErrorResponse(
-                    error="Run ID does not exist",
-                    details=None,
-                ),
-            )
-
-        run_data = RunSchema.model_validate(run)
-
-        run_data.players = get_run_players(run)
-        run_data.variables = get_run_variables(run)
-
-        if embed_fields:
-            embed_data = apply_run_embeds(run, embed_fields)
-            for field, data in embed_data.items():
-                setattr(run_data, field, data)
-
-        return Status(200, run_data)
-
-    except Exception as e:
+        .first()
+    )
+    if not run:
         return Status(
-            500,
+            404,
             ErrorResponse(
-                error="Failed to retrieve run",
-                details={"exception": str(e)},
+                error="Run ID does not exist",
+                details=None,
             ),
         )
+
+    run_data = RunSchema.model_validate(run)
+
+    run_data.players = get_run_players(run)
+    run_data.variables = get_run_variables(run)
+
+    if embed_fields:
+        embed_data = apply_run_embeds(run, embed_fields)
+        for field, data in embed_data.items():
+            setattr(run_data, field, data)
+
+    return Status(200, run_data)
 
 
 @router.get(
@@ -487,31 +467,21 @@ def get_run_import_issues(
     request: HttpRequest,
     id: str,
 ) -> Status:
-    try:
-        run = (
-            Runs.objects.filter(id__iexact=id)
-            .only("id", "has_import_issues", "import_issues")
-            .first()
-        )
-        if not run:
-            return Status(
-                404,
-                ErrorResponse(
-                    error="Run ID does not exist",
-                    details=None,
-                ),
-            )
-
-        return Status(200, RunImportIssuesSchema.model_validate(run))
-
-    except Exception as e:
+    run = (
+        Runs.objects.filter(id__iexact=id)
+        .only("id", "has_import_issues", "import_issues")
+        .first()
+    )
+    if not run:
         return Status(
-            500,
+            404,
             ErrorResponse(
-                error="Failed to retrieve run import issues",
-                details={"exception": str(e)},
+                error="Run ID does not exist",
+                details=None,
             ),
         )
+
+    return Status(200, RunImportIssuesSchema.model_validate(run))
 
 
 @router.post(
@@ -533,11 +503,12 @@ Complex Validation:
 - Players must exist if specified.
 - Variable values must match variable constraints.
 - Run type must match category type.
+- Every run requires a category; IL runs also require a level (422 otherwise).
 
 Request Body:
 - `game_id` (str): Game ID the run belongs to.
-- `category_id` (str | None): Category ID the run belongs to.
-- `level_id` (str | None): Level ID (for IL runs).
+- `category_id` (str): Category ID the run belongs to (required).
+- `level_id` (str | None): Level ID (required for IL runs).
 - `player_ids` (list[str] | None): List of player IDs in order of participation.
 - `runtype` (str): Run type (`main` or `il`).
 - `place` (int): Leaderboard position.
@@ -578,19 +549,33 @@ def create_run(
                 ),
             )
 
-        category = None
-        if run_data.category_id:
-            category = Categories.objects.filter(
-                id=run_data.category_id, game=game
-            ).first()
-            if not category:
-                return Status(
-                    400,
-                    ErrorResponse(
-                        error="Category does not exist for this game",
-                        details=None,
-                    ),
-                )
+        # A run without a category (or an IL run without a level) cannot map to a leaderboard.
+        if not run_data.category_id:
+            return Status(
+                422,
+                ErrorResponse(
+                    error="Runs require a category",
+                    details=None,
+                ),
+            )
+        if run_data.runtype == "il" and not run_data.level_id:
+            return Status(
+                422,
+                ErrorResponse(
+                    error="IL runs require a level",
+                    details=None,
+                ),
+            )
+
+        category = Categories.objects.filter(id=run_data.category_id, game=game).first()
+        if not category:
+            return Status(
+                400,
+                ErrorResponse(
+                    error="Category does not exist for this game",
+                    details=None,
+                ),
+            )
 
         level = None
         if run_data.level_id:
@@ -618,7 +603,7 @@ def create_run(
                     )
                 players_list.append(player)
 
-        if category and run_data.runtype == "main" and category.type != "per-game":
+        if run_data.runtype == "main" and category.type != "per-game":
             return Status(
                 400,
                 ErrorResponse(
@@ -626,12 +611,7 @@ def create_run(
                     details=None,
                 ),
             )
-        if (
-            level
-            and run_data.runtype == "il"
-            and category
-            and category.type != "per-level"
-        ):
+        if run_data.runtype == "il" and category.type != "per-level":
             return Status(
                 400,
                 ErrorResponse(
@@ -732,12 +712,8 @@ def create_run(
                 if rvv_objs:
                     RunVariableValues.objects.bulk_create(rvv_objs)
 
-            try:
-                run.validate_required_method_data()
-            except ValidationError:
-                raise ValidationError(
-                    "Run is missing required method data for its category and level"
-                )
+            # Raising inside the atomic block rolls back the run created above.
+            run.validate_required_method_data()
 
         refetched_run = (
             Runs.objects.filter(id=run.id)
@@ -789,19 +765,13 @@ def create_run(
         return Status(201, response)
 
     except ValidationError as e:
+        # Not under `exception`: ErrorResponse strips that key outside DEBUG, and the message
+        # (which names the missing timing methods) is meant for the client.
         return Status(
             422,
             ErrorResponse(
                 error="Run timing validation failed",
-                details={"exception": str(e)},
-            ),
-        )
-    except Exception as e:
-        return Status(
-            500,
-            ErrorResponse(
-                error="Run Creation Failed",
-                details={"exception": str(e)},
+                details={"messages": e.messages},
             ),
         )
 
@@ -826,8 +796,9 @@ Supported Parameters:
 
 Request Body:
 - `game_id` (str | None): Updated game ID.
-- `category_id` (str | None): Updated category ID.
-- `level_id` (str | None): Updated level ID (for IL runs).
+- `category_id` (str | None): Updated category ID. Cannot be cleared (422).
+- `level_id` (str | None): Updated level ID (for IL runs). An edit to `level_id` or `runtype`
+    that leaves an IL run without a level is rejected (422).
 - `player_ids` (list[str] | None): Updated list of player IDs in order of participation.
 - `runtype` (str | None): Updated run type (`main` or `il`).
 - `place` (int | None): Updated leaderboard position.
@@ -926,8 +897,17 @@ def update_run(
                     )
                 run.category = category
             else:
-                run.category = None
+                # A run without a category cannot map to a leaderboard.
+                return Status(
+                    422,
+                    ErrorResponse(
+                        error="Runs require a category",
+                        details=None,
+                    ),
+                )
             del update_data["category_id"]
+
+        edits_il_shape = "level_id" in update_data or "runtype" in update_data
 
         if "level_id" in update_data:
             if update_data["level_id"]:
@@ -946,6 +926,16 @@ def update_run(
             else:
                 run.level = None
             del update_data["level_id"]
+
+        new_runtype = update_data.get("runtype", run.runtype)
+        if edits_il_shape and new_runtype == "il" and run.level is None:
+            return Status(
+                422,
+                ErrorResponse(
+                    error="IL runs require a level",
+                    details=None,
+                ),
+            )
 
         if "platform_id" in update_data:
             if update_data["platform_id"]:
@@ -1058,12 +1048,8 @@ def update_run(
                     actor_player=actor_player,
                 )
 
-            try:
-                run.validate_required_method_data(ignore=preexisting_missing)
-            except ValidationError:
-                raise ValidationError(
-                    "Run is missing required method data for its category and level"
-                )
+            # Raising inside the atomic block rolls back the player/variable rewrites above.
+            run.validate_required_method_data(ignore=preexisting_missing)
 
             run.save()
 
@@ -1169,15 +1155,7 @@ def update_run(
             422,
             ErrorResponse(
                 error="Run timing validation failed",
-                details={"exception": str(e)},
-            ),
-        )
-    except Exception as e:
-        return Status(
-            500,
-            ErrorResponse(
-                error="Run Update Failed",
-                details={"exception": str(e)},
+                details={"messages": e.messages},
             ),
         )
 
@@ -1204,41 +1182,31 @@ def delete_run(
     request: HttpRequest,
     id: str,
 ) -> Status:
-    try:
-        run = (
-            Runs.objects.filter(id__iexact=id)
-            .select_related("game")
-            .prefetch_related("run_players__player")
-            .first()
-        )
-        if not run:
-            return Status(
-                404,
-                ErrorResponse(
-                    error="Run does not exist",
-                    details=None,
-                ),
-            )
-
-        game_name = run.game.name if run.game else "Unknown"
-        run_player_entries = run.run_players.all()
-        player_names = (
-            ", ".join([rp.player.name for rp in run_player_entries])
-            if run_player_entries
-            else "Anonymous"
-        )
-
-        run.delete()
+    run = (
+        Runs.objects.filter(id__iexact=id)
+        .select_related("game")
+        .prefetch_related("run_players__player")
+        .first()
+    )
+    if not run:
         return Status(
-            200,
-            {"message": f"Run by {player_names} in {game_name} deleted successfully"},
-        )
-
-    except Exception as e:
-        return Status(
-            500,
+            404,
             ErrorResponse(
-                error="Failed to delete run",
-                details={"exception": str(e)},
+                error="Run does not exist",
+                details=None,
             ),
         )
+
+    game_name = run.game.name if run.game else "Unknown"
+    run_player_entries = run.run_players.all()
+    player_names = (
+        ", ".join([rp.player.name for rp in run_player_entries])
+        if run_player_entries
+        else "Anonymous"
+    )
+
+    run.delete()
+    return Status(
+        200,
+        {"message": f"Run by {player_names} in {game_name} deleted successfully"},
+    )

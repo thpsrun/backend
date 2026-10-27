@@ -41,7 +41,6 @@ def save_pfp_locally(
     return f"{settings.MEDIA_URL}pfp/{player_id}.jpg"
 
 
-@shared_task
 def sync_players(
     players_data: str | dict,
     download_pfp: bool = False,
@@ -113,3 +112,12 @@ def sync_players(
             record_type="player",
             id=src_player.id,
         )
+
+
+@shared_task(name="srl.srcom.players.sync_players")
+def sync_players_task(
+    players_data: str | dict,
+    download_pfp: bool = False,
+) -> None:
+    """Celery entry point for `sync_players`; in-process callers use `sync_players` directly."""
+    sync_players(players_data, download_pfp)

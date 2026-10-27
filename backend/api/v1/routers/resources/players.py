@@ -1,6 +1,11 @@
 import re
 from typing import Annotated
 
+from django.db.models import Count, Q, QuerySet, Sum
+from django.http import HttpRequest
+from ninja import Query, Router, Status
+from srl.models import CountryCodes, Players, Runs
+
 from api.permissions import authed, public_read
 from api.v1.routers.utils.embeds import InvalidEmbedsError, parse_embeds
 from api.v1.schemas.base import ErrorResponse
@@ -22,10 +27,6 @@ from api.v1.schemas.players import (
 )
 from api.v1.schemas.runs import compute_run_subcategory
 from api.v1.utils import get_or_generate_id
-from django.db.models import Count, Q, QuerySet, Sum
-from django.http import HttpRequest
-from ninja import Query, Router, Status
-from srl.models import CountryCodes, Players, Runs
 
 router = Router()
 
@@ -113,13 +114,12 @@ def apply_player_embeds(
 
     embeds: dict = {"player": {}, "stats": {}, "runs": {}}
 
-    if "country" in embed_fields:
-        if player.countrycode:
-            embeds["player"]["country"] = CountrySchema(
-                id=player.countrycode.id,
-                name=player.countrycode.name,
-                flag=(player.countrycode.flag.url if player.countrycode.flag else None),
-            )
+    if "country" in embed_fields and player.countrycode:
+        embeds["player"]["country"] = CountrySchema(
+            id=player.countrycode.id,
+            name=player.countrycode.name,
+            flag=(player.countrycode.flag.url if player.countrycode.flag else None),
+        )
 
     if "awards" in embed_fields:
         awards = player.awards.all().order_by("name")
@@ -300,102 +300,92 @@ def get_player(
             ),
         )
 
-    try:
-        player = (
-            Players.objects.filter(
-                Q(id__iexact=id) | Q(name__iexact=id) | Q(nickname__iexact=id)
-            )
-            .select_related("countrycode", "user")
-            .prefetch_related("moderated_games")
-            .first()
+    player = (
+        Players.objects.filter(
+            Q(id__iexact=id) | Q(name__iexact=id) | Q(nickname__iexact=id)
         )
-        if not player:
-            return Status(
-                404,
-                ErrorResponse(
-                    error="Player ID does not exist",
-                    details=None,
-                ),
-            )
-
-        user = player.user
-        gradients = extract_gradients(player)
-
-        player_info = PlayerInfoEmbed(
-            name=player.name,
-            nickname=player.nickname,
-            pronouns=player.pronouns,
-            pfp=player.pfp,
-            ex_stream=player.ex_stream,
-        )
-
-        socials = PlayerSocialsEmbed(
-            twitch=player.twitch,
-            youtube=player.youtube,
-            twitter=player.twitter,
-            bluesky=player.bluesky,
-            discord=player.discord,
-            therun_gg=player.user.therun_gg if player.user else None,
-        )
-
-        customizations = PlayerCustomizationsEmbed(
-            gradient_1=gradients["gradient_1"] if gradients else None,
-            gradient_2=gradients["gradient_2"] if gradients else None,
-            gradient_3=gradients["gradient_3"] if gradients else None,
-            tagline=user.short_bio if user else None,
-            profile_bg=(user.profile_bg.url if user and user.profile_bg else None),
-        )
-
-        stats_embed = PlayerStatsEmbed()
-        runs_embed = PlayerRunsEmbed()
-
-        mod_games = list(player.moderated_games.all())  # type: ignore
-        moderation = PlayerModerationEmbed(
-            moderated_games=(
-                [
-                    ModeratedGameEmbedSchema(id=g.id, name=g.name, slug=g.slug)
-                    for g in mod_games
-                ]
-                if mod_games
-                else None
-            ),
-        )
-
-        if embed_fields:
-            embed_data = apply_player_embeds(player, embed_fields)
-            if embed_data.get("player"):
-                for field, value in embed_data["player"].items():
-                    setattr(player_info, field, value)
-            if embed_data.get("stats"):
-                for field, value in embed_data["stats"].items():
-                    setattr(stats_embed, field, value)
-            if embed_data.get("runs"):
-                for field, value in embed_data["runs"].items():
-                    setattr(runs_embed, field, value)
-
+        .select_related("countrycode", "user")
+        .prefetch_related("moderated_games")
+        .first()
+    )
+    if not player:
         return Status(
-            200,
-            PlayerResponse(
-                id=player.id,
-                url=player.url,
-                joined=player.joined,
-                player=player_info,
-                socials=socials,
-                customizations=customizations,
-                stats=stats_embed,
-                runs=runs_embed,
-                moderation=moderation,
-            ),
-        )
-
-    except Exception as e:
-        return Status(
-            500,
+            404,
             ErrorResponse(
-                error="Failed to retrieve player",
-                details={"exception": str(e)},
+                error="Player ID does not exist",
+                details=None,
             ),
         )
+
+    user = player.user
+    gradients = extract_gradients(player)
+
+    player_info = PlayerInfoEmbed(
+        name=player.name,
+        nickname=player.nickname,
+        pronouns=player.pronouns,
+        pfp=player.pfp,
+        ex_stream=player.ex_stream,
+    )
+
+    socials = PlayerSocialsEmbed(
+        twitch=player.twitch,
+        youtube=player.youtube,
+        twitter=player.twitter,
+        bluesky=player.bluesky,
+        discord=player.discord,
+        therun_gg=player.user.therun_gg if player.user else None,
+    )
+
+    customizations = PlayerCustomizationsEmbed(
+        gradient_1=gradients["gradient_1"] if gradients else None,
+        gradient_2=gradients["gradient_2"] if gradients else None,
+        gradient_3=gradients["gradient_3"] if gradients else None,
+        tagline=user.short_bio if user else None,
+        profile_bg=(user.profile_bg.url if user and user.profile_bg else None),
+    )
+
+    stats_embed = PlayerStatsEmbed()
+    runs_embed = PlayerRunsEmbed()
+
+    mod_games = list(player.moderated_games.all())  # type: ignore
+    moderation = PlayerModerationEmbed(
+        moderated_games=(
+            [
+                ModeratedGameEmbedSchema(id=g.id, name=g.name, slug=g.slug)
+                for g in mod_games
+            ]
+            if mod_games
+            else None
+        ),
+    )
+
+    if embed_fields:
+        embed_data = apply_player_embeds(player, embed_fields)
+        if embed_data.get("player"):
+            for field, value in embed_data["player"].items():
+                setattr(player_info, field, value)
+        if embed_data.get("stats"):
+            for field, value in embed_data["stats"].items():
+                setattr(stats_embed, field, value)
+        if embed_data.get("runs"):
+            for field, value in embed_data["runs"].items():
+                setattr(runs_embed, field, value)
+
+    return Status(
+        200,
+        PlayerResponse(
+            id=player.id,
+            url=player.url,
+            joined=player.joined,
+            player=player_info,
+            socials=socials,
+            customizations=customizations,
+            stats=stats_embed,
+            runs=runs_embed,
+            moderation=moderation,
+        ),
+    )
 
 
 @router.post(
@@ -423,90 +413,80 @@ def create_player(
     request: HttpRequest,
     player_data: PlayerCreateSchema,
 ) -> Status:
-    try:
-        country = None
-        if player_data.player.country_id:
-            country = CountryCodes.objects.filter(
-                id=player_data.player.country_id,
-            ).first()
-            if not country:
-                return Status(
-                    400,
-                    ErrorResponse(
-                        error="Country code does not exist",
-                        details=None,
-                    ),
-                )
-
-        try:
-            player_id = get_or_generate_id(
-                player_data.id,
-                lambda id: Players.objects.filter(id=id).exists(),
-            )
-        except ValueError as e:
+    country = None
+    if player_data.player.country_id:
+        country = CountryCodes.objects.filter(
+            id=player_data.player.country_id,
+        ).first()
+        if not country:
             return Status(
                 400,
                 ErrorResponse(
-                    error="ID Already Exists",
-                    details={"exception": str(e)},
+                    error="Country code does not exist",
+                    details=None,
                 ),
             )
 
-        player_fields = player_data.player.model_dump(exclude={"country_id"})
-        social_fields = player_data.socials.model_dump()
-
-        player = Players.objects.create(
-            id=player_id,
-            url=player_data.url,
-            countrycode=country,
-            **player_fields,
-            **social_fields,
+    try:
+        player_id = get_or_generate_id(
+            player_data.id,
+            lambda id: Players.objects.filter(id=id).exists(),
         )
-
-        country_embed = None
-        if country:
-            country_embed = CountrySchema(
-                id=country.id,
-                name=country.name,
-                flag=country.flag.url if country.flag else None,
-            )
-
+    except ValueError as e:
         return Status(
-            201,
-            PlayerResponse(
-                id=player.id,
-                url=player.url,
-                joined=player.joined,
-                player=PlayerInfoEmbed(
-                    name=player.name,
-                    nickname=player.nickname,
-                    pronouns=player.pronouns,
-                    country=country_embed,
-                    pfp=player.pfp,
-                    ex_stream=player.ex_stream,
-                ),
-                socials=PlayerSocialsEmbed(
-                    twitch=player.twitch,
-                    youtube=player.youtube,
-                    twitter=player.twitter,
-                    bluesky=player.bluesky,
-                    discord=player.discord,
-                ),
-                customizations=PlayerCustomizationsEmbed(),
-                stats=PlayerStatsEmbed(),
-                runs=PlayerRunsEmbed(),
-                moderation=PlayerModerationEmbed(),
-            ),
-        )
-
-    except Exception as e:
-        return Status(
-            500,
+            400,
             ErrorResponse(
-                error="Failed to create player",
+                error="ID Already Exists",
                 details={"exception": str(e)},
             ),
         )
+
+    player_fields = player_data.player.model_dump(exclude={"country_id"})
+    social_fields = player_data.socials.model_dump()
+
+    player = Players.objects.create(
+        id=player_id,
+        url=player_data.url,
+        countrycode=country,
+        **player_fields,
+        **social_fields,
+    )
+
+    country_embed = None
+    if country:
+        country_embed = CountrySchema(
+            id=country.id,
+            name=country.name,
+            flag=country.flag.url if country.flag else None,
+        )
+
+    return Status(
+        201,
+        PlayerResponse(
+            id=player.id,
+            url=player.url,
+            joined=player.joined,
+            player=PlayerInfoEmbed(
+                name=player.name,
+                nickname=player.nickname,
+                pronouns=player.pronouns,
+                country=country_embed,
+                pfp=player.pfp,
+                ex_stream=player.ex_stream,
+            ),
+            socials=PlayerSocialsEmbed(
+                twitch=player.twitch,
+                youtube=player.youtube,
+                twitter=player.twitter,
+                bluesky=player.bluesky,
+                discord=player.discord,
+            ),
+            customizations=PlayerCustomizationsEmbed(),
+            stats=PlayerStatsEmbed(),
+            runs=PlayerRunsEmbed(),
+            moderation=PlayerModerationEmbed(),
+        ),
+    )
 
 
 @router.put(
@@ -540,99 +520,87 @@ def update_player(
     id: str,
     player_data: PlayerUpdateSchema,
 ) -> Status:
-    try:
-        player = Players.objects.select_related("user").filter(id__iexact=id).first()
-        if not player:
-            return Status(
-                404,
-                ErrorResponse(
-                    error="Player does not exist",
-                    details=None,
-                ),
-            )
-
-        if player_data.url is not None:
-            player.url = player_data.url
-
-        if player_data.player is not None:
-            update_fields = player_data.player.model_dump(exclude_unset=True)
-
-            if "country_id" in update_fields:
-                if update_fields["country_id"]:
-                    country = CountryCodes.objects.filter(
-                        id=update_fields["country_id"],
-                    ).first()
-                    if not country:
-                        return Status(
-                            400,
-                            ErrorResponse(
-                                error="Country code does not exist",
-                                details=None,
-                            ),
-                        )
-                    player.countrycode = country
-                else:
-                    player.countrycode = None
-                del update_fields["country_id"]
-
-            for field, value in update_fields.items():
-                setattr(player, field, value)
-
-        if player_data.socials is not None:
-            social_fields = player_data.socials.model_dump(exclude_unset=True)
-            for field, value in social_fields.items():
-                setattr(player, field, value)
-
-        player.save()
-
-        user = player.user
-        gradients = extract_gradients(player)
-
+    player = Players.objects.select_related("user").filter(id__iexact=id).first()
+    if not player:
         return Status(
-            200,
-            PlayerResponse(
-                id=player.id,
-                url=player.url,
-                joined=player.joined,
-                player=PlayerInfoEmbed(
-                    name=player.name,
-                    nickname=player.nickname,
-                    pronouns=player.pronouns,
-                    pfp=player.pfp,
-                    ex_stream=player.ex_stream,
-                ),
-                socials=PlayerSocialsEmbed(
-                    twitch=player.twitch,
-                    youtube=player.youtube,
-                    twitter=player.twitter,
-                    bluesky=player.bluesky,
-                    discord=player.discord,
-                ),
-                customizations=PlayerCustomizationsEmbed(
-                    gradient_1=gradients["gradient_1"] if gradients else None,
-                    gradient_2=gradients["gradient_2"] if gradients else None,
-                    gradient_3=gradients["gradient_3"] if gradients else None,
-                    tagline=user.short_bio if user else None,
-                    profile_bg=(
-                        user.profile_bg.url if user and user.profile_bg else None
-                    ),
-                ),
-                stats=PlayerStatsEmbed(),
-                runs=PlayerRunsEmbed(),
-                moderation=PlayerModerationEmbed(
-                    moderated_games=None,
-                ),
-            ),
-        )
-
-    except Exception as e:
-        return Status(
-            500,
+            404,
             ErrorResponse(
-                error="Failed to update player",
-                details={"exception": str(e)},
+                error="Player does not exist",
+                details=None,
             ),
         )
+
+    if player_data.url is not None:
+        player.url = player_data.url
+
+    if player_data.player is not None:
+        update_fields = player_data.player.model_dump(exclude_unset=True)
+
+        if "country_id" in update_fields:
+            if update_fields["country_id"]:
+                country = CountryCodes.objects.filter(
+                    id=update_fields["country_id"],
+                ).first()
+                if not country:
+                    return Status(
+                        400,
+                        ErrorResponse(
+                            error="Country code does not exist",
+                            details=None,
+                        ),
+                    )
+                player.countrycode = country
+            else:
+                player.countrycode = None
+            del update_fields["country_id"]
+
+        for field, value in update_fields.items():
+            setattr(player, field, value)
+
+    if player_data.socials is not None:
+        social_fields = player_data.socials.model_dump(exclude_unset=True)
+        for field, value in social_fields.items():
+            setattr(player, field, value)
+
+    player.save()
+
+    user = player.user
+    gradients = extract_gradients(player)
+
+    return Status(
+        200,
+        PlayerResponse(
+            id=player.id,
+            url=player.url,
+            joined=player.joined,
+            player=PlayerInfoEmbed(
+                name=player.name,
+                nickname=player.nickname,
+                pronouns=player.pronouns,
+                pfp=player.pfp,
+                ex_stream=player.ex_stream,
+            ),
+            socials=PlayerSocialsEmbed(
+                twitch=player.twitch,
+                youtube=player.youtube,
+                twitter=player.twitter,
+                bluesky=player.bluesky,
+                discord=player.discord,
+            ),
+            customizations=PlayerCustomizationsEmbed(
+                gradient_1=gradients["gradient_1"] if gradients else None,
+                gradient_2=gradients["gradient_2"] if gradients else None,
+                gradient_3=gradients["gradient_3"] if gradients else None,
+                tagline=user.short_bio if user else None,
+                profile_bg=(user.profile_bg.url if user and user.profile_bg else None),
+            ),
+            stats=PlayerStatsEmbed(),
+            runs=PlayerRunsEmbed(),
+            moderation=PlayerModerationEmbed(
+                moderated_games=None,
+            ),
+        ),
+    )
 
 
 @router.delete(
@@ -657,26 +625,16 @@ def delete_player(
     request: HttpRequest,
     id: str,
 ) -> Status:
-    try:
-        player = Players.objects.filter(id__iexact=id).first()
-        if not player:
-            return Status(
-                404,
-                ErrorResponse(
-                    error="Player does not exist",
-                    details=None,
-                ),
-            )
-
-        name = player.nickname if player.nickname else player.name
-        player.delete()
-        return Status(200, {"message": f"Player '{name}' deleted successfully"})
-
-    except Exception as e:
+    player = Players.objects.filter(id__iexact=id).first()
+    if not player:
         return Status(
-            500,
+            404,
             ErrorResponse(
-                error="Failed to delete player",
-                details={"exception": str(e)},
+                error="Player does not exist",
+                details=None,
             ),
         )
+
+    name = player.nickname if player.nickname else player.name
+    player.delete()
+    return Status(200, {"message": f"Player '{name}' deleted successfully"})

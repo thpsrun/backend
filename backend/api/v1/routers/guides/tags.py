@@ -108,20 +108,11 @@ def create_tag(
             ),
         )
 
-    try:
-        tag = Tags.objects.create(
-            name=data.name,
-            description=data.description,
-        )
-        return Status(200, TagSchema.model_validate(tag))
-    except Exception as e:
-        return Status(
-            500,
-            ErrorResponse(
-                error="Tag Creation Failed",
-                details={"exception": str(e)},
-            ),
-        )
+    tag = Tags.objects.create(
+        name=data.name,
+        description=data.description,
+    )
+    return Status(200, TagSchema.model_validate(tag))
 
 
 @router.put(
@@ -163,41 +154,29 @@ def update_tag(
             ),
         )
 
-    try:
-        with transaction.atomic():
-            if data.name is not None:
-                tag.name = data.name
+    with transaction.atomic():
+        if data.name is not None:
+            tag.name = data.name
 
-            if data.slug is not None:
-                existing_tag = (
-                    Tags.objects.filter(slug__iexact=data.slug)
-                    .exclude(pk=tag.pk)
-                    .first()
+        if data.slug is not None:
+            existing_tag = (
+                Tags.objects.filter(slug__iexact=data.slug).exclude(pk=tag.pk).first()
+            )
+            if existing_tag:
+                return Status(
+                    400,
+                    ErrorResponse(
+                        error=f"A tag with slug '{data.slug}' already exists",
+                        details={"slug": data.slug},
+                    ),
                 )
-                if existing_tag:
-                    return Status(
-                        400,
-                        ErrorResponse(
-                            error=f"A tag with slug '{data.slug}' already exists",
-                            details={"slug": data.slug},
-                        ),
-                    )
-                tag.slug = data.slug
+            tag.slug = data.slug
 
-            if data.description is not None:
-                tag.description = data.description
+        if data.description is not None:
+            tag.description = data.description
 
-            tag.save()
-            return Status(200, TagSchema.model_validate(tag))
-
-    except Exception as e:
-        return Status(
-            500,
-            ErrorResponse(
-                error="Failed to update tag",
-                details={"exception": str(e)},
-            ),
-        )
+        tag.save()
+        return Status(200, TagSchema.model_validate(tag))
 
 
 @router.delete(
@@ -232,15 +211,6 @@ def delete_tag(
             ),
         )
 
-    try:
-        name = tag.name
-        tag.delete()
-        return Status(200, {"message": f"Tag '{name}' deleted successfully"})
-    except Exception as e:
-        return Status(
-            500,
-            ErrorResponse(
-                error="Failed to delete tag",
-                details={"exception": str(e)},
-            ),
-        )
+    name = tag.name
+    tag.delete()
+    return Status(200, {"message": f"Tag '{name}' deleted successfully"})

@@ -1,4 +1,5 @@
 import os
+import sys
 from pathlib import Path
 
 import sentry_sdk
@@ -11,6 +12,7 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 DEBUG = os.getenv("DEBUG_MODE") == "True"
+TESTING = sys.argv[1:2] == ["test"]
 
 
 def _require_env(
@@ -51,7 +53,7 @@ def _sentry_before_send(
     return event
 
 
-if os.getenv("SENTRY_ENABLED") == "True":
+if os.getenv("SENTRY_ENABLED") == "True" and not TESTING:
     sentry_sdk.init(
         dsn=os.getenv("SENTRY_DSN"),
         send_default_pii=False,

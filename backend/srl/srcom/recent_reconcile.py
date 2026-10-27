@@ -1,5 +1,5 @@
 import logging
-from typing import Callable
+from collections.abc import Callable
 
 from celery.exceptions import SoftTimeLimitExceeded
 from django.conf import settings
@@ -185,8 +185,6 @@ def reconcile_game_sweep(
         except _JOB_CONTROL_EXCEPTIONS:
             raise
         except Exception:
-            # A stale category/level tree is repairable per run (the _ensure_* guards below fetch
-            # anything missing), so log and keep sweeping rather than aborting the whole job.
             logger.warning(
                 "sweep structure sync failed for game %s",
                 game_id,
@@ -204,9 +202,6 @@ def reconcile_game_sweep(
             check_cancelled()
             raw_run = src_payloads.get(run_id)
             if raw_run is None:
-                # Absent from the bulk crawl: tell "deleted on SRC" apart from a transient
-                # failure with a single-run probe. The probe retries 420/503 internally, so a
-                # non-200 here is already past the retry budget.
                 status_code, envelope = src_api_probe(
                     f"https://speedrun.com/api/v1/runs/{run_id}",
                 )

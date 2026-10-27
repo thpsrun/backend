@@ -98,7 +98,7 @@ class MeEmailChangeTest(TestCase):
         self.client = Client()
         self.client.force_login(self.user)
         self._reauth_patch = patch(
-            "api.v1.routers.auth.me_email.did_recently_authenticate",
+            "api.v1.routers.auth.me_email.did_recently_reauthenticate",
             return_value=True,
         )
         self._reauth_patch.start()
@@ -189,7 +189,7 @@ class MeEmailChangeTest(TestCase):
         self,
     ) -> None:
         with patch(
-            "api.v1.routers.auth.me_email.did_recently_authenticate",
+            "api.v1.routers.auth.me_email.did_recently_reauthenticate",
             return_value=False,
         ):
             response = self.client.post(
@@ -417,7 +417,7 @@ class MeEmailRateLimitTest(TestCase):
         self.client = Client()
         self.client.force_login(self.user)
         self._reauth_patch = patch(
-            "api.v1.routers.auth.me_email.did_recently_authenticate",
+            "api.v1.routers.auth.me_email.did_recently_reauthenticate",
             return_value=True,
         )
         self._reauth_patch.start()

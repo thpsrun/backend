@@ -173,61 +173,48 @@ def get_all_categories(
 
     embed_fields = parse_embeds(embed, "categories")
 
-    try:
-        queryset = (
-            Categories.objects.filter(
-                Q(game__id__iexact=game) | Q(game__slug__iexact=game)
+    queryset = (
+        Categories.objects.filter(Q(game__id__iexact=game) | Q(game__slug__iexact=game))
+        .select_related("game")
+        .order_by("name")
+    )
+
+    if type:
+        queryset = queryset.filter(type=type)
+
+    categories = list(queryset[offset : offset + limit])
+
+    all_variables = None
+    values_by_var = None
+    if categories and ("variables" in embed_fields or "values" in embed_fields):
+        game_obj = categories[0].game
+        all_variables = list(Variables.objects.filter(game=game_obj).order_by("name"))
+        if "values" in embed_fields:
+            var_ids = [v.id for v in all_variables]
+            all_values = VariableValues.objects.filter(
+                var_id__in=var_ids,
+            ).order_by("name")
+            values_by_var: dict[str, list[VariableValues]] = {}
+            for val in all_values:
+                values_by_var.setdefault(val.var_id, []).append(val)
+
+    category_schemas = []
+    for category in categories:
+        category_data = CategorySchema.model_validate(category)
+
+        if embed_fields:
+            embed_data = apply_category_embeds(
+                category,
+                embed_fields,
+                all_variables,
+                values_by_var,
             )
-            .select_related("game")
-            .order_by("name")
-        )
+            for field, data in embed_data.items():
+                setattr(category_data, field, data)
 
-        if type:
-            queryset = queryset.filter(type=type)
+        category_schemas.append(category_data)
 
-        categories = list(queryset[offset : offset + limit])
-
-        all_variables = None
-        values_by_var = None
-        if categories and ("variables" in embed_fields or "values" in embed_fields):
-            game_obj = categories[0].game
-            all_variables = list(
-                Variables.objects.filter(game=game_obj).order_by("name")
-            )
-            if "values" in embed_fields:
-                var_ids = [v.id for v in all_variables]
-                all_values = VariableValues.objects.filter(
-                    var_id__in=var_ids,
-                ).order_by("name")
-                values_by_var: dict[str, list[VariableValues]] = {}
-                for val in all_values:
-                    values_by_var.setdefault(val.var_id, []).append(val)
-
-        category_schemas = []
-        for category in categories:
-            category_data = CategorySchema.model_validate(category)
-
-            if embed_fields:
-                embed_data = apply_category_embeds(
-                    category,
-                    embed_fields,
-                    all_variables,
-                    values_by_var,
-                )
-                for field, data in embed_data.items():
-                    setattr(category_data, field, data)
-
-            category_schemas.append(category_data)
-
-        return Status(200, category_schemas)
-    except Exception as e:
-        return Status(
-            500,
-            ErrorResponse(
-                error="Category Retrieval Failed",
-                details={"exception": str(e)},
-            ),
-        )
+    return Status(200, category_schemas)
 
 
 @router.get(
@@ -274,39 +261,30 @@ def get_category(
 
     embed_fields = parse_embeds(embed, "categories")
 
-    try:
-        category = (
-            Categories.objects.select_related("game")
-            .filter(
-                id__iexact=id,
-            )
-            .first()
+    category = (
+        Categories.objects.select_related("game")
+        .filter(
+            id__iexact=id,
         )
-        if not category:
-            return Status(
-                404,
-                ErrorResponse(
-                    error="Category ID Doesn't Exist",
-                    details=None,
-                ),
-            )
-
-        category_data = CategorySchema.model_validate(category)
-
-        if embed_fields:
-            embed_data = apply_category_embeds(category, embed_fields)
-            for field, data in embed_data.items():
-                setattr(category_data, field, data)
-
-        return Status(200, category_data)
-    except Exception as e:
+        .first()
+    )
+    if not category:
         return Status(
-            500,
+            404,
             ErrorResponse(
-                error="Category Retrieval Failure",
-                details={"exception": str(e)},
+                error="Category ID Doesn't Exist",
+                details=None,
             ),
         )
+
+    category_data = CategorySchema.model_validate(category)
+
+    if embed_fields:
+        embed_data = apply_category_embeds(category, embed_fields)
+        for field, data in embed_data.items():
+            setattr(category_data, field, data)
+
+    return Status(200, category_data)
 
 
 @router.post(
@@ -343,55 +321,46 @@ def create_category(
     request: HttpRequest,
     category_data: CategoryCreateSchema,
 ) -> Status:
-    try:
-        game = Games.objects.filter(id=category_data.game_id).first()
-        if not game:
-            return Status(
-                404,
-                ErrorResponse(
-                    error="Game Doesn't Exist",
-                    details=None,
-                ),
-            )
-
-        try:
-            category_id = get_or_generate_id(
-                category_data.id,
-                lambda id: Categories.objects.filter(id=id).exists(),
-            )
-        except ValueError:
-            return Status(
-                400,
-                ErrorResponse(
-                    error="ID Already Exists",
-                    details=None,
-                ),
-            )
-
-        create_data = category_data.model_dump(exclude={"game_id"}, exclude_unset=True)
-        create_data["id"] = category_id
-        category = Categories(game=game, **create_data)
-        try:
-            category.full_clean()
-        except ValidationError as e:
-            return Status(
-                422,
-                ErrorResponse(
-                    error="Validation failed",
-                    details={"errors": e.message_dict},
-                ),
-            )
-        category.save()
-
-        return Status(201, CategorySchema.model_validate(category))
-    except Exception as e:
+    game = Games.objects.filter(id=category_data.game_id).first()
+    if not game:
         return Status(
-            500,
+            404,
             ErrorResponse(
-                error="Failed to create category",
-                details={"exception": str(e)},
+                error="Game Doesn't Exist",
+                details=None,
             ),
         )
+
+    try:
+        category_id = get_or_generate_id(
+            category_data.id,
+            lambda id: Categories.objects.filter(id=id).exists(),
+        )
+    except ValueError:
+        return Status(
+            400,
+            ErrorResponse(
+                error="ID Already Exists",
+                details=None,
+            ),
+        )
+
+    create_data = category_data.model_dump(exclude={"game_id"}, exclude_unset=True)
+    create_data["id"] = category_id
+    category = Categories(game=game, **create_data)
+    try:
+        category.full_clean()
+    except ValidationError as e:
+        return Status(
+            422,
+            ErrorResponse(
+                error="Validation failed",
+                details={"errors": e.message_dict},
+            ),
+        )
+    category.save()
+
+    return Status(201, CategorySchema.model_validate(category))
 
 
 @router.put(
@@ -431,60 +400,51 @@ def update_category(
     id: str,
     category_data: CategoryUpdateSchema,
 ) -> Status:
-    try:
-        category = (
-            Categories.objects.select_related("game")
-            .filter(
-                id__iexact=id,
-            )
-            .first()
+    category = (
+        Categories.objects.select_related("game")
+        .filter(
+            id__iexact=id,
         )
-        if not category:
+        .first()
+    )
+    if not category:
+        return Status(
+            404,
+            ErrorResponse(
+                error="Category does not exist",
+                details=None,
+            ),
+        )
+
+    update_data = category_data.model_dump(exclude_unset=True)
+    if "game_id" in update_data:
+        game = Games.objects.filter(id=update_data["game_id"]).first()
+        if not game:
             return Status(
-                404,
+                400,
                 ErrorResponse(
-                    error="Category does not exist",
+                    error="Game does not exist",
                     details=None,
                 ),
             )
+        category.game = game
+        del update_data["game_id"]
 
-        update_data = category_data.model_dump(exclude_unset=True)
-        if "game_id" in update_data:
-            game = Games.objects.filter(id=update_data["game_id"]).first()
-            if not game:
-                return Status(
-                    400,
-                    ErrorResponse(
-                        error="Game does not exist",
-                        details=None,
-                    ),
-                )
-            category.game = game
-            del update_data["game_id"]
+    for field, value in update_data.items():
+        setattr(category, field, value)
 
-        for field, value in update_data.items():
-            setattr(category, field, value)
-
-        try:
-            category.full_clean()
-        except ValidationError as e:
-            return Status(
-                422,
-                ErrorResponse(
-                    error="Validation failed",
-                    details={"errors": e.message_dict},
-                ),
-            )
-        category.save()
-        return Status(200, CategorySchema.model_validate(category))
-    except Exception as e:
+    try:
+        category.full_clean()
+    except ValidationError as e:
         return Status(
-            500,
+            422,
             ErrorResponse(
-                error="Failed to update category",
-                details={"exception": str(e)},
+                error="Validation failed",
+                details={"errors": e.message_dict},
             ),
         )
+    category.save()
+    return Status(200, CategorySchema.model_validate(category))
 
 
 @router.delete(
@@ -509,31 +469,22 @@ def delete_category(
     request: HttpRequest,
     id: str,
 ) -> Status:
-    try:
-        category = (
-            Categories.objects.select_related("game")
-            .filter(
-                id__iexact=id,
-            )
-            .first()
+    category = (
+        Categories.objects.select_related("game")
+        .filter(
+            id__iexact=id,
         )
-        if not category:
-            return Status(
-                404,
-                ErrorResponse(
-                    error="Category does not exist",
-                    details=None,
-                ),
-            )
-
-        name = category.name
-        category.delete()
-        return Status(200, {"message": f"Category '{name}' deleted successfully"})
-    except Exception as e:
+        .first()
+    )
+    if not category:
         return Status(
-            500,
+            404,
             ErrorResponse(
-                error="Failed to delete category",
-                details={"exception": str(e)},
+                error="Category does not exist",
+                details=None,
             ),
         )
+
+    name = category.name
+    category.delete()
+    return Status(200, {"message": f"Category '{name}' deleted successfully"})

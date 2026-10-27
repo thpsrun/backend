@@ -3,7 +3,7 @@ from importlib import import_module
 
 from accounts.oauth_intent import REAUTH_FLOW, handle_reauth
 from allauth.account.internal.flows.login import AUTHENTICATION_METHODS_SESSION_KEY
-from allauth.account.internal.flows.reauthentication import did_recently_authenticate
+from allauth.account.internal.flows.reauthentication import did_recently_reauthenticate
 from allauth.core.exceptions import ImmediateHttpResponse
 from allauth.socialaccount.models import SocialAccount, SocialLogin
 from django.conf import settings
@@ -120,7 +120,7 @@ class HandleReauthTests(TestCase):
         self.assertTrue(
             any(m.get("method") == "socialaccount" for m in methods),
         )
-        self.assertTrue(did_recently_authenticate(self.request))
+        self.assertTrue(did_recently_reauthenticate(self.request))
 
     def test_provider_mismatch_rejects(self) -> None:
         sl = _fake_sociallogin("twitch", "real-uid")

@@ -1,11 +1,10 @@
-from datetime import datetime, timedelta
-from datetime import timezone as dt_timezone
+from datetime import UTC, datetime, timedelta
 
 import requests as http_requests
 import sentry_sdk
 from celery import shared_task
 from django.conf import settings as cfg
-from django.db.models import F
+from django.db.models import QuerySet
 
 from srl.encryption import decrypt_src_key
 from srl.models import SRCSyncTask
@@ -365,28 +364,32 @@ def sync_src_settings(
             return
 
 
+NON_REPLAYABLE_CATEGORIES: tuple[str, ...] = (
+    ErrorCategory.VALIDATION,
+    ErrorCategory.API_CONTRACT,
+)
+
+
+def replayable_failed_edits() -> QuerySet[SRCSyncTask]:
+    cutoff = datetime.now(UTC) - timedelta(
+        days=getattr(cfg, "SRC_V2_REPLAY_MAX_AGE_DAYS", 7),
+    )
+    return SRCSyncTask.objects.filter(
+        action=SRCSyncTask.ActionType.EDIT_RUN,
+        status=SRCSyncTask.Status.FAILED,
+        created_at__gte=cutoff,
+    ).exclude(error_category__in=NON_REPLAYABLE_CATEGORIES)
+
+
 @shared_task(name="srl.tasks.replay_failed_edits")
 def replay_failed_edits() -> int:
-    """Re-queue recent failed EDIT_RUN tasks when the kill switch flips back on.
-
-    Tasks older than SRC_V2_REPLAY_MAX_AGE_DAYS are intentionally skipped; stale
-    edits should be reviewed individually. Also no-ops if the v2 kill switch is
-    still off, otherwise the re-queued tasks would fail immediately.
-    """
+    """Re-queue recent failed EDIT_RUN tasks when the kill switch flips back on."""
 
     if not is_v2_enabled():
         return 0
 
-    cutoff = datetime.now(dt_timezone.utc) - timedelta(
-        days=getattr(cfg, "SRC_V2_REPLAY_MAX_AGE_DAYS", 7),
-    )
-    qs = SRCSyncTask.objects.filter(
-        action=SRCSyncTask.ActionType.EDIT_RUN,
-        status=SRCSyncTask.Status.FAILED,
-        created_at__gte=cutoff,
-    )
     count = 0
-    for task in qs:
+    for task in replayable_failed_edits():
         task.status = SRCSyncTask.Status.PENDING
         task.error_category = ""
         task.last_error = ""
@@ -409,9 +412,7 @@ def replay_failed_edits() -> int:
 def sweep_pending_src_sync() -> int:
     """Re-dispatch SRCSyncTasks stuck PENDING past the stale threshold."""
 
-    cutoff = datetime.now(dt_timezone.utc) - timedelta(
-        minutes=PENDING_SYNC_STALE_MINUTES
-    )
+    cutoff = datetime.now(UTC) - timedelta(minutes=PENDING_SYNC_STALE_MINUTES)
     stale = SRCSyncTask.objects.filter(
         status=SRCSyncTask.Status.PENDING,
         updated_at__lt=cutoff,

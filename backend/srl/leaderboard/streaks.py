@@ -106,12 +106,7 @@ def apply_streak_to_run(
     if new_bonus == run.bonus:
         return None
 
-    if run.runtype == "main":
-        max_points = game.pointsmax
-    else:
-        max_points = game.ipointsmax
-
     streak_bonus = calculate_bonus(run.runtype, new_bonus, game.is_ce)
-    new_points = max_points + streak_bonus
+    new_points = game.max_points_for(run.runtype) + streak_bonus
 
     return new_bonus, new_points

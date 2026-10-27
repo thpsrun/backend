@@ -3,7 +3,7 @@ import logging
 
 from accounts.oauth_intent import CONNECT_FLOW, REAUTH_FLOW
 from allauth.account.adapter import get_adapter
-from allauth.account.internal.flows.reauthentication import did_recently_authenticate
+from allauth.account.internal.flows.reauthentication import did_recently_reauthenticate
 from allauth.mfa.models import Authenticator
 from allauth.socialaccount import signals as socialaccount_signals
 from allauth.socialaccount.adapter import get_adapter as get_socialaccount_adapter
@@ -173,7 +173,7 @@ def delete_social_account(
     provider: str,
 ) -> Status:
     user = request.auth  # type: ignore
-    if not did_recently_authenticate(request):
+    if not did_recently_reauthenticate(request):
         return Status(
             401,
             ErrorResponse(
@@ -317,7 +317,7 @@ def delete_password(
     request: HttpRequest,
 ) -> Status:
     user = request.auth  # type: ignore
-    if not did_recently_authenticate(request):
+    if not did_recently_reauthenticate(request):
         return Status(
             401,
             ErrorResponse(

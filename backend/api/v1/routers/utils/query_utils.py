@@ -87,6 +87,7 @@ def _primary_time_secs_expr() -> Expression:
         When(runtype="il", game__idefaulttime="rta", then=F("time_secs")),
         When(game__defaulttime="lrt", then=F("timenl_secs")),
         When(game__defaulttime="igt", then=F("timeigt_secs")),
+        When(game__defaulttime="rta", then=F("time_secs")),
         default=Value(None),
     )
 

@@ -3,8 +3,9 @@ import logging
 import math
 import random
 import time
+from collections.abc import Iterator
 from datetime import date
-from typing import TYPE_CHECKING, Iterator
+from typing import TYPE_CHECKING
 
 import requests
 from dateutil.relativedelta import relativedelta
@@ -24,6 +25,7 @@ SRC_HEADERS = {
 }
 SRC_MAX_RETRIES = 10
 SRC_BACKOFF_SECS = 60
+SRC_RETRY_STATUSES = (420, 502, 503, 504)
 
 
 class SrcRateLimited(ValueError):
@@ -50,21 +52,22 @@ def _src_request(
     max_retries: int,
     backoff_secs: int,
 ) -> requests.Response | None:
-    """GET an SRC v1 URL, retrying on 420/503 and transient transport errors.
+    """GET an SRC v1 URL, retrying on SRC_RETRY_STATUSES and transient transport errors.
 
     The shared retry primitive behind src_api and src_api_probe. Returns the final Response whatever
-    its status (each caller applies its own non-200 contract): a non-420/503 status returns
-    immediately; a 420 (Enhance Your Calm) / 503 sleeps a random amount of  `backoff_secs` and
-    retries up to `max_retries` attempts, returning the last rate-limited Response once they are
-    all exhausted.
+    its status (each caller applies its own non-200 contract): any other status returns
+    immediately; a 420 (Enhance Your Calm) / 502 / 503 / 504 sleeps a random amount of
+    `backoff_secs` and retries up to `max_retries` attempts, returning the last retryable Response
+    once they are all exhausted.
 
     Arguments:
         url (str): The complete URL of the API endpoint being called.
         max_retries (int): Maximum number of attempts before giving up.
-        backoff_secs (int): Base per-attempt sleep on a 420/503 or transport error.
+        backoff_secs (int): Base per-attempt sleep on a retryable status or transport error.
 
     Returns:
-        response (requests.Response): The final HTTP response (still 420/503 if retries ran out).
+        response (requests.Response): The final HTTP response (still a retryable status if
+            retries ran out).
     """
     response = None
     for attempt in range(1, max_retries + 1):
@@ -86,11 +89,11 @@ def _src_request(
             _src_backoff_sleep(backoff_secs)
             continue
 
-        if response.status_code not in (420, 503):
+        if response.status_code not in SRC_RETRY_STATUSES:
             return response
 
         logger.warning(
-            "SRC rate limit (%s) on attempt %d/%d, sleeping ~%ds: %s",
+            "SRC retryable status %s on attempt %d/%d, sleeping ~%ds: %s",
             response.status_code,
             attempt,
             max_retries,
@@ -162,7 +165,8 @@ def src_api(
         SrcRateLimited: When 420/503 persists until retries are exhausted.
         requests.exceptions.ConnectionError | requests.exceptions.Timeout: When a transient
             transport failure persists until retries are exhausted.
-        ValueError: When the response is otherwise non-200, or no response was obtained.
+        ValueError: When the response is otherwise non-200 (including a 502/504 that persists
+            until retries are exhausted), or no response was obtained.
     """
     retries: int = SRC_MAX_RETRIES if max_retries is None else max_retries
     backoff: int = SRC_BACKOFF_SECS if backoff_secs is None else backoff_secs
@@ -191,7 +195,7 @@ def src_api_probe(
 ) -> tuple[int, dict | None]:
     """Probes a Speedrun.com API v1 GET, returning (status_code, payload) without raising.
 
-    Mirrors src_api's retry-on-420/503 behavior, but instead of raising on a non-200 it
+    Mirrors src_api's retry-on-SRC_RETRY_STATUSES behavior, but instead of raising on a non-200 it
     returns the final HTTP status code so callers can tell a 404 (resource deleted on SRC)
     apart from a transient failure. The payload is the parsed JSON envelope when the final
     status is 200, otherwise None.
@@ -357,13 +361,7 @@ def get_streak_start_date(
     if not current_player_ids:
         return None
 
-    game = run.game
-    if game.is_ce:
-        max_points = settings.POINTS_MAX_CE
-    elif run.runtype == "main":
-        max_points = game.pointsmax
-    else:
-        max_points = game.ipointsmax
+    max_points = run.game.max_points_for(run.runtype)
 
     wr_history_qs = RunHistory.objects.filter(
         run__game=run.game,
