@@ -4,7 +4,7 @@ import requests as http_requests
 import sentry_sdk
 from celery import shared_task
 from django.conf import settings as cfg
-from django.db.models import QuerySet
+from django.db.models import F, QuerySet
 
 from srl.encryption import decrypt_src_key
 from srl.models import SRCSyncTask
